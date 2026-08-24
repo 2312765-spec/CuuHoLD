@@ -1,0 +1,150 @@
+{
+  "info": {
+    "name": "Rescue GIS Lâm Đồng — Auth Flow Test",
+    "description": "Flow test: register → login → GET /me. Derived from src/auth/auth.controller.ts, auth.service.ts and DTOs (docs/api-contract.md not found in repo).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "testPhone", "value": "", "type": "string" },
+    { "key": "testPassword", "value": "matkhau123", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Register",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const randomDigits = Math.floor(100000000 + Math.random() * 900000000).toString();",
+              "pm.collectionVariables.set('testPhone', '0' + randomDigits);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('response contains accessToken and refreshToken', () => {",
+              "  pm.expect(json.data.accessToken).to.be.a('string');",
+              "  pm.expect(json.data.refreshToken).to.be.a('string');",
+              "});",
+              "pm.test('user object does not leak passwordHash', () => {",
+              "  pm.expect(json.data.user).to.not.have.property('passwordHash');",
+              "});",
+              "pm.test('registered phone matches request', () => {",
+              "  pm.expect(json.data.user.phone).to.eql(pm.collectionVariables.get('testPhone'));",
+              "});",
+              "",
+              "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+              "pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{testPhone}}\",\n  \"name\": \"Postman Test User\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"victim\",\n  \"districtCode\": \"672\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "2. Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('response contains accessToken', () => {",
+              "  pm.expect(json.data.accessToken).to.be.a('string');",
+              "});",
+              "pm.test('logged-in phone matches registered phone', () => {",
+              "  pm.expect(json.data.user.phone).to.eql(pm.collectionVariables.get('testPhone'));",
+              "});",
+              "",
+              "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+              "pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{testPhone}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "3. Get Me",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('returned phone matches logged-in user', () => {",
+              "  pm.expect(json.data.phone).to.eql(pm.collectionVariables.get('testPhone'));",
+              "});",
+              "pm.test('does not leak passwordHash', () => {",
+              "  pm.expect(json.data).to.not.have.property('passwordHash');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{accessToken}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "me"]
+        }
+      }
+    }
+  ]
+}

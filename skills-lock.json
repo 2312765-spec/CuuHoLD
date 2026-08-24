@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "skills": {
+    "_conventions": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/_conventions/SKILL.md",
+      "computedHash": "4ce3d799ad3bf51e7fa32cd4e2284425782b935c3429ed09915a9c20228dfb23"
+    },
+    "architecting-nestjs-modules": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/architecting-nestjs-modules/SKILL.md",
+      "computedHash": "83a201fa25b662b24f8f51be4284b957926080ce83123077903694852c82c262"
+    },
+    "building-nestjs-controllers": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/building-nestjs-controllers/SKILL.md",
+      "computedHash": "06e3b0759dcb2d8840d3f0981eb2cb713979c18389d4a36c3db4fab886ed8e6a"
+    },
+    "decoupling-with-di": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/decoupling-with-di/SKILL.md",
+      "computedHash": "b7559a35f1454dbebea3b11752789289c523a292f9bf3ee5b4b8a47523907f4d"
+    },
+    "designing-nestjs-services": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/designing-nestjs-services/SKILL.md",
+      "computedHash": "dc2f5aeb9a9e48de08314d04fb773c3669644ff5decbe306f6cc5a05aa81884d"
+    },
+    "designing-oop-typescript": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/designing-oop-typescript/SKILL.md",
+      "computedHash": "2039457713d2d79949ec9b172e07bf1327f1df5214d62f7aa81609ef3b2857a8"
+    },
+    "handling-errors-typescript": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/handling-errors-typescript/SKILL.md",
+      "computedHash": "5725101e91d80d11f34c1300d5c2f79b2ca1bc0a670a91fb334cca6047973a78"
+    },
+    "handling-nestjs-exceptions": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/handling-nestjs-exceptions/SKILL.md",
+      "computedHash": "9260e07a03c4a09fc636011201b069872cc77ec3f990d195a1cb3531985c285b"
+    },
+    "logging-and-observability": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/logging-and-observability/SKILL.md",
+      "computedHash": "633c45c0a244e675868a0f9a41670c161be6c010365e23b5144fcf6796e9db4a"
+    },
+    "managing-configuration": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/managing-configuration/SKILL.md",
+      "computedHash": "a651febacfb9c22435ca73cb62922179cf563ab564c643bcb33066b92e3177af"
+    },
+    "nestjs-best-practices": {
+      "source": "Kadajett/agent-nestjs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nestjs-best-practices/SKILL.md",
+      "computedHash": "29c326e77d1462ed9526996acae5da0cf4003146982abc8c67378f5dbad6b181"
+    },
+    "persisting-data-with-typeorm": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/persisting-data-with-typeorm/SKILL.md",
+      "computedHash": "fa62e41f050105ca52bc30303da48d1d93e15ea74d702b8d8eab2d9489308684"
+    },
+    "separating-business-logic": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/separating-business-logic/SKILL.md",
+      "computedHash": "c3ceac75ce57f483c4cf144e03070fc789681ea48e2ec893083feffc96081f2b"
+    },
+    "structuring-project-layout": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/structuring-project-layout/SKILL.md",
+      "computedHash": "438c0b8ca9d67dd24a9c7d8fb1f1e82d33694b96fa86df1720bbc0822ef390cf"
+    },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-debugging/SKILL.md",
+      "computedHash": "a2750dfbaed1690da73b120254892c4f926b4576cb82eb16fc877783941fe39b"
+    },
+    "testing-nestjs-applications": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/testing-nestjs-applications/SKILL.md",
+      "computedHash": "373386113fa54fb32f0b99041c4982641a6ef1c5692e91c6e19c3514cab02eb7"
+    },
+    "testing-typescript-services": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nodejs/testing-typescript-services/SKILL.md",
+      "computedHash": "4e080b4633ccf5d12be81215fa93a402597cb931cee2c66b8f903f26d3ff549f"
+    },
+    "using-nestjs-pipes-guards-interceptors": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/using-nestjs-pipes-guards-interceptors/SKILL.md",
+      "computedHash": "21a660aa38b5e2aa769885a1167543168bbffe6670968728928d08c230de34ac"
+    },
+    "validating-nestjs-dtos": {
+      "source": "j4flmao/agent_skills_nodejs_nestjs",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/nestjs/validating-nestjs-dtos/SKILL.md",
+      "computedHash": "62e9d7ad6486344b8916119c57343edd2fba66ab97752e1b53b30f1d995c589d"
+    }
+  }
+}

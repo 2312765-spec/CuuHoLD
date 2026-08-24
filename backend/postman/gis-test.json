@@ -1,0 +1,192 @@
+{
+  "info": {
+    "name": "Rescue GIS Lâm Đồng — GIS Endpoints Test",
+    "description": "Flow test: login as commander → GET /gis/nearest-teams → GET /gis/sos-heatmap. Derived from src/gis/gis.controller.ts, gis.service.ts and DTOs. Xem docs/api-contract.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "commanderPhone", "value": "0900000003", "type": "string" },
+    { "key": "commanderPassword", "value": "demo1234", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Login as Commander",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('role is commander', () => {",
+              "  pm.expect(json.data.user.role).to.eql('commander');",
+              "});",
+              "",
+              "pm.collectionVariables.set('accessToken', json.data.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{commanderPhone}}\",\n  \"password\": \"{{commanderPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "2. Nearest Teams",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('data is an array', () => pm.expect(json.data).to.be.an('array'));",
+              "if (json.data.length > 0) {",
+              "  pm.test('each team has distance_meters and eta_minutes', () => {",
+              "    json.data.forEach((team) => {",
+              "      pm.expect(team.distance_meters).to.be.a('number');",
+              "      pm.expect(team.eta_minutes).to.be.a('number');",
+              "    });",
+              "  });",
+              "  pm.test('results are sorted by distance ascending', () => {",
+              "    for (let i = 1; i < json.data.length; i++) {",
+              "      pm.expect(json.data[i].distance_meters).to.be.at.least(json.data[i - 1].distance_meters);",
+              "    }",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{accessToken}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/gis/nearest-teams?lat=11.9465&lng=108.4419&radiusMeters=20000&limit=5",
+          "host": ["{{baseUrl}}"],
+          "path": ["gis", "nearest-teams"],
+          "query": [
+            { "key": "lat", "value": "11.9465" },
+            { "key": "lng", "value": "108.4419" },
+            { "key": "radiusMeters", "value": "20000" },
+            { "key": "limit", "value": "5" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. SOS Heatmap",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('data is an array', () => pm.expect(json.data).to.be.an('array'));",
+              "if (json.data.length > 0) {",
+              "  pm.test('each point has incident_count as number', () => {",
+              "    json.data.forEach((point) => {",
+              "      pm.expect(point.incident_count).to.be.a('number');",
+              "    });",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{accessToken}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/gis/sos-heatmap?from=2026-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.000Z",
+          "host": ["{{baseUrl}}"],
+          "path": ["gis", "sos-heatmap"],
+          "query": [
+            { "key": "from", "value": "2026-01-01T00:00:00.000Z" },
+            { "key": "to", "value": "2026-12-31T23:59:59.000Z" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Nearest Teams — 403 when not commander",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Endpoint này cố tình dùng token rỗng/không hợp lệ để assert 401,",
+              "// vì collection này không có sẵn tài khoản victim/rescuer đã đăng ký.",
+              "pm.collectionVariables.set('invalidToken', 'invalid.token.value');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 401 Unauthorized', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{invalidToken}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/gis/nearest-teams?lat=11.9465&lng=108.4419",
+          "host": ["{{baseUrl}}"],
+          "path": ["gis", "nearest-teams"],
+          "query": [
+            { "key": "lat", "value": "11.9465" },
+            { "key": "lng", "value": "108.4419" }
+          ]
+        }
+      }
+    }
+  ]
+}
