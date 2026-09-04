@@ -17,7 +17,7 @@ export interface NearestTeamResult {
 export interface SosHeatmapResult {
   lat: number;
   lng: number;
-  district_code: string | null;
+  ward_code: string | null;
   incident_count: number;
 }
 
@@ -66,11 +66,11 @@ export class GisService {
       SELECT
         ST_Y(location::geometry) AS lat,
         ST_X(location::geometry) AS lng,
-        district_code,
+        ward_code,
         COUNT(*)::int AS incident_count
       FROM sos_requests
       WHERE created_at BETWEEN $1 AND $2
-      GROUP BY location, district_code
+      GROUP BY location, ward_code
       ORDER BY incident_count DESC
     `,
       [from, to],

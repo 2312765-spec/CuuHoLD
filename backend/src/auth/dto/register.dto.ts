@@ -30,12 +30,7 @@ export class RegisterDto {
   @IsOptional()
   role?: UserRole;
 
-  @ApiProperty({ example: '672' })
+  @ApiProperty({ example: '24823', description: 'Mã xã/phường (ma_xa)' })
   @IsString()
-  districtCode: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  wardCode?: string;
+  wardCode: string;
 }

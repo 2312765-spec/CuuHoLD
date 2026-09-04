@@ -47,7 +47,7 @@ export interface SosNewPayload {
   status: SosStatus;
   lat: number;
   lng: number;
-  districtCode: string;
+  wardCode: string;
   createdAt: string;
   cancelDeadline: string;
 }
@@ -55,7 +55,7 @@ export interface SosNewPayload {
 export interface SosUpdatedPayload {
   sosId: string;
   status: SosStatus;
-  districtCode: string;
+  wardCode: string;
   assignedTeamId?: string;
   penaltyApplied?: boolean;
   updatedAt: string;
@@ -65,14 +65,14 @@ export interface TeamLocationPayload {
   teamId: string;
   lat: number;
   lng: number;
-  districtCode: string;
+  wardCode: string;
   updatedAt: string;
 }
 
 export interface SystemNotificationPayload {
   message: string;
   level: 'info' | 'warning' | 'critical';
-  districtCode?: string;
+  wardCode?: string;
   createdAt: string;
 }
 

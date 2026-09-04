@@ -7,6 +7,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
+import { Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -15,14 +16,16 @@ import type {
   UserRole,
   SosNewPayload,
   SosUpdatedPayload,
+  TeamLocationPayload,
   TeamUpdateLocationPayload,
 } from '../common/socket-events.types';
+import { RescueTeamsService } from '../rescue-teams/rescue-teams.service';
 
 interface JwtPayload {
   sub: string;
   phone: string;
   role: UserRole;
-  districtCode: string | null;
+  wardCode: string | null;
 }
 
 function maskPhone(phone: string): string {
@@ -41,6 +44,8 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => RescueTeamsService))
+    private rescueTeamsService: RescueTeamsService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -52,8 +57,8 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
         secret: this.configService.get('JWT_SECRET'),
       });
       (client.data as { user: JwtPayload }).user = payload;
-      if (payload.districtCode) {
-        await client.join(`district:${payload.districtCode}`);
+      if (payload.wardCode) {
+        await client.join(`ward:${payload.wardCode}`);
       }
       if (payload.role === 'commander') {
         await client.join('province:lamdong');
@@ -71,30 +76,46 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // Gọi từ SosService sau khi lưu SOS
-  emitNewSos(districtCode: string, data: SosNewPayload): void {
-    this.server
-      .to(`district:${districtCode}`)
-      .emit(SOCKET_EVENTS.SOS_NEW, data);
+  emitNewSos(wardCode: string, data: SosNewPayload): void {
+    this.server.to(`ward:${wardCode}`).emit(SOCKET_EVENTS.SOS_NEW, data);
     this.server.to('province:lamdong').emit(SOCKET_EVENTS.SOS_NEW, data);
   }
 
   emitSosUpdated(
     sosId: string,
-    districtCode: string,
+    wardCode: string,
     data: SosUpdatedPayload,
   ): void {
     this.server.to(`sos:${sosId}`).emit(SOCKET_EVENTS.SOS_UPDATED, data);
+    this.server.to(`ward:${wardCode}`).emit(SOCKET_EVENTS.SOS_UPDATED, data);
+  }
+
+  emitTeamLocationUpdated(wardCode: string, data: TeamLocationPayload): void {
     this.server
-      .to(`district:${districtCode}`)
-      .emit(SOCKET_EVENTS.SOS_UPDATED, data);
+      .to(`ward:${wardCode}`)
+      .emit(SOCKET_EVENTS.TEAM_LOCATION_UPDATED, data);
+    this.server
+      .to('province:lamdong')
+      .emit(SOCKET_EVENTS.TEAM_LOCATION_UPDATED, data);
   }
 
   @SubscribeMessage(SOCKET_EVENTS.TEAM_UPDATE_LOCATION)
-  handleTeamLocation(
+  async handleTeamLocation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: TeamUpdateLocationPayload,
-  ): void {
-    // Gọi GisService cập nhật vị trí + emit location-updated
-    console.log(`Team location: ${JSON.stringify(data)}`);
+  ): Promise<void> {
+    const user = (client.data as { user?: JwtPayload }).user;
+    if (!user) return; // phòng hờ — handleConnection() đã disconnect nếu JWT không hợp lệ
+    try {
+      await this.rescueTeamsService.updateLocation(
+        data.teamId,
+        data.lat,
+        data.lng,
+        user.sub,
+      );
+    } catch (err) {
+      // WS không có response HTTP để trả lỗi — log và bỏ qua, không throw làm crash gateway
+      console.error(`Team location update failed: ${(err as Error).message}`);
+    }
   }
 }

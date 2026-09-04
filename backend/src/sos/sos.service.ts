@@ -12,22 +12,33 @@ import { CreateSosDto } from './dto/create-sos.dto';
 import { User } from '../users/user.entity';
 import { SosGateway } from './sos.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
-import type { SosNewPayload } from '../common/socket-events.types';
+import type {
+  SosNewPayload,
+  SosUpdatedPayload,
+} from '../common/socket-events.types';
+import type { RescueTeamStatus } from '../rescue-teams/rescue-team.entity';
+
+// assigned → in_progress → arrived → resolved — thứ tự chuyển trạng thái duy nhất hợp lệ
+const SOS_STATUS_TRANSITIONS: Partial<Record<SosStatus, SosStatus>> = {
+  assigned: 'in_progress',
+  in_progress: 'arrived',
+  arrived: 'resolved',
+};
 
 export interface CreateSosResult {
   id: string;
   type: SosType;
   status: SosStatus;
-  district_code: string | null;
+  ward_code: string | null;
   created_at: Date;
   cancel_deadline: Date;
 }
 
-interface SosListRow {
+export interface SosListRow {
   id: string;
   type: SosType;
   status: SosStatus;
-  district_code: string | null;
+  ward_code: string | null;
   created_at: Date;
   lat: number;
   lng: number;
@@ -43,11 +54,75 @@ interface SosRequestRow {
   description: string | null;
   image_url: string | null;
   assigned_team_id: string | null;
-  district_code: string | null;
+  ward_code: string | null;
   false_alarm_count: number;
   cancel_deadline: Date;
   created_at: Date;
   updated_at: Date;
+}
+
+interface SosDetailRow {
+  id: string;
+  victim_id: string;
+  type: SosType;
+  status: SosStatus;
+  description: string | null;
+  image_url: string | null;
+  ward_code: string | null;
+  false_alarm_count: number;
+  cancel_deadline: Date;
+  created_at: Date;
+  updated_at: Date;
+  resolved_at: Date | null;
+  lat: number;
+  lng: number;
+  assigned_team_id: string | null;
+  team_name: string | null;
+  team_status: RescueTeamStatus | null;
+  victim_name: string;
+  victim_phone: string;
+}
+
+interface SosTimelineRow {
+  id: string;
+  actor_id: string;
+  action: string;
+  note: string | null;
+  created_at: Date;
+}
+
+export interface SosDetailResult extends SosDetailRow {
+  timeline: SosTimelineRow[];
+}
+
+interface SosStatusRow {
+  status: SosStatus;
+  ward_code: string | null;
+  assigned_team_id: string | null;
+}
+
+interface RescueTeamStatusRow {
+  status: RescueTeamStatus;
+}
+
+export interface AssignSosResult {
+  sosId: string;
+  teamId: string;
+  status: SosStatus;
+  wardCode: string | null;
+  updatedAt: string;
+}
+
+export interface UpdateSosStatusResult {
+  sosId: string;
+  status: SosStatus;
+  updatedAt: string;
+}
+
+export interface CancelSosResult {
+  sosId: string;
+  status: 'cancelled';
+  penaltyApplied: boolean;
 }
 
 @Injectable()
@@ -65,14 +140,17 @@ export class SosService {
 
     // Dùng raw query để lưu geometry PostGIS
     // LƯU Ý: ST_MakePoint(longitude, latitude) — lng TRƯỚC, lat SAU
+    // ward_code KHÔNG truyền thủ công — trigger trg_sos_set_ward tự suy ra
+    // từ location qua ST_Contains (xem gis/03-migrate-existing-tables.sql),
+    // tin tọa độ GPS thật thay vì districtCode/wardCode client tự khai.
     const result = await this.dataSource.query<CreateSosResult[]>(
       `
       INSERT INTO sos_requests
         (victim_id, location, type, status, description,
-         image_url, district_code, cancel_deadline)
+         image_url, cancel_deadline)
       VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326),
-              $4, 'pending', $5, $6, $7, $8)
-      RETURNING id, type, status, district_code, created_at, cancel_deadline
+              $4, 'pending', $5, $6, $7)
+      RETURNING id, type, status, ward_code, created_at, cancel_deadline
     `,
       [
         victim.id,
@@ -81,7 +159,6 @@ export class SosService {
         dto.type,
         dto.description || null,
         dto.imageUrl || null,
-        victim.districtCode,
         cancelDeadline,
       ],
     );
@@ -96,11 +173,11 @@ export class SosService {
       status: sos.status,
       lat: dto.lat,
       lng: dto.lng,
-      districtCode: sos.district_code ?? '',
+      wardCode: sos.ward_code ?? '',
       createdAt: sos.created_at.toISOString(),
       cancelDeadline: sos.cancel_deadline.toISOString(),
     };
-    this.sosGateway.emitNewSos(sos.district_code ?? '', payload);
+    this.sosGateway.emitNewSos(sos.ward_code ?? '', payload);
 
     // await để đảm bảo lời gọi SMS thực sự chạy trước khi request kết thúc,
     // nhưng NotificationsService tự nuốt lỗi (không throw) nên không block response 201.
@@ -116,8 +193,11 @@ export class SosService {
     return sos;
   }
 
-  async findAll(user: User, filters: { status?: string } = {}) {
-    let q = `SELECT s.id, s.type, s.status, s.district_code, s.created_at,
+  async findAll(
+    user: User,
+    filters: { status?: string } = {},
+  ): Promise<SosListRow[]> {
+    let q = `SELECT s.id, s.type, s.status, s.ward_code, s.created_at,
              ST_Y(s.location::geometry) AS lat,
              ST_X(s.location::geometry) AS lng,
              u.name AS victim_name, u.phone AS victim_phone
@@ -129,8 +209,8 @@ export class SosService {
       params.push(user.id);
     }
     if (user.role === 'rescuer') {
-      q += ` AND s.district_code = $${i++}`;
-      params.push(user.districtCode);
+      q += ` AND s.ward_code = $${i++}`;
+      params.push(user.wardCode);
     }
     if (filters.status) {
       const statuses = filters.status
@@ -147,7 +227,7 @@ export class SosService {
     return this.dataSource.query<SosListRow[]>(q, params);
   }
 
-  async cancel(sosId: string, user: User) {
+  async cancel(sosId: string, user: User): Promise<CancelSosResult> {
     const rows = await this.dataSource.query<SosRequestRow[]>(
       `SELECT * FROM sos_requests WHERE id = $1`,
       [sosId],
@@ -163,5 +243,158 @@ export class SosService {
       [sosId],
     );
     return { sosId, status: 'cancelled', penaltyApplied: !noPenalty };
+  }
+
+  async findById(sosId: string, user: User): Promise<SosDetailResult> {
+    const rows = await this.dataSource.query<SosDetailRow[]>(
+      `
+      SELECT s.id, s.victim_id, s.type, s.status, s.description, s.image_url,
+             s.ward_code, s.false_alarm_count, s.cancel_deadline,
+             s.created_at, s.updated_at, s.resolved_at, s.assigned_team_id,
+             ST_Y(s.location::geometry) AS lat,
+             ST_X(s.location::geometry) AS lng,
+             u.name AS victim_name, u.phone AS victim_phone,
+             rt.name AS team_name, rt.status AS team_status
+      FROM sos_requests s
+      JOIN users u ON u.id = s.victim_id
+      LEFT JOIN rescue_teams rt ON rt.id = s.assigned_team_id
+      WHERE s.id = $1
+    `,
+      [sosId],
+    );
+    const sos = rows[0];
+    if (!sos) throw new NotFoundException('Không tìm thấy SOS');
+    if (user.role === 'victim' && sos.victim_id !== user.id) {
+      throw new ForbiddenException('Không có quyền');
+    }
+    if (user.role === 'rescuer' && sos.ward_code !== user.wardCode) {
+      throw new ForbiddenException('Không có quyền');
+    }
+
+    const timeline = await this.dataSource.query<SosTimelineRow[]>(
+      `SELECT id, actor_id, action, note, created_at
+       FROM sos_timeline WHERE sos_id = $1 ORDER BY created_at ASC`,
+      [sosId],
+    );
+
+    return { ...sos, timeline };
+  }
+
+  async assign(
+    sosId: string,
+    teamId: string,
+    commander: User,
+  ): Promise<AssignSosResult> {
+    const sosRows = await this.dataSource.query<SosStatusRow[]>(
+      `SELECT status, ward_code, assigned_team_id FROM sos_requests WHERE id = $1`,
+      [sosId],
+    );
+    if (!sosRows[0]) throw new NotFoundException('Không tìm thấy SOS');
+    if (sosRows[0].status !== 'pending') {
+      throw new BadRequestException('SOS không ở trạng thái chờ phân công');
+    }
+
+    const teamRows = await this.dataSource.query<RescueTeamStatusRow[]>(
+      `SELECT status FROM rescue_teams WHERE id = $1`,
+      [teamId],
+    );
+    if (!teamRows[0]) throw new NotFoundException('Không tìm thấy đội cứu hộ');
+    if (teamRows[0].status !== 'available') {
+      throw new BadRequestException('Đội cứu hộ hiện không sẵn sàng');
+    }
+
+    const updated = await this.dataSource.query<{ updated_at: Date }[]>(
+      `UPDATE sos_requests SET assigned_team_id=$2, status='assigned', updated_at=NOW()
+       WHERE id=$1 RETURNING updated_at`,
+      [sosId, teamId],
+    );
+    await this.dataSource.query(
+      `UPDATE rescue_teams SET status='busy', updated_at=NOW() WHERE id=$1`,
+      [teamId],
+    );
+    await this.dataSource.query(
+      `INSERT INTO sos_timeline (sos_id, actor_id, action, note) VALUES ($1, $2, 'assigned', $3)`,
+      [sosId, commander.id, null],
+    );
+
+    const updatedAt = updated[0].updated_at.toISOString();
+    const payload: SosUpdatedPayload = {
+      sosId,
+      status: 'assigned',
+      wardCode: sosRows[0].ward_code ?? '',
+      assignedTeamId: teamId,
+      updatedAt,
+    };
+    this.sosGateway.emitSosUpdated(sosId, sosRows[0].ward_code ?? '', payload);
+
+    return {
+      sosId,
+      teamId,
+      status: 'assigned',
+      wardCode: sosRows[0].ward_code,
+      updatedAt,
+    };
+  }
+
+  async updateStatus(
+    sosId: string,
+    newStatus: SosStatus,
+    note: string | null,
+    rescuer: User,
+  ): Promise<UpdateSosStatusResult> {
+    const sosRows = await this.dataSource.query<SosStatusRow[]>(
+      `SELECT status, ward_code, assigned_team_id FROM sos_requests WHERE id = $1`,
+      [sosId],
+    );
+    const sos = sosRows[0];
+    if (!sos) throw new NotFoundException('Không tìm thấy SOS');
+
+    if (!sos.assigned_team_id) {
+      throw new ForbiddenException('SOS chưa được phân công đội cứu hộ');
+    }
+    const ownershipRows = await this.dataSource.query<{ id: string }[]>(
+      `SELECT id FROM rescue_teams WHERE id = $1 AND leader_id = $2`,
+      [sos.assigned_team_id, rescuer.id],
+    );
+    if (!ownershipRows[0]) {
+      throw new ForbiddenException('Không có quyền cập nhật SOS này');
+    }
+
+    if (SOS_STATUS_TRANSITIONS[sos.status] !== newStatus) {
+      throw new BadRequestException(
+        `Không thể chuyển trạng thái từ '${sos.status}' sang '${newStatus}'`,
+      );
+    }
+
+    const updated = await this.dataSource.query<{ updated_at: Date }[]>(
+      `UPDATE sos_requests SET status=$2, updated_at=NOW()${
+        newStatus === 'resolved' ? ', resolved_at=NOW()' : ''
+      } WHERE id=$1 RETURNING updated_at`,
+      [sosId, newStatus],
+    );
+
+    if (newStatus === 'resolved') {
+      await this.dataSource.query(
+        `UPDATE rescue_teams SET status='available', updated_at=NOW() WHERE id=$1`,
+        [sos.assigned_team_id],
+      );
+    }
+
+    await this.dataSource.query(
+      `INSERT INTO sos_timeline (sos_id, actor_id, action, note) VALUES ($1, $2, $3, $4)`,
+      [sosId, rescuer.id, newStatus, note],
+    );
+
+    const updatedAt = updated[0].updated_at.toISOString();
+    const payload: SosUpdatedPayload = {
+      sosId,
+      status: newStatus,
+      wardCode: sos.ward_code ?? '',
+      assignedTeamId: sos.assigned_team_id,
+      updatedAt,
+    };
+    this.sosGateway.emitSosUpdated(sosId, sos.ward_code ?? '', payload);
+
+    return { sosId, status: newStatus, updatedAt };
   }
 }

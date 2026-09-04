@@ -36,7 +36,7 @@ export class AuthService {
 			sub: user.id,
 			phone: user.phone,
 			role: user.role,
-			districtCode: user.districtCode,
+			wardCode: user.wardCode,
 		};
 		const secret = this.configService.getOrThrow<string>('JWT_SECRET');
 		const refreshSecret = this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');

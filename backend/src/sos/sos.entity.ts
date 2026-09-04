@@ -51,7 +51,7 @@ export class SosRequest {
   @Column({ nullable: true }) description: string;
   @Column({ name: 'image_url', nullable: true }) imageUrl: string;
   @Column({ name: 'assigned_team_id', nullable: true }) assignedTeamId: string;
-  @Column({ name: 'district_code', nullable: true }) districtCode: string;
+  @Column({ name: 'ward_code', nullable: true }) wardCode: string;
   @Column({ name: 'false_alarm_count', default: 0 }) falseAlarmCount: number;
   @Column({ name: 'cancel_deadline', nullable: true }) cancelDeadline: Date;
   @CreateDateColumn({ name: 'created_at' }) createdAt: Date;

@@ -176,7 +176,7 @@ ST_DWithin(col::geography, ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography
 
 - ALWAYS verify JWT in handleConnection() before joining rooms
 - Disconnect client immediately if token invalid: client.disconnect()
-- Room naming: district:{district_code} and province:lamdong
+- Room naming: ward:{ward_code} and province:lamdong
 - Emit event names MUST match shared/socket-events.types.ts exactly
 - camelCase for ALL payload field names — NEVER snake_case
 
@@ -218,8 +218,10 @@ rescue-gis-lamdong/
 │   └── SOCKET_EVENTS.md               ← WebSocket contract
 │
 ├── gis/
-│   ├── queries.sql                    ← PostGIS queries (C viết, B dùng)
-│   └── seed-data.sql                  ← Dữ liệu mẫu 12 huyện LĐ
+│   ├── 01-schema-wards.sql             ← Bảng wards (xã/phường) + RLS + GiST index
+│   ├── 02-seed-wards.sql               ← 123 xã/phường Lâm Đồng mới (sau sáp nhập 2025)
+│   ├── 03-migrate-existing-tables.sql  ← users/sos_requests: district_code → ward_code
+│   └── queries.sql                     ← PostGIS queries khác (C viết, B dùng)
 │
 ├── backend/                           ← NestJS
 │   ├── src/
@@ -302,12 +304,31 @@ rescue-gis-lamdong/
     │   └── types/
     │       └── index.ts               ← Re-export từ shared/
     └── public/data/
-        └── lamdong-districts.geojson  ← C cung cấp (GADM.org level 2)
+        └── lamdong-wards.geojson      ← Ranh giới xã/phường (không dùng GADM cũ —
+                                           đã lỗi thời sau sáp nhập 2025, xem
+                                           gis/02-seed-wards.sql cho nguồn dữ liệu)
 ```
 
 ---
 
 ## 6. Database Schema
+
+> ⚠️ **2025-08-24:** Việt Nam sáp nhập hành chính (tỉnh → xã/phường trực tiếp, bỏ
+> cấp huyện). Lâm Đồng mới = sáp nhập Lâm Đồng + Đắk Nông + Bình Thuận cũ, 123
+> xã/phường/đặc khu. Toàn bộ `district_code` (mã huyện) đã được thay bằng
+> `ward_code` (mã xã/phường, `ma_xa`). Xem `gis/01-schema-wards.sql` đến
+> `03-migrate-existing-tables.sql`.
+
+### Bảng `wards` (mới)
+```sql
+ward_code   VARCHAR(10) PRIMARY KEY     -- ma_xa
+ward_name   VARCHAR(100) NOT NULL       -- ten_xa
+ward_type   VARCHAR(20) NOT NULL        -- 'Phường' | 'Xã' | 'Đặc khu'
+merged_from TEXT                        -- các đơn vị cũ đã sáp nhập vào
+area_km2    NUMERIC(10,2)
+population  INTEGER
+boundary    GEOMETRY(MultiPolygon,4326) NOT NULL   -- GiST INDEX bắt buộc
+```
 
 ### Bảng `users`
 ```sql
@@ -316,8 +337,7 @@ phone VARCHAR(15) UNIQUE NOT NULL
 name VARCHAR(100) NOT NULL
 password_hash VARCHAR(255) NOT NULL          -- bcrypt cost 12
 role VARCHAR(20) CHECK IN ('victim','rescuer','commander')
-district_code VARCHAR(10)                    -- mã huyện Lâm Đồng
-ward_code VARCHAR(10)
+ward_code VARCHAR(10) REFERENCES wards        -- mã xã/phường
 is_active BOOLEAN DEFAULT true
 created_at / updated_at TIMESTAMPTZ
 ```
@@ -327,7 +347,7 @@ created_at / updated_at TIMESTAMPTZ
 id UUID PRIMARY KEY
 name VARCHAR(100)
 leader_id UUID → users.id
-district_code VARCHAR(10) NOT NULL
+ward_code VARCHAR(10) NOT NULL REFERENCES wards
 specialties TEXT[]                           -- ['flood','medical','accident']
 current_location GEOMETRY(Point,4326)        -- GiST INDEX bắt buộc
 status VARCHAR(20) CHECK IN ('available','busy','offline')
@@ -343,7 +363,8 @@ status VARCHAR(20) CHECK IN (7 trạng thái)  DEFAULT 'pending'
 description TEXT
 image_url VARCHAR(500)
 assigned_team_id UUID → rescue_teams.id
-district_code VARCHAR(10)
+ward_code VARCHAR(10) REFERENCES wards       -- tự suy ra từ location qua trigger
+                                              -- (ST_Contains), KHÔNG nhận từ client
 false_alarm_count INTEGER DEFAULT 0
 cancel_deadline TIMESTAMPTZ                  -- +3 phút từ created_at
 created_at / updated_at / resolved_at TIMESTAMPTZ
@@ -406,7 +427,7 @@ PATCH  /api/rescue-teams/:id/status  — Cập nhật trạng thái (role: rescu
 
 ### Rooms
 ```
-district:{district_code}    — rescuer + commander cùng huyện
+ward:{ward_code}            — rescuer + commander cùng xã/phường
 province:lamdong            — commander toàn tỉnh
 sos:{sos_id}                — victim + team được phân công
 ```
@@ -454,7 +475,7 @@ RESCUE_CENTER_PHONE=0901234567
 2. POST /api/sos với {lat, lng, type}
 3. Backend lưu GEOMETRY, đặt cancel_deadline = NOW() + 3 phút
 4. GisService.findNearestTeams() → auto-assign team đầu tiên
-5. Socket emit 'sos:new' → district room
+5. Socket emit 'sos:new' → ward room
 6. NotificationsService.sendSosSms() → eSMS (async, không block)
 7. Victim có 3 phút hủy miễn phạt (cancel_deadline chưa qua)
 8. Rescuer cập nhật: assigned → in_progress → arrived → resolved
@@ -494,9 +515,9 @@ RESCUE_CENTER_PHONE=0901234567
 "Trong SosModule, thêm endpoint PATCH /api/sos/:id/assign.
 Commander phân công team. Cần: JwtAuthGuard + RolesGuard('commander'),
 validate teamId là UUID hợp lệ, kiểm tra team đang 'available',
-update DB, emit socket 'sos:updated' vào district room."
+update DB, emit socket 'sos:updated' vào ward room."
 
-"Trong RescueMap.vue, load file /public/data/lamdong-districts.geojson
+"Trong RescueMap.vue, load file /public/data/lamdong-wards.geojson
 bằng L.geoJSON(). Style: border xanh #2E75B6, fillOpacity 0.05.
 Khi hover: highlight màu đậm hơn. Dùng <script setup lang='ts'>."
 
@@ -518,9 +539,9 @@ Return typed array với interface NearestTeamResult."
 ## 12. Tài khoản demo
 
 ```
-Victim:    phone=0900000001  password=demo1234  district=Đà Lạt (672)
-Rescuer:   phone=0900000002  password=demo1234  district=Đà Lạt (672)
-Commander: phone=0900000003  password=demo1234  district=Toàn tỉnh
+Victim:    phone=0900000001  password=demo1234  ward=Xuân Hương - Đà Lạt (24781)
+Rescuer:   phone=0900000002  password=demo1234  ward=Xuân Hương - Đà Lạt (24781)
+Commander: phone=0900000003  password=demo1234  ward=Toàn tỉnh
 ```
 
 ---
@@ -568,5 +589,5 @@ openssl rand -base64 32
 
 ---
 
-*Phiên bản: 2.0.0 — Cập nhật: 2026-08-22*
+*Phiên bản: 2.1.0 — Cập nhật: 2026-08-24 (chuyển district_code → ward_code sau sáp nhập hành chính 2025)*
 *Tích hợp AI Skills từ: PatrickJS/awesome-cursorrules · Kadajett/agent-nestjs-skills · j4flmao/agent_skills_nodejs_nestjs · BehiSecc/awesome-claude-skills · Anthropic official skills*

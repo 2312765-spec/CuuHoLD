@@ -20,7 +20,7 @@ export class UsersService {
     const user = this.usersRepo.create({
       phone: dto.phone, name: dto.name, passwordHash,
       role: dto.role || 'victim',
-      districtCode: dto.districtCode, wardCode: dto.wardCode,
+      wardCode: dto.wardCode,
     });
     return this.usersRepo.save(user);
   }

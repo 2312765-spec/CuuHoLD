@@ -25,9 +25,6 @@ export class User {
   @Column({ type: 'enum', enum: ['victim', 'rescuer', 'commander'], default: 'victim' })
   role: UserRole;
 
-  @Column({ name: 'district_code', type: 'varchar', nullable: true })
-  districtCode: string | null;
-
   @Column({ name: 'ward_code', type: 'varchar', nullable: true })
   wardCode: string | null;
 

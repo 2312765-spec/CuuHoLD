@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { SosModule } from './sos/sos.module';
 import { GisModule } from './gis/gis.module';
+import { RescueTeamsModule } from './rescue-teams/rescue-teams.module';
 
 @Module({
   imports: [
@@ -33,6 +34,8 @@ import { GisModule } from './gis/gis.module';
     SosModule,
 
     GisModule,
+
+    RescueTeamsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

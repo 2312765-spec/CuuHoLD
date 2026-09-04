@@ -1,0 +1,628 @@
+{
+  "info": {
+    "name": "Rescue GIS Lâm Đồng — API Collection",
+    "description": "Collection đầy đủ theo CLAUDE.md Mục 7 + docs/api-contract.md — 4 folder, 15 request, đúng 1-1 với danh sách endpoint MVP (không thêm endpoint ngoài contract). Trạng thái implement (2026-08-27): Auth (register/login/me) và toàn bộ Rescue Teams + GIS đã code; POST /api/sos đã code; 5 request còn lại trong SOS và request refresh trong Auth CHƯA implement — được đánh dấu ⚠️ trong description, sẽ trả 404 cho tới khi code.\n\nCách chạy: Auth → Rescue Teams → GIS → SOS (thứ tự này để teamId có sẵn trước khi SOS cần assign). Request '2. Login' trong Auth tự nhận diện role trả về và lưu vào victimToken/rescuerToken/commanderToken — đổi biến loginPhone/loginPassword sang từng tài khoản demo (Mục 12 CLAUDE.md) rồi chạy lại request đó để lấy đủ cả 3 token trước khi chạy các folder cần role cụ thể.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "registerPhone", "value": "", "type": "string" },
+    { "key": "registerPassword", "value": "matkhau123", "type": "string" },
+    { "key": "loginPhone", "value": "0900000001", "type": "string" },
+    { "key": "loginPassword", "value": "demo1234", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "victimToken", "value": "", "type": "string" },
+    { "key": "rescuerToken", "value": "", "type": "string" },
+    { "key": "commanderToken", "value": "", "type": "string" },
+    { "key": "sosId", "value": "", "type": "string" },
+    { "key": "teamId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "1. Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const randomDigits = Math.floor(100000000 + Math.random() * 900000000).toString();",
+                  "pm.collectionVariables.set('registerPhone', '0' + randomDigits);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('response contains accessToken and refreshToken', () => {",
+                  "  pm.expect(json.data.accessToken).to.be.a('string');",
+                  "  pm.expect(json.data.refreshToken).to.be.a('string');",
+                  "});",
+                  "pm.test('user object does not leak passwordHash', () => {",
+                  "  pm.expect(json.data.user).to.not.have.property('passwordHash');",
+                  "});",
+                  "pm.test('registered phone matches request', () => {",
+                  "  pm.expect(json.data.user.phone).to.eql(pm.collectionVariables.get('registerPhone'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "pm.collectionVariables.set('victimToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{registerPhone}}\",\n  \"name\": \"Postman Test User\",\n  \"password\": \"{{registerPassword}}\",\n  \"role\": \"victim\",\n  \"wardCode\": \"24781\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "2. Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('response contains accessToken', () => {",
+                  "  pm.expect(json.data.accessToken).to.be.a('string');",
+                  "});",
+                  "pm.test('logged-in phone matches request', () => {",
+                  "  pm.expect(json.data.user.phone).to.eql(pm.collectionVariables.get('loginPhone'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "",
+                  "const role = json.data.user.role;",
+                  "if (role === 'victim') pm.collectionVariables.set('victimToken', json.data.accessToken);",
+                  "if (role === 'rescuer') pm.collectionVariables.set('rescuerToken', json.data.accessToken);",
+                  "if (role === 'commander') pm.collectionVariables.set('commanderToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Mặc định login victim demo (0900000001). Đổi loginPhone/loginPassword sang 0900000002 (rescuer) và 0900000003 (commander) — Mục 12 CLAUDE.md — rồi chạy lại request này để lấy đủ 3 token trước khi chạy folder Rescue Teams / GIS / SOS.",
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{loginPhone}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "3. Get Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('does not leak passwordHash', () => {",
+                  "  pm.expect(json.data).to.not.have.property('passwordHash');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{accessToken}}", "type": "string" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "4. Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('response contains new accessToken and refreshToken', () => {",
+                  "  pm.expect(json.data.accessToken).to.be.a('string');",
+                  "  pm.expect(json.data.refreshToken).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "⚠️ Chưa implement — sẽ trả về 404",
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rescue Teams",
+      "item": [
+        {
+          "name": "1. GET /rescue-teams",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('data là mảng khác rỗng (seed gis/04-create-rescue-teams.sql đã chạy)', () => {",
+                  "  pm.expect(json.data).to.be.an('array');",
+                  "  pm.expect(json.data.length).to.be.above(0);",
+                  "});",
+                  "pm.collectionVariables.set('teamId', json.data[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{commanderToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/rescue-teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["rescue-teams"]
+            }
+          }
+        },
+        {
+          "name": "2. PATCH /rescue-teams/:id/location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('trả đúng lat/lng vừa gửi', () => {",
+                  "  pm.expect(json.data.lat).to.eql(12.0);",
+                  "  pm.expect(json.data.lng).to.eql(108.5);",
+                  "});",
+                  "pm.test('wardCode do server suy ra, không trống', () => {",
+                  "  pm.expect(json.data.wardCode).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{rescuerToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 12.0,\n  \"lng\": 108.5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/rescue-teams/{{teamId}}/location",
+              "host": ["{{baseUrl}}"],
+              "path": ["rescue-teams", "{{teamId}}", "location"]
+            }
+          }
+        },
+        {
+          "name": "3. PATCH /rescue-teams/:id/status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status đổi thành busy', () => pm.expect(json.data.status).to.eql('busy'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{rescuerToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"busy\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/rescue-teams/{{teamId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["rescue-teams", "{{teamId}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GIS",
+      "item": [
+        {
+          "name": "1. GET /gis/nearest-teams",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('data is an array', () => pm.expect(json.data).to.be.an('array'));",
+                  "if (json.data.length > 0) {",
+                  "  pm.test('each team has distance_meters and eta_minutes', () => {",
+                  "    json.data.forEach((team) => {",
+                  "      pm.expect(team.distance_meters).to.be.a('number');",
+                  "      pm.expect(team.eta_minutes).to.be.a('number');",
+                  "    });",
+                  "  });",
+                  "  pm.test('results are sorted by distance ascending', () => {",
+                  "    for (let i = 1; i < json.data.length; i++) {",
+                  "      pm.expect(json.data[i].distance_meters).to.be.at.least(json.data[i - 1].distance_meters);",
+                  "    }",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{commanderToken}}", "type": "string" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/gis/nearest-teams?lat=11.9465&lng=108.4419&radiusMeters=20000&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["gis", "nearest-teams"],
+              "query": [
+                { "key": "lat", "value": "11.9465" },
+                { "key": "lng", "value": "108.4419" },
+                { "key": "radiusMeters", "value": "20000" },
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. GET /gis/sos-heatmap",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('data is an array', () => pm.expect(json.data).to.be.an('array'));",
+                  "if (json.data.length > 0) {",
+                  "  pm.test('each point has incident_count as number', () => {",
+                  "    json.data.forEach((point) => {",
+                  "      pm.expect(point.incident_count).to.be.a('number');",
+                  "    });",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{commanderToken}}", "type": "string" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/gis/sos-heatmap?from=2026-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.000Z",
+              "host": ["{{baseUrl}}"],
+              "path": ["gis", "sos-heatmap"],
+              "query": [
+                { "key": "from", "value": "2026-01-01T00:00:00.000Z" },
+                { "key": "to", "value": "2026-12-31T23:59:59.000Z" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SOS",
+      "item": [
+        {
+          "name": "1. POST /sos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('status mặc định là pending', () => pm.expect(json.data.status).to.eql('pending'));",
+                  "pm.collectionVariables.set('sosId', json.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{victimToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 11.9465,\n  \"lng\": 108.4419,\n  \"type\": \"flood\",\n  \"description\": \"Nước lũ dâng nhanh, khu vực Xuân Hương ngập sâu, cần cứu hộ gấp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sos",
+              "host": ["{{baseUrl}}"],
+              "path": ["sos"]
+            }
+          }
+        },
+        {
+          "name": "2. GET /sos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('data là mảng chứa SOS vừa tạo', () => {",
+                  "  pm.expect(json.data).to.be.an('array');",
+                  "  const ids = json.data.map((s) => s.id);",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('sosId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "⚠️ Chưa implement — sẽ trả về 404. Role: rescuer/commander (không phải victim) theo CLAUDE.md Mục 7 — dùng commanderToken.",
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{commanderToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sos",
+              "host": ["{{baseUrl}}"],
+              "path": ["sos"]
+            }
+          }
+        },
+        {
+          "name": "3. GET /sos/:id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('success = true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('trả đúng SOS vừa tạo', () => pm.expect(json.data.id).to.eql(pm.collectionVariables.get('sosId')));",
+                  "pm.test('có mảng timeline', () => pm.expect(json.data.timeline).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "⚠️ Chưa implement — sẽ trả về 404",
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{victimToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sos/{{sosId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["sos", "{{sosId}}"]
+            }
+          }
+        },
+        {
+          "name": "4. PATCH /sos/:id/assign",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status đổi thành assigned', () => pm.expect(json.data.status).to.eql('assigned'));",
+                  "pm.test('assignedTeamId đúng team vừa chọn', () => {",
+                  "  pm.expect(json.data.assignedTeamId).to.eql(pm.collectionVariables.get('teamId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "⚠️ Chưa implement — sẽ trả về 404",
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{commanderToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{teamId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sos/{{sosId}}/assign",
+              "host": ["{{baseUrl}}"],
+              "path": ["sos", "{{sosId}}", "assign"]
+            }
+          }
+        },
+        {
+          "name": "5. PATCH /sos/:id/status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status đổi thành in_progress', () => pm.expect(json.data.status).to.eql('in_progress'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "⚠️ Chưa implement — sẽ trả về 404",
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{rescuerToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sos/{{sosId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["sos", "{{sosId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "6. PATCH /sos/:id/cancel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status đổi thành cancelled', () => pm.expect(json.data.status).to.eql('cancelled'));",
+                  "pm.test('huỷ trong 3 phút đầu nên không bị phạt', () => pm.expect(json.data.penaltyApplied).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "⚠️ Chưa implement — sẽ trả về 404",
+            "method": "PATCH",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{victimToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sos/{{sosId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["sos", "{{sosId}}", "cancel"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
