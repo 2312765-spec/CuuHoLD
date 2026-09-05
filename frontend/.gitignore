@@ -1,0 +1,25 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+dev-dist
+
+# TypeScript build cache (từng gây file rác vite.config.js)
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Editor / OS
+*.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Log
+*.log
+npm-debug.log*
+
+# Lưu ý: .env ở đây KHÔNG bị chặn vì chỉ chứa cấu hình đường dẫn (/api, /),
+# không có secret — commit để cả nhóm dùng chung cấu hình chuẩn.

@@ -35,7 +35,7 @@ export class RescueTeamsController {
   constructor(private readonly rescueTeamsService: RescueTeamsService) {}
 
   @Get()
-  @Roles('commander')
+  @Roles('rescuer', 'commander')
   @ApiOperation({ summary: 'Danh sách đội cứu hộ' })
   async findAll(): Promise<{
     success: true;

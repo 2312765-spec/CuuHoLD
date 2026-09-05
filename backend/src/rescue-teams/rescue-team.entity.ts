@@ -7,8 +7,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export const RESCUE_TEAM_STATUSES = ['available', 'busy', 'offline'] as const;
-export type RescueTeamStatus = (typeof RESCUE_TEAM_STATUSES)[number];
+import type { RescueTeamStatus } from '../common/socket-events.types';
+
+export const RESCUE_TEAM_STATUSES: readonly RescueTeamStatus[] = [
+  'available',
+  'busy',
+  'offline',
+] as const;
+export type { RescueTeamStatus };
 
 export interface GeoPoint {
   type: 'Point';

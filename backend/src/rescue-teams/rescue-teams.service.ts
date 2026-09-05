@@ -18,6 +18,7 @@ export interface RescueTeamListRow {
   ward_code: string;
   lat: number | null;
   lng: number | null;
+  leader_id: string;
   leader_name: string;
   leader_phone: string;
 }
@@ -53,6 +54,7 @@ export class RescueTeamsService {
       SELECT rt.id, rt.name, rt.status, rt.specialties, rt.ward_code,
         ST_Y(rt.current_location::geometry) AS lat,
         ST_X(rt.current_location::geometry) AS lng,
+        rt.leader_id AS leader_id,
         u.name AS leader_name, u.phone AS leader_phone
       FROM rescue_teams rt JOIN users u ON u.id = rt.leader_id
       ORDER BY rt.name

@@ -29,6 +29,8 @@ export type SosStatus =
 
 export type UserRole = 'victim' | 'rescuer' | 'commander';
 
+export type RescueTeamStatus = 'available' | 'busy' | 'offline';
+
 export const SOCKET_EVENTS = {
   SOS_NEW: 'sos:new',
   SOS_UPDATED: 'sos:updated',
