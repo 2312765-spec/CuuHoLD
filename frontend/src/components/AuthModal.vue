@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { register as apiRegister } from '@/services/auth.service'
+import type { UserRole } from '@/types'
 
 function layThongBaoLoi(err: unknown): string | null {
   if (!isAxiosError(err)) return null
@@ -18,12 +20,22 @@ const emit = defineEmits<{ close: []; loggedIn: [] }>()
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
+const router = useRouter()
 
 const cheDo = ref<'login' | 'register'>('login')
 const phone = ref('')
 const password = ref('')
 const name = ref('')
 const dangGui = ref(false)
+
+// Trước đây đăng nhập xong chỉ đóng modal, không điều hướng — rescuer/commander đăng nhập
+// xong bị kẹt nguyên trên /map (nơi duy nhất có nút đăng nhập), không có link nào trong UI
+// dẫn tới /rescuer hay /dashboard, phải gõ tay URL mới vào được. Victim thì ở lại /map là
+// đúng ý (trang gửi SOS), nên chỉ điều hướng cho 2 role còn lại.
+function dieuHuongTheoRole(role: UserRole) {
+  if (role === 'rescuer') router.push({ name: 'rescuer' })
+  else if (role === 'commander') router.push({ name: 'dashboard' })
+}
 
 async function dangNhap() {
   if (!phone.value || !password.value) {
@@ -36,6 +48,7 @@ async function dangNhap() {
     toastStore.showToast(`Xin chào ${user.name}`)
     emit('loggedIn')
     emit('close')
+    dieuHuongTheoRole(user.role)
   } catch {
     toastStore.showToast('Sai số điện thoại hoặc mật khẩu.')
   } finally {

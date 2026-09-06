@@ -131,6 +131,20 @@ describe('useSos', () => {
     expect(sos.activeSos.value?.localId).toBeUndefined()
   })
 
+  it('datSosChoGui() với taoLuc tính cancelDeadline từ thời điểm gốc, không phải lúc gọi lại (khôi phục sau F5)', () => {
+    const sos = setupUseSos()
+    // Item đã nằm trong hàng đợi offline từ 2 phút trước (còn 1 phút miễn phạt) — nếu tính
+    // sai từ "bây giờ" sẽ vô tình cho thêm 3 phút mới, sai với hạn huỷ miễn phạt thật.
+    const taoLuc = new Date(Date.now() - 2 * 60_000).toISOString()
+
+    sos.datSosChoGui({ localId: 'local-1', lat: 11.9, lng: 108.4, type: 'flood', taoLuc })
+
+    expect(sos.activeSos.value?.createdAt).toBe(taoLuc)
+    expect(sos.activeSos.value?.cancelDeadline).toBe(
+      new Date(new Date(taoLuc).getTime() + 3 * 60_000).toISOString()
+    )
+  })
+
   it('dongTheoDoi() xoá thẻ theo dõi hiện tại', async () => {
     vi.mocked(sosService.guiSos).mockResolvedValue(KET_QUA_MAU)
     const sos = setupUseSos()

@@ -25,6 +25,20 @@ const SOS_STATUS_TRANSITIONS: Partial<Record<SosStatus, SosStatus>> = {
   arrived: 'resolved',
 };
 
+// Dùng chung cho findById() và findMyActive() — cùng shape cột, chỉ khác WHERE.
+const SOS_DETAIL_SELECT = `
+  SELECT s.id, s.victim_id, s.type, s.status, s.description, s.image_url,
+         s.ward_code, s.false_alarm_count, s.cancel_deadline,
+         s.created_at, s.updated_at, s.resolved_at, s.assigned_team_id,
+         ST_Y(s.location::geometry) AS lat,
+         ST_X(s.location::geometry) AS lng,
+         u.name AS victim_name, u.phone AS victim_phone,
+         rt.name AS team_name, rt.status AS team_status
+  FROM sos_requests s
+  JOIN users u ON u.id = s.victim_id
+  LEFT JOIN rescue_teams rt ON rt.id = s.assigned_team_id
+`;
+
 export interface CreateSosResult {
   id: string;
   type: SosType;
@@ -123,7 +137,10 @@ export interface CancelSosResult {
   sosId: string;
   status: 'cancelled';
   penaltyApplied: boolean;
+  accountFlagged: boolean;
 }
+
+const LATE_CANCEL_FLAG_THRESHOLD = 3;
 
 @Injectable()
 export class SosService {
@@ -238,28 +255,39 @@ export class SosService {
     if (['resolved', 'cancelled', 'false_alarm'].includes(rows[0].status))
       throw new BadRequestException('SOS đã kết thúc');
     const noPenalty = new Date() < new Date(rows[0].cancel_deadline);
+    const penaltyApplied = !noPenalty;
+
     await this.dataSource.query(
-      `UPDATE sos_requests SET status='cancelled', updated_at=NOW() WHERE id=$1`,
+      `UPDATE sos_requests SET status='cancelled', updated_at=NOW()${
+        penaltyApplied ? ', false_alarm_count = false_alarm_count + 1' : ''
+      } WHERE id=$1`,
       [sosId],
     );
-    return { sosId, status: 'cancelled', penaltyApplied: !noPenalty };
+
+    // Quy tắc Mục 10: huỷ trễ (sau cancel_deadline) 3 lần → tài khoản bị flag.
+    // Không chặn login/gửi SOS khi bị flag — đây là app cứu hộ, chặn tín hiệu
+    // khẩn cấp vì lịch sử huỷ trễ rủi ro hơn nhiều so với vài lần báo giả.
+    // Flag chỉ để hiện cảnh báo cho victim + hiển thị cho commander.
+    let accountFlagged = user.isFlagged;
+    if (penaltyApplied) {
+      const updated = await this.dataSource.query<
+        { late_cancel_count: number; is_flagged: boolean }[]
+      >(
+        `UPDATE users SET late_cancel_count = late_cancel_count + 1,
+           is_flagged = (late_cancel_count + 1) >= $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING late_cancel_count, is_flagged`,
+        [user.id, LATE_CANCEL_FLAG_THRESHOLD],
+      );
+      accountFlagged = updated[0].is_flagged;
+    }
+
+    return { sosId, status: 'cancelled', penaltyApplied, accountFlagged };
   }
 
   async findById(sosId: string, user: User): Promise<SosDetailResult> {
     const rows = await this.dataSource.query<SosDetailRow[]>(
-      `
-      SELECT s.id, s.victim_id, s.type, s.status, s.description, s.image_url,
-             s.ward_code, s.false_alarm_count, s.cancel_deadline,
-             s.created_at, s.updated_at, s.resolved_at, s.assigned_team_id,
-             ST_Y(s.location::geometry) AS lat,
-             ST_X(s.location::geometry) AS lng,
-             u.name AS victim_name, u.phone AS victim_phone,
-             rt.name AS team_name, rt.status AS team_status
-      FROM sos_requests s
-      JOIN users u ON u.id = s.victim_id
-      LEFT JOIN rescue_teams rt ON rt.id = s.assigned_team_id
-      WHERE s.id = $1
-    `,
+      `${SOS_DETAIL_SELECT} WHERE s.id = $1`,
       [sosId],
     );
     const sos = rows[0];
@@ -271,12 +299,33 @@ export class SosService {
       throw new ForbiddenException('Không có quyền');
     }
 
+    return this.attachTimeline(sos);
+  }
+
+  // SOS đang hoạt động (chưa resolved/cancelled/false_alarm) của chính victim đang gọi —
+  // dùng để frontend khôi phục marker/thẻ theo dõi sau khi F5 mất hết state trong RAM
+  // (trước đây không có cách nào hỏi lại vì GET /api/sos bị chặn với role victim, và
+  // GET /api/sos/:id cần biết trước id — đúng cái bị mất lúc reload).
+  async findMyActive(victim: User): Promise<SosDetailResult | null> {
+    const rows = await this.dataSource.query<SosDetailRow[]>(
+      `${SOS_DETAIL_SELECT}
+       WHERE s.victim_id = $1
+         AND s.status NOT IN ('resolved', 'cancelled', 'false_alarm')
+       ORDER BY s.created_at DESC
+       LIMIT 1`,
+      [victim.id],
+    );
+    const sos = rows[0];
+    if (!sos) return null;
+    return this.attachTimeline(sos);
+  }
+
+  private async attachTimeline(sos: SosDetailRow): Promise<SosDetailResult> {
     const timeline = await this.dataSource.query<SosTimelineRow[]>(
       `SELECT id, actor_id, action, note, created_at
        FROM sos_timeline WHERE sos_id = $1 ORDER BY created_at ASC`,
-      [sosId],
+      [sos.id],
     );
-
     return { ...sos, timeline };
   }
 

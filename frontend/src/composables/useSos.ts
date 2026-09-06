@@ -1,11 +1,18 @@
 // Composable theo dõi + huỷ yêu cầu SOS của victim sau khi gửi (CLAUDE.md Mục 5 — useSos.ts).
 // Trước đây MapView gọi thẳng guiSos() rồi quên luôn kết quả — victim không có cách nào xem
 // trạng thái hay huỷ SOS vừa gửi (CLAUDE.md Mục 10: "Victim có 3 phút hủy miễn phạt").
-// State chỉ tồn tại trong phiên hiện tại — không dùng localStorage (xem .cursorrules), giống
-// auth.store mất khi tải lại trang.
+//
+// activeSos vẫn chỉ là ref trong RAM (mất khi F5) — nhưng giờ có khoiPhucSosDangHoatDong()
+// gọi GET /api/sos/mine/active để hỏi lại server lúc mount, nên không còn mất dấu SOS thật
+// đang tồn tại trong DB nữa (xem CLAUDE.md Mục 15.4 — bug marker biến mất sau reload).
 
 import { ref, computed, onUnmounted } from 'vue'
-import { guiSos as apiGuiSos, huySos as apiHuySos, xemChiTietSos } from '@/services/sosService'
+import {
+  guiSos as apiGuiSos,
+  huySos as apiHuySos,
+  xemChiTietSos,
+  xemSosDangHoatDongCuaToi
+} from '@/services/sosService'
 import type { CreateSosResult, CancelSosResult, SosStatus, SosType } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
 
@@ -90,17 +97,30 @@ export function useSos() {
   // Gọi ngay khi guiSos() thất bại vì MẤT MẠNG (không phải lỗi nghiệp vụ) và MapView đã
   // lưu SOS vào hàng đợi IndexedDB — hiện ngay thẻ theo dõi + marker ở trạng thái "đang
   // chờ mạng" thay vì để màn hình trống như thể chưa gửi gì (dù thực ra đã lưu lại).
-  function datSosChoGui(local: { localId: string; lat: number; lng: number; type: SosType }): void {
+  //
+  // taoLuc optional — CHỈ truyền khi khôi phục lại 1 item đã có sẵn trong IndexedDB từ
+  // trước (VD: F5 ngay lúc vẫn mất mạng, xem MapView.vue onMounted). Không truyền = coi
+  // như vừa lưu lúc này (đúng hành vi gốc). Nếu không phân biệt 2 trường hợp, mỗi lần
+  // component remount sẽ tính lại cancelDeadline = now+3phút, vô tình kéo dài hạn huỷ miễn
+  // phạt so với hạn thật tính từ lúc gửi ban đầu.
+  function datSosChoGui(local: {
+    localId: string
+    lat: number
+    lng: number
+    type: SosType
+    taoLuc?: string
+  }): void {
+    const createdAt = local.taoLuc ?? new Date().toISOString()
     activeSos.value = {
       id: local.localId,
       type: local.type,
       status: 'pending',
       lat: local.lat,
       lng: local.lng,
-      createdAt: new Date().toISOString(),
+      createdAt,
       // Hạn huỷ miễn phạt tính tạm từ lúc lưu — sẽ được thay bằng giá trị thật của server
       // ngay khi hàng đợi gửi thành công (ghiNhanKetQuaThatTuHangDoi).
-      cancelDeadline: new Date(Date.now() + 3 * 60000).toISOString(),
+      cancelDeadline: new Date(new Date(createdAt).getTime() + 3 * 60000).toISOString(),
       localId: local.localId
     }
   }
@@ -120,6 +140,31 @@ export function useSos() {
       cancelDeadline: res.cancel_deadline
     }
     batDauTheoDoi(res.id)
+  }
+
+  // Gọi lúc MapView mount (chỉ khi victim đã đăng nhập) — hỏi lại server xem có SOS nào
+  // chưa kết thúc không, để dựng lại đúng marker + thẻ theo dõi sau khi F5. Không gọi nếu
+  // đã có activeSos rồi (VD: vừa gửi xong trong cùng phiên) để khỏi ghi đè state mới hơn.
+  async function khoiPhucSosDangHoatDong(): Promise<void> {
+    if (activeSos.value) return
+    try {
+      const detail = await xemSosDangHoatDongCuaToi()
+      if (!detail) return
+      activeSos.value = {
+        id: detail.id,
+        type: detail.type,
+        status: detail.status,
+        lat: detail.lat,
+        lng: detail.lng,
+        createdAt: detail.created_at,
+        cancelDeadline: detail.cancel_deadline
+      }
+      batDauTheoDoi(detail.id)
+    } catch {
+      // "Không có SOS active" trả về data:null bình thường (đã return ở trên, không rơi vào
+      // đây) — catch này chỉ bắt lỗi thật (mất mạng/401 token hết hạn), interceptor http.ts
+      // đã tự hiện toast/logout nếu cần, im lặng bỏ qua là đủ.
+    }
   }
 
   async function huyYeuCauSos(
@@ -162,6 +207,7 @@ export function useSos() {
     guiYeuCauSos,
     datSosChoGui,
     ghiNhanKetQuaThatTuHangDoi,
+    khoiPhucSosDangHoatDong,
     huyYeuCauSos,
     capNhatTuSocket,
     dongTheoDoi

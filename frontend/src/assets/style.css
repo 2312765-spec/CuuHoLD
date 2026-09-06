@@ -52,6 +52,7 @@
   .nav-links{display:flex; gap:32px; font-size:14px;}
   .nav-links a{opacity:0.75; transition:opacity .15s;}
   .nav-links a:hover{opacity:1;}
+  .nav-user{font-size:14px; color:var(--pine-deep); font-weight:500; white-space:nowrap;}
   .nav-cta{display:flex; gap:10px;}
   .menu-btn{display:none; background:none; border:none; cursor:pointer;}
 

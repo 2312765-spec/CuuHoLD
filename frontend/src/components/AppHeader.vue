@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import InstallButton from '@/components/InstallButton.vue'
+import { useAuthStore } from '@/stores/auth.store'
 
 // Thay cho đoạn thao tác style.cssText trực tiếp trong script.js cũ,
 // giờ dùng state phản ứng (reactive state) của Vue — idiomatic hơn.
 const isMenuOpen = ref(false)
+
+// Trước đây trang chủ không có cách nào đăng nhập — router/index.ts lại giả định "chưa
+// đăng nhập mà vào khu vực cần quyền → đưa về trang chủ (modal đăng nhập ở đó)", nhưng
+// modal đó chưa từng tồn tại ở đây. Rescuer/commander gõ thẳng /rescuer /dashboard lúc
+// chưa đăng nhập sẽ bị đá về trang chủ và kẹt cứng, không có lối vào.
+defineEmits<{ openAuth: [] }>()
+const authStore = useAuthStore()
 </script>
 
 <template>
@@ -22,6 +30,13 @@ const isMenuOpen = ref(false)
         <a href="#ban-do">Bản đồ</a>
         <a href="#quy-trinh">Quy trình</a>
         <a href="#tinh-nang">Tính năng</a>
+        <!-- Đặt trong .nav-links (không phải .nav-cta) vì .nav-cta .btn-ghost bị ẩn hẳn
+             trên mobile (style.css dòng ~161) — để đây thì vẫn hiện trong menu hamburger. -->
+        <template v-if="authStore.isLoggedIn">
+          <span class="nav-user">{{ authStore.user?.name }}</span>
+          <a href="#" @click.prevent="authStore.logout()">Đăng xuất</a>
+        </template>
+        <a v-else href="#" @click.prevent="$emit('openAuth')">Đăng nhập</a>
       </nav>
       <div class="nav-cta">
         <!-- <RouterLink to="/map" class="btn btn-ghost">Xem bản đồ</RouterLink> -->

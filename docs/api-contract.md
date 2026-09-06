@@ -18,6 +18,11 @@
 ```
 `data` không bao giờ `null`/thiếu khi `success:true`. Luôn unwrap `response.data.data`.
 
+> ⚠️ **Ngoại lệ duy nhất:** `GET /api/sos/mine/active` (Mục 2) trả `data: null` có chủ đích
+> khi victim không có SOS nào đang hoạt động — đây là kết quả hợp lệ (giống "get current
+> cart" trả rỗng), không phải lỗi, nên không ép về `404`. Mọi route khác vẫn giữ đúng quy
+> ước "data không bao giờ null" ở trên.
+
 ### Response lỗi — **KHÔNG cùng shape với response thành công**
 Backend chưa có global exception filter, nên lỗi trả về đúng format mặc định của NestJS,
 **không có field `success`**:
@@ -180,6 +185,17 @@ Role: `rescuer` (chỉ SOS trong `wardCode` của mình) hoặc `commander` (to�
   ]
 }
 ```
+
+### GET /api/sos/mine/active
+Role: `victim`. Trả về SOS **chưa kết thúc** (khác `resolved`/`cancelled`/`false_alarm`) mới
+nhất của chính người gọi, kèm `timeline` — cùng shape với `GET /api/sos/:id`. Dùng để
+frontend khôi phục marker/thẻ theo dõi SOS sau khi F5 xoá sạch state RAM (`useSos.ts` —
+trước đây không có cách hỏi lại vì `GET /api/sos` chặn role `victim`, còn `GET /api/sos/:id`
+cần biết trước `id`, đúng cái bị mất lúc reload).
+
+**200 OK — có SOS đang hoạt động**: shape giống hệt `GET /api/sos/:id`.
+**200 OK — không có SOS nào đang hoạt động**: `{ "success": true, "data": null, "message": "Không có SOS nào đang hoạt động" }`
+(xem ngoại lệ `data:null` ở Mục 0).
 
 ### GET /api/sos/:id
 JWT bắt buộc, không giới hạn role trong decorator — nhưng service tự kiểm tra quyền:

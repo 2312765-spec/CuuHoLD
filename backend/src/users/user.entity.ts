@@ -22,7 +22,11 @@ export class User {
   @Column({ name: 'password_hash' })
   passwordHash: string;
 
-  @Column({ type: 'enum', enum: ['victim', 'rescuer', 'commander'], default: 'victim' })
+  @Column({
+    type: 'enum',
+    enum: ['victim', 'rescuer', 'commander'],
+    default: 'victim',
+  })
   role: UserRole;
 
   @Column({ name: 'ward_code', type: 'varchar', nullable: true })
@@ -30,6 +34,12 @@ export class User {
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
+
+  @Column({ name: 'late_cancel_count', default: 0 })
+  lateCancelCount: number;
+
+  @Column({ name: 'is_flagged', default: false })
+  isFlagged: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

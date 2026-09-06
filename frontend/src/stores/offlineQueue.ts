@@ -92,6 +92,15 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     await capNhatSoLuong()
   }
 
+  // Dùng lúc MapView mount để dựng lại thẻ theo dõi + đếm ngược cho SOS đang chờ mạng sau
+  // F5 (badge số đếm ở soLuongSosChoGui đã đúng sẵn qua capNhatSoLuong(), nhưng thẻ theo
+  // dõi cần chính object QueuedSos để hiển thị — xem CLAUDE.md Mục 15.4, Case 2).
+  async function laySosDangChoGuiGanNhat(): Promise<QueuedSos | null> {
+    const list = await layToanBoHangDoiSos()
+    if (list.length === 0) return null
+    return list.reduce((moiNhat, item) => (item.taoLuc > moiNhat.taoLuc ? item : moiNhat))
+  }
+
   // Gọi khi có mạng trở lại — gửi thật từng SOS đang chờ qua đúng API guiSos(), báo cho
   // component (qua onGuiThanhCong) biết SOS nào vừa thành công kèm kết quả thật từ server,
   // để useSos.ts cập nhật lại thẻ theo dõi/marker đang hiển thị (nếu còn đang mở /map).
@@ -130,11 +139,20 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
   ) {
     capNhatSoLuong()
 
-    window.addEventListener('online', () => {
+    function guiLaiHangDoiNeuCoMang() {
       dangOffline.value = false
       xuLyHangDoiKhiCoMang(themLenBanDo)
       if (onSosGuiThanhCong) xuLyHangDoiSosKhiCoMang(onSosGuiThanhCong)
-    })
+    }
+
+    // Trước đây CHỈ gửi lại khi bắt được sự kiện DOM 'online' — nếu victim đóng hẳn tab lúc
+    // mất mạng rồi mở lại app lúc mạng đã có sẵn (không có pha chuyển offline→online nào
+    // xảy ra trong phiên mới), hàng đợi nằm im trong IndexedDB vô thời hạn tới lần mất-rồi-
+    // có-mạng kế tiếp. Giờ tự kiểm tra ngay lúc khởi tạo thay vì chỉ chờ event — 2 hàm xử
+    // lý hàng đợi đã tự return sớm nếu rỗng nên gọi thừa lúc không có gì để gửi cũng vô hại.
+    if (navigator.onLine) guiLaiHangDoiNeuCoMang()
+
+    window.addEventListener('online', guiLaiHangDoiNeuCoMang)
     window.addEventListener('offline', () => {
       dangOffline.value = true
     })
@@ -147,6 +165,7 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     themBaoCaoVaoHangDoi,
     themSosVaoHangDoi,
     xoaSosKhoiHangDoi,
+    laySosDangChoGuiGanNhat,
     khoiTao
   }
 })

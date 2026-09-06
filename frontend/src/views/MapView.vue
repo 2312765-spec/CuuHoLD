@@ -171,6 +171,27 @@ const { isConnected, connect } = useSocket({
 // ---------- Khởi tạo / dọn dẹp bản đồ theo vòng đời component ----------
 onMounted(async () => {
   await initMap('map', activeLayer.value)
+  // Khôi phục SOS đang hoạt động của victim (nếu có) sau khi F5 xoá sạch activeSos trong RAM
+  // (CLAUDE.md Mục 15.4) — chỉ gọi khi đã đăng nhập với vai trò victim, vì endpoint chỉ dành
+  // cho role đó. Phải chạy TRƯỚC đoạn áp marker bên dưới để marker vẽ đúng ngay từ đầu.
+  if (laVictim.value) {
+    await sos.khoiPhucSosDangHoatDong()
+    // Server không có SOS active nào — có thể vì SOS vừa gửi lúc mất mạng chưa từng tới
+    // server, vẫn đang nằm chờ trong IndexedDB. Không khôi phục lại thì badge "đang chờ
+    // mạng" vẫn đúng (đọc từ IndexedDB) nhưng thẻ theo dõi + đếm ngược biến mất im lặng.
+    if (!sos.activeSos.value) {
+      const dangCho = await offlineQueueStore.laySosDangChoGuiGanNhat()
+      if (dangCho) {
+        sos.datSosChoGui({
+          localId: dangCho.localId,
+          lat: dangCho.lat,
+          lng: dangCho.lng,
+          type: dangCho.type,
+          taoLuc: dangCho.taoLuc
+        })
+      }
+    }
+  }
   // initMap() chạy async (chờ tải ranh giới) — nếu victim gửi SOS ngay lúc đó, watch ở trên
   // đã bỏ qua vì mapInstance chưa sẵn sàng. Áp lại một lần nữa cho chắc sau khi map đã có.
   const active = sos.activeSos.value

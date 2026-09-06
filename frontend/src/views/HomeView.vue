@@ -1,13 +1,20 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppFooter from '@/components/AppFooter.vue'
 import FeatureCards from '@/components/FeatureCards.vue'
 import ProcessSteps from '@/components/ProcessSteps.vue'
 import HighlightFeatures from '@/components/HighlightFeatures.vue'
+import AuthModal from '@/components/AuthModal.vue'
+
+// router/index.ts điều hướng "chưa đăng nhập mà vào /rescuer, /dashboard → về trang chủ,
+// modal đăng nhập ở đó" — nhưng modal đó chưa từng được gắn vào trang chủ. AuthModal.vue
+// tự điều hướng rescuer/commander sau khi đăng nhập thành công, nên chỉ cần mở modal ở đây.
+const isAuthOpen = ref(false)
 </script>
 
 <template>
-  <AppHeader />
+  <AppHeader @open-auth="isAuthOpen = true" />
 
   <section class="hero" id="gioi-thieu">
     <svg class="contours" viewBox="0 0 1120 500" preserveAspectRatio="none">
@@ -34,7 +41,7 @@ import HighlightFeatures from '@/components/HighlightFeatures.vue'
         <div class="hero-stat"><b class="mono">124</b><span>Đơn vị hành chính cấp xã</span></div>
         <div class="hero-stat"><b class="mono">24.233</b><span>Km² diện tích tự nhiên</span></div>
         <div class="hero-stat"><b class="mono">3.8tr</b><span>Dân số toàn tỉnh</span></div>
-        
+
       </div>
     </div>
   </div>
@@ -111,4 +118,5 @@ import HighlightFeatures from '@/components/HighlightFeatures.vue'
   </section>
 
   <AppFooter />
+  <AuthModal :is-open="isAuthOpen" @close="isAuthOpen = false" @logged-in="isAuthOpen = false" />
 </template>

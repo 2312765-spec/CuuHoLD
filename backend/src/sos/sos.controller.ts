@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle, hours } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -54,6 +55,7 @@ export class SosController {
 
   @Post()
   @Roles('victim')
+  @Throttle({ default: { limit: 5, ttl: hours(1) } })
   @ApiOperation({ summary: 'Gửi tín hiệu SOS khẩn cấp' })
   async create(
     @Body() dto: CreateSosDto,
@@ -74,6 +76,29 @@ export class SosController {
     return { success: true, data, message: 'OK' };
   }
 
+  // Đặt TRƯỚC @Get(':id') dù không bắt buộc (path 2 đoạn 'mine/active' không khớp pattern
+  // ':id' 1 đoạn) — tránh rủi ro nếu sau này ai đó đổi ':id' thành wildcard nuốt hết.
+  @Get('mine/active')
+  @Roles('victim')
+  @ApiOperation({
+    summary:
+      'SOS đang hoạt động của victim hiện tại (khôi phục UI sau khi F5 mất state RAM)',
+  })
+  async findMyActive(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<SosDetailResult | null>> {
+    const data = await this.sosService.findMyActive(req.user);
+    // data:null có chủ đích khi success:true — ngoại lệ so với quy ước chung ở
+    // docs/api-contract.md Mục 0 (nơi đó ghi data không bao giờ null khi success:true),
+    // vì "không có SOS active" là kết quả hợp lệ, không phải lỗi — không nên ép về 404
+    // (404 sẽ bị interceptor http.ts phía FE hiện toast lỗi cho một trạng thái bình thường).
+    return {
+      success: true,
+      data,
+      message: data ? 'OK' : 'Không có SOS nào đang hoạt động',
+    };
+  }
+
   @Patch(':id/cancel')
   @Roles('victim')
   @ApiOperation({ summary: 'Victim hủy SOS' })
@@ -83,7 +108,10 @@ export class SosController {
     @Req() req: AuthenticatedRequest,
   ): Promise<ApiResponse<CancelSosResult>> {
     const data = await this.sosService.cancel(id, req.user);
-    return { success: true, data, message: 'Đã hủy SOS' };
+    const message = data.accountFlagged
+      ? 'Đã hủy SOS. Cảnh báo: tài khoản đã huỷ trễ nhiều lần và bị đánh dấu.'
+      : 'Đã hủy SOS';
+    return { success: true, data, message };
   }
 
   @Get(':id')

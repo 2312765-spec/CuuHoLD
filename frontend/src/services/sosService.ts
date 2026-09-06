@@ -38,6 +38,14 @@ export async function xemChiTietSos(id: string): Promise<SosRequest> {
   return data.data as SosRequest
 }
 
+// GET /api/sos/mine/active (role victim) — SOS chưa kết thúc mới nhất của chính mình, dùng
+// khôi phục marker/thẻ theo dõi sau khi F5 xoá sạch state RAM (useSos.ts). data:null là kết
+// quả HỢP LỆ (không phải lỗi) khi victim không có SOS nào đang hoạt động — xem sos.controller.ts.
+export async function xemSosDangHoatDongCuaToi(): Promise<SosRequest | null> {
+  const { data } = await http.get(`${CONFIG.endpoints.sos}/mine/active`)
+  return data.data as SosRequest | null
+}
+
 // PATCH /api/sos/:id/cancel (role victim, chủ SOS). Body reason bắt buộc.
 export async function huySos(
   id: string,

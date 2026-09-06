@@ -38,6 +38,10 @@ function isActive(key: MapLayerKey): boolean {
     </nav>
     <div class="map-top-right">
       <template v-if="authStore.isLoggedIn">
+        <!-- Rescuer/commander lỡ quay lại /map (nút back, bookmark...) cần đường về lại
+             view làm việc của mình — trước đây chỉ có tên + đăng xuất, không có lối ra. -->
+        <RouterLink v-if="authStore.role === 'rescuer'" to="/rescuer" class="btn btn-ghost sos-btn">Nhiệm vụ của tôi</RouterLink>
+        <RouterLink v-else-if="authStore.role === 'commander'" to="/dashboard" class="btn btn-ghost sos-btn">Bảng điều phối</RouterLink>
         <span class="map-user">{{ authStore.user?.name }}</span>
         <button class="btn btn-ghost sos-btn" @click="authStore.logout()">Đăng xuất</button>
       </template>

@@ -41,4 +41,7 @@ async function bootstrap() {
   console.log(`🚀 Server: http://localhost:${port}`);
   console.log(`📖 Swagger: http://localhost:${port}/api/docs`);
 }
-bootstrap();
+bootstrap().catch((err: unknown) => {
+  console.error('❌ Failed to start server:', err);
+  process.exit(1);
+});
