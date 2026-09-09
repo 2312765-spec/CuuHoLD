@@ -2,17 +2,19 @@
 import { ref } from 'vue'
 import InstallButton from '@/components/InstallButton.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import { useCtaTheoRole } from '@/composables/useCtaTheoRole'
 
 // Thay cho đoạn thao tác style.cssText trực tiếp trong script.js cũ,
 // giờ dùng state phản ứng (reactive state) của Vue — idiomatic hơn.
 const isMenuOpen = ref(false)
 
-// Trước đây trang chủ không có cách nào đăng nhập — router/index.ts lại giả định "chưa
-// đăng nhập mà vào khu vực cần quyền → đưa về trang chủ (modal đăng nhập ở đó)", nhưng
-// modal đó chưa từng tồn tại ở đây. Rescuer/commander gõ thẳng /rescuer /dashboard lúc
-// chưa đăng nhập sẽ bị đá về trang chủ và kẹt cứng, không có lối vào.
+// Link "Đăng nhập" riêng trong menu đã bỏ: nút CTA giờ vừa là lối đăng nhập (khi chưa
+// đăng nhập) vừa là lối vào khu làm việc đúng role (khi đã đăng nhập), nên có thêm một
+// link đăng nhập nữa là thừa và tạo ra 2 chỗ phải đồng bộ. Vẫn giữ tên + "Đăng xuất" để
+// người đang đăng nhập có lối thoát ngay tại trang chủ.
 defineEmits<{ openAuth: [] }>()
 const authStore = useAuthStore()
+const { cta } = useCtaTheoRole()
 </script>
 
 <template>
@@ -36,11 +38,10 @@ const authStore = useAuthStore()
           <span class="nav-user">{{ authStore.user?.name }}</span>
           <a href="#" @click.prevent="authStore.logout()">Đăng xuất</a>
         </template>
-        <a v-else href="#" @click.prevent="$emit('openAuth')">Đăng nhập</a>
       </nav>
       <div class="nav-cta">
-        <!-- <RouterLink to="/map" class="btn btn-ghost">Xem bản đồ</RouterLink> -->
-         <a href="#ban-do" class="btn btn-primary">Xem bản đồ cứu trợ</a>
+        <RouterLink v-if="cta.dich" :to="cta.dich" class="btn btn-primary">{{ cta.nhan }}</RouterLink>
+        <button v-else class="btn btn-primary" @click="$emit('openAuth')">{{ cta.nhan }}</button>
         <InstallButton />
       </div>
       <button class="menu-btn" aria-label="Mở menu" @click="isMenuOpen = !isMenuOpen">

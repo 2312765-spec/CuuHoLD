@@ -87,6 +87,7 @@ const { isConnected, connect } = useSocket({
       created_at: data.createdAt,
       lat: data.lat,
       lng: data.lng,
+      location_estimated: data.locationEstimated,
       victim_name: data.victimName,
       victim_phone: data.victimPhone
     }
@@ -159,7 +160,7 @@ async function confirmAssign(team: NearestTeam) {
     <header class="dashboard-top">
       <h1>Bảng điều phối cứu hộ</h1>
       <div class="dashboard-top-right">
-        <span class="socket-status" :class="{ connected: isConnected }">
+        <span class="realtime-status" :class="{ connected: isConnected }">
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
         <span class="dashboard-user">{{ authStore.user?.name }}</span>
@@ -196,6 +197,7 @@ async function confirmAssign(team: NearestTeam) {
               <span class="sos-status-badge">{{ SOS_STATUS_LABEL[sos.status] }}</span>
             </div>
             <div class="sos-victim">{{ sos.victim_name }} · {{ sos.victim_phone }}</div>
+            <p v-if="sos.location_estimated" class="sos-location-warn">⚠️ Vị trí ước tính</p>
             <div class="sos-meta">Xã/phường {{ sos.ward_code }} · {{ formatTime(sos.created_at) }}</div>
           </li>
         </ul>
@@ -211,6 +213,10 @@ async function confirmAssign(team: NearestTeam) {
         </div>
         <p v-if="modalSos" class="modal-sub">
           {{ SOS_TYPE_LABEL[modalSos.type] }} — {{ modalSos.victim_name }} ({{ modalSos.victim_phone }})
+        </p>
+        <p v-if="modalSos?.location_estimated" class="sos-location-warn">
+          ⚠️ Vị trí ước tính — nạn nhân không lấy được GPS chính xác lúc gửi. Đội gần nhất bên
+          dưới được tính theo toạ độ này, có thể không sát vị trí thật.
         </p>
 
         <div v-if="modalLoading" class="panel-empty">Đang tìm đội gần nhất...</div>
@@ -268,6 +274,26 @@ async function confirmAssign(team: NearestTeam) {
   font-size: 13px;
   color: var(--pine-deep);
   font-weight: 500;
+}
+/* Class name riêng (không phải .socket-status) để tránh kế thừa style pill nổi
+   (position: fixed, background trắng, box-shadow...) từ map-style.css — file đó định
+   nghĩa .socket-status cho huy hiệu NỔI trên bản đồ ở MapView.vue (victim), khác hoàn
+   toàn mục đích ở đây (mục text tĩnh trong header, nằm cạnh tên tài khoản). */
+.realtime-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(42, 42, 36, 0.55);
+}
+.realtime-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+.realtime-status.connected .dot {
+  background: #16a34a;
 }
 
 .dashboard-body {
@@ -356,6 +382,15 @@ async function confirmAssign(team: NearestTeam) {
   font-size: 14px;
   font-weight: 500;
   margin-bottom: 2px;
+}
+.sos-location-warn {
+  font-size: 12px;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin: 4px 0;
+  display: inline-block;
 }
 .sos-meta {
   font-size: 12px;

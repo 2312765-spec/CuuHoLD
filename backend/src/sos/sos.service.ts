@@ -12,6 +12,7 @@ import { CreateSosDto } from './dto/create-sos.dto';
 import { User } from '../users/user.entity';
 import { SosGateway } from './sos.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GisService } from '../gis/gis.service';
 import type {
   SosNewPayload,
   SosUpdatedPayload,
@@ -25,10 +26,15 @@ const SOS_STATUS_TRANSITIONS: Partial<Record<SosStatus, SosStatus>> = {
   arrived: 'resolved',
 };
 
+// CLAUDE.md Mục 10 bước 4: "GisService.findNearestTeams() → auto-assign team đầu tiên" —
+// bán kính tìm đội tự động lúc tạo SOS. Không tìm thấy đội nào trong bán kính này thì SOS
+// giữ nguyên 'pending', đúng luồng cũ (commander phân công tay qua PATCH /:id/assign).
+const AUTO_ASSIGN_RADIUS_M = 10000;
+
 // Dùng chung cho findById() và findMyActive() — cùng shape cột, chỉ khác WHERE.
 const SOS_DETAIL_SELECT = `
   SELECT s.id, s.victim_id, s.type, s.status, s.description, s.image_url,
-         s.ward_code, s.false_alarm_count, s.cancel_deadline,
+         s.ward_code, s.false_alarm_count, s.cancel_deadline, s.location_estimated,
          s.created_at, s.updated_at, s.resolved_at, s.assigned_team_id,
          ST_Y(s.location::geometry) AS lat,
          ST_X(s.location::geometry) AS lng,
@@ -46,6 +52,7 @@ export interface CreateSosResult {
   ward_code: string | null;
   created_at: Date;
   cancel_deadline: Date;
+  location_estimated: boolean;
 }
 
 export interface SosListRow {
@@ -56,6 +63,7 @@ export interface SosListRow {
   created_at: Date;
   lat: number;
   lng: number;
+  location_estimated: boolean;
   victim_name: string;
   victim_phone: string;
 }
@@ -85,6 +93,7 @@ interface SosDetailRow {
   ward_code: string | null;
   false_alarm_count: number;
   cancel_deadline: Date;
+  location_estimated: boolean;
   created_at: Date;
   updated_at: Date;
   resolved_at: Date | null;
@@ -149,6 +158,7 @@ export class SosService {
     private dataSource: DataSource,
     private sosGateway: SosGateway,
     private notifications: NotificationsService,
+    private gisService: GisService,
   ) {}
 
   async create(dto: CreateSosDto, victim: User): Promise<CreateSosResult> {
@@ -164,10 +174,10 @@ export class SosService {
       `
       INSERT INTO sos_requests
         (victim_id, location, type, status, description,
-         image_url, cancel_deadline)
+         image_url, cancel_deadline, location_estimated)
       VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326),
-              $4, 'pending', $5, $6, $7)
-      RETURNING id, type, status, ward_code, created_at, cancel_deadline
+              $4, 'pending', $5, $6, $7, $8)
+      RETURNING id, type, status, ward_code, created_at, cancel_deadline, location_estimated
     `,
       [
         victim.id,
@@ -177,9 +187,23 @@ export class SosService {
         dto.description || null,
         dto.imageUrl || null,
         cancelDeadline,
+        dto.locationEstimated ?? false,
       ],
     );
     const sos = result[0];
+
+    // CLAUDE.md Mục 10 bước 4: tự động phân công đội gần nhất NGAY lúc tạo, thay vì luôn
+    // để 'pending' chờ commander bấm tay — trước đây đây là khoảng lệch giữa spec và code
+    // thật (xem CLAUDE.md Mục 15.6). Không tìm thấy đội nào sẵn sàng trong bán kính thì
+    // giữ nguyên 'pending', y hệt hành vi cũ (commander vẫn phân công tay được qua
+    // PATCH /:id/assign — endpoint đó không đổi).
+    const assignedTeamId = await this.tryAutoAssignNearestTeam(
+      sos.id,
+      dto.lat,
+      dto.lng,
+      victim,
+    );
+    if (assignedTeamId) sos.status = 'assigned';
 
     const payload: SosNewPayload = {
       sosId: sos.id,
@@ -190,11 +214,25 @@ export class SosService {
       status: sos.status,
       lat: dto.lat,
       lng: dto.lng,
+      locationEstimated: sos.location_estimated,
       wardCode: sos.ward_code ?? '',
       createdAt: sos.created_at.toISOString(),
       cancelDeadline: sos.cancel_deadline.toISOString(),
     };
     this.sosGateway.emitNewSos(sos.ward_code ?? '', payload);
+
+    // Rescuer đội được auto-assign lắng nghe 'sos:updated' (đúng event RescuerView.vue đã
+    // dùng cho trường hợp commander phân công tay) để thêm nhiệm vụ mới vào danh sách —
+    // tái dùng nguyên payload/route lắng nghe sẵn có, không cần sửa gì ở frontend.
+    if (assignedTeamId) {
+      this.sosGateway.emitSosUpdated(sos.id, sos.ward_code ?? '', {
+        sosId: sos.id,
+        status: 'assigned',
+        wardCode: sos.ward_code ?? '',
+        assignedTeamId,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // await để đảm bảo lời gọi SMS thực sự chạy trước khi request kết thúc,
     // nhưng NotificationsService tự nuốt lỗi (không throw) nên không block response 201.
@@ -210,11 +248,46 @@ export class SosService {
     return sos;
   }
 
+  // Trả về id đội vừa được gán, hoặc null nếu không có đội nào sẵn sàng trong bán kính —
+  // SOS giữ nguyên 'pending' trong trường hợp đó (đúng luồng cũ, commander phân công tay).
+  private async tryAutoAssignNearestTeam(
+    sosId: string,
+    lat: number,
+    lng: number,
+    victim: User,
+  ): Promise<string | null> {
+    const [nearest] = await this.gisService.findNearestTeams(
+      lat,
+      lng,
+      AUTO_ASSIGN_RADIUS_M,
+      1,
+    );
+    if (!nearest) return null;
+
+    await this.dataSource.query(
+      `UPDATE sos_requests SET assigned_team_id=$2, status='assigned', updated_at=NOW() WHERE id=$1`,
+      [sosId, nearest.id],
+    );
+    await this.dataSource.query(
+      `UPDATE rescue_teams SET status='busy', updated_at=NOW() WHERE id=$1`,
+      [nearest.id],
+    );
+    // actor_id gán cho chính victim — không có "commander" nào thao tác ở bước tự động
+    // này, nhưng actor_id tham chiếu users.id nên không gán được giá trị hệ thống/null;
+    // note phân biệt rõ đây là hành động tự động, không phải victim tự bấm.
+    await this.dataSource.query(
+      `INSERT INTO sos_timeline (sos_id, actor_id, action, note) VALUES ($1, $2, 'assigned', $3)`,
+      [sosId, victim.id, `Tự động phân công đội gần nhất: ${nearest.name}`],
+    );
+
+    return nearest.id;
+  }
+
   async findAll(
     user: User,
     filters: { status?: string } = {},
   ): Promise<SosListRow[]> {
-    let q = `SELECT s.id, s.type, s.status, s.ward_code, s.created_at,
+    let q = `SELECT s.id, s.type, s.status, s.ward_code, s.created_at, s.location_estimated,
              ST_Y(s.location::geometry) AS lat,
              ST_X(s.location::geometry) AS lng,
              u.name AS victim_name, u.phone AS victim_phone
@@ -263,6 +336,17 @@ export class SosService {
       } WHERE id=$1`,
       [sosId],
     );
+
+    // Nếu SOS đã được phân công đội (auto-assign lúc tạo hoặc commander phân công tay)
+    // trước khi bị huỷ, phải giải phóng đội về 'available' — nếu không đội bị kẹt 'busy'
+    // vĩnh viễn dù không còn nhiệm vụ nào đang hoạt động (cùng quy tắc với updateStatus()
+    // khi SOS chuyển 'resolved', chỉ khác điểm kích hoạt).
+    if (rows[0].assigned_team_id) {
+      await this.dataSource.query(
+        `UPDATE rescue_teams SET status='available', updated_at=NOW() WHERE id=$1`,
+        [rows[0].assigned_team_id],
+      );
+    }
 
     // Quy tắc Mục 10: huỷ trễ (sau cancel_deadline) 3 lần → tài khoản bị flag.
     // Không chặn login/gửi SOS khi bị flag — đây là app cứu hộ, chặn tín hiệu

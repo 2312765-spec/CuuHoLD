@@ -36,6 +36,11 @@ const isAuthOpen = ref(false)
 // chỉ còn giữ state (useSos) và orchestrate (socket, marker, offline queue).
 const sos = useSos()
 
+// Nút SOS nổi có đang hiện hay không. Dùng cho CẢ v-if của nút lẫn class .co-nut-sos trên
+// .map-page — nút chiếm nguyên góc dưới phải nên các huy hiệu ở đó phải nhường chỗ, và chỉ
+// nhường đúng lúc nút thật sự có mặt (xem map-style.css).
+const coNutSos = computed(() => laVictim.value && !sos.dangHoatDong.value && !sos.dangGui.value)
+
 // ---------- Dialog chọn lý do huỷ ----------
 const isCancelDialogOpen = ref(false)
 function moCancelDialog() {
@@ -60,6 +65,15 @@ async function xacNhanHuySos(reason: 'mistake' | 'resolved_myself' | 'other') {
           ? 'Đã huỷ yêu cầu — quá hạn 3 phút nên bị tính là huỷ trễ.'
           : 'Đã huỷ yêu cầu, không bị tính phạt.'
       )
+      // Trước đây accountFlagged bị bỏ qua hoàn toàn ở FE — victim huỷ trễ lần thứ 3 bị
+      // đánh dấu tài khoản mà không hề biết (server đã tính từ lâu, chỉ thiếu hiển thị).
+      // toastStore xếp hàng đợi nên gọi thêm lần nữa không mất toast phía trên.
+      if (result.accountFlagged) {
+        toastStore.showToast(
+          'Cảnh báo: tài khoản của bạn đã huỷ trễ nhiều lần và bị đánh dấu.',
+          4500
+        )
+      }
     }
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
@@ -73,39 +87,56 @@ function moSosDialog() {
 }
 async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
   isSosDialogOpen.value = false
-  // Lấy vị trí hiện tại của người dùng qua trình duyệt; nếu từ chối, dùng tâm bản đồ.
+  // Lấy vị trí hiện tại của người dùng qua trình duyệt; nếu từ chối/timeout, dùng tâm tỉnh
+  // làm ước tính TẠM (uocLuong=true) — KHÔNG được âm thầm gửi toạ độ giả mà không báo (từng
+  // là lỗi P0 an toàn thật, xem CLAUDE.md Mục 15: dialog xác nhận nói "vị trí hiện tại của
+  // bạn sẽ được gửi" trong khi thực ra gửi toạ độ bịa, không ai biết để xử lý dự phòng).
   const viTri = await layViTriHienTai()
+  if (viTri.uocLuong) {
+    toastStore.showToast(
+      'Không xác định được vị trí GPS chính xác — đã gửi vị trí ước tính (tâm tỉnh). Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm nếu có thể.'
+    )
+  }
   try {
-    await sos.guiYeuCauSos({ lat: viTri.lat, lng: viTri.lng, type: payload.type, description: payload.description })
+    await sos.guiYeuCauSos({
+      lat: viTri.lat,
+      lng: viTri.lng,
+      type: payload.type,
+      description: payload.description,
+      locationEstimated: viTri.uocLuong
+    })
     toastStore.showToast('Đã gửi tín hiệu cứu trợ. Đội điều phối sẽ liên hệ sớm.')
   } catch (err) {
     if (isAxiosError(err) && !err.response) {
       // Mất mạng thật sự (không phải lỗi nghiệp vụ như rate-limit 429/400) — lưu lại để
       // tự gửi ngay khi có mạng, thay vì để yêu cầu cứu trợ biến mất im lặng.
       const localId = crypto.randomUUID()
-      sos.datSosChoGui({ localId, lat: viTri.lat, lng: viTri.lng, type: payload.type })
+      // Lưu vào IndexedDB TRƯỚC rồi mới dựng thẻ theo dõi: nếu lưu thất bại, thẻ theo dõi
+      // và toast "đã lưu yêu cầu" sẽ là lời hứa suông với người đang cần cứu hộ.
       await offlineQueueStore.themSosVaoHangDoi({
         localId,
         lat: viTri.lat,
         lng: viTri.lng,
         type: payload.type,
         description: payload.description,
+        locationEstimated: viTri.uocLuong,
         taoLuc: new Date().toISOString()
       })
+      sos.datSosChoGui({ localId, lat: viTri.lat, lng: viTri.lng, type: payload.type, locationEstimated: viTri.uocLuong })
       toastStore.showToast('Không có mạng — đã lưu yêu cầu, sẽ tự gửi ngay khi có mạng trở lại.')
     }
     // Lỗi nghiệp vụ khác (VD: vượt 5 SOS/giờ) đã có toast riêng từ interceptor http.ts.
   }
 }
-function layViTriHienTai(): Promise<{ lat: number; lng: number }> {
+function layViTriHienTai(): Promise<{ lat: number; lng: number; uocLuong: boolean }> {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
-      resolve({ lat: 11.94, lng: 108.44 })
+      resolve({ lat: 11.94, lng: 108.44, uocLuong: true })
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve({ lat: 11.94, lng: 108.44 }), // từ chối quyền → tâm tỉnh
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, uocLuong: false }),
+      () => resolve({ lat: 11.94, lng: 108.44, uocLuong: true }), // từ chối quyền/timeout → tâm tỉnh
       { timeout: 5000 }
     )
   })
@@ -132,23 +163,22 @@ watch(boundaryError, (msg) => {
   if (msg) toastStore.showToast(msg)
 })
 
+function apDungMarkerSos(): void {
+  const active = sos.activeSos.value
+  capNhatMarkerSosCuaMinh(
+    active && {
+      lat: active.lat,
+      lng: active.lng,
+      status: active.status,
+      label: SOS_STATUS_LABEL[active.status]
+    }
+  )
+}
+
 // Vẽ/xoá marker SOS của chính victim mỗi khi trạng thái theo dõi đổi (gửi mới, cập nhật
 // qua socket/polling, huỷ, hoặc đóng thẻ theo dõi). deep:true vì useSos.ts sửa .status
 // ngay trên object cũ (không gán lại activeSos.value) nên watch nông sẽ không bắt được.
-watch(
-  () => sos.activeSos.value,
-  (active) => {
-    capNhatMarkerSosCuaMinh(
-      active && {
-        lat: active.lat,
-        lng: active.lng,
-        status: active.status,
-        label: SOS_STATUS_LABEL[active.status]
-      }
-    )
-  },
-  { deep: true, immediate: true }
-)
+watch(() => sos.activeSos.value, apDungMarkerSos, { deep: true, immediate: true })
 
 // ---------- Socket.IO — cập nhật thời gian thực ----------
 // TẠM THỜI (Phase 5.3/5.4 sẽ hoàn thiện): lắng nghe sự kiện SOS thật. Hiện chỉ hiện toast
@@ -168,12 +198,24 @@ const { isConnected, connect } = useSocket({
   }
 })
 
-// ---------- Khởi tạo / dọn dẹp bản đồ theo vòng đời component ----------
-onMounted(async () => {
-  await initMap('map', activeLayer.value)
-  // Khôi phục SOS đang hoạt động của victim (nếu có) sau khi F5 xoá sạch activeSos trong RAM
-  // (CLAUDE.md Mục 15.4) — chỉ gọi khi đã đăng nhập với vai trò victim, vì endpoint chỉ dành
-  // cho role đó. Phải chạy TRƯỚC đoạn áp marker bên dưới để marker vẽ đúng ngay từ đầu.
+// ---------- Đồng bộ state theo phiên đăng nhập ----------
+// Mọi thứ thuộc về PHIÊN (SOS đang theo dõi, marker của nó, kết nối socket mang JWT) phải
+// được dựng lại/dọn đi mỗi lần phiên đổi — chứ không chỉ một lần lúc mount như trước. Trước
+// đây toàn bộ đoạn này nằm thẳng trong onMounted nên đăng nhập/đăng xuất ngay tại /map
+// không kích hoạt lại gì cả: đăng nhập xong marker + thẻ theo dõi không hiện (phải F5), còn
+// đăng xuất thì marker + thẻ theo dõi của người vừa đăng xuất vẫn nằm nguyên trên màn hình.
+async function khoiTaoTheoRole(): Promise<void> {
+  // Nối lại socket bằng JWT hiện tại (useSocket.ts tự ngắt kết nối cũ mang token cũ, và tự
+  // bỏ qua nếu vừa đăng xuất — không còn token thì gateway cũng đá ra ngay).
+  connect(CONFIG.socketUrl)
+
+  // Dọn state của phiên TRƯỚC trước khi khôi phục phiên mới. Bắt buộc: activeSos chỉ sống
+  // trong RAM nên nếu victim A đăng xuất rồi B đăng nhập trên cùng máy, SOS của A vẫn hiển
+  // thị nguyên cho B. watch(activeSos) ở trên sẽ tự xoá marker theo.
+  sos.dongTheoDoi()
+
+  // Khôi phục SOS đang hoạt động của victim (nếu có) — sau F5 hoặc sau khi vừa đăng nhập
+  // (CLAUDE.md Mục 15.4). Chỉ gọi với role victim vì endpoint chỉ dành cho role đó.
   if (laVictim.value) {
     await sos.khoiPhucSosDangHoatDong()
     // Server không có SOS active nào — có thể vì SOS vừa gửi lúc mất mạng chưa từng tới
@@ -187,33 +229,59 @@ onMounted(async () => {
           lat: dangCho.lat,
           lng: dangCho.lng,
           type: dangCho.type,
+          locationEstimated: dangCho.locationEstimated,
           taoLuc: dangCho.taoLuc
         })
       }
     }
   }
-  // initMap() chạy async (chờ tải ranh giới) — nếu victim gửi SOS ngay lúc đó, watch ở trên
+  // initMap() chạy async (chờ tải ranh giới) — nếu state SOS đổi ngay lúc đó, watch ở trên
   // đã bỏ qua vì mapInstance chưa sẵn sàng. Áp lại một lần nữa cho chắc sau khi map đã có.
-  const active = sos.activeSos.value
-  capNhatMarkerSosCuaMinh(
-    active && {
-      lat: active.lat,
-      lng: active.lng,
-      status: active.status,
-      label: SOS_STATUS_LABEL[active.status]
-    }
-  )
+  apDungMarkerSos()
+}
+
+// ---------- Khởi tạo / dọn dẹp bản đồ theo vòng đời component ----------
+// Chặn watcher bên dưới chạy trước khi mount xong: lần khởi tạo đầu tiên do onMounted lo
+// (nó đọc trạng thái đăng nhập tại thời điểm chạy nên đã bao luôn ca người dùng bấm đăng
+// nhập trong lúc initMap còn đang tải ranh giới).
+let daKhoiTaoLanDau = false
+// Hàm gỡ listener online/offline mà offlineQueueStore.khoiTao() đăng ký — phải gọi lúc
+// unmount, nếu không mỗi lần vào lại /map là chồng thêm một listener nữa.
+let huyLangNgheHangDoi: (() => void) | null = null
+
+onMounted(async () => {
+  await initMap('map', activeLayer.value)
+  await khoiTaoTheoRole()
   mapDataStore.taiDiemCuuTroTuServer()
-  connect(CONFIG.socketUrl)
   // Khi có mạng trở lại: báo cáo minh hoạ trong hàng đợi được "gửi" theo đúng luồng
   // themMarkerBaoCao() có sẵn (tái dùng, không viết logic vẽ marker riêng lần 2); SOS thật
   // trong hàng đợi được gửi qua guiSos() thật, kết quả đổ ngược lại thẻ theo dõi hiện tại.
-  offlineQueueStore.khoiTao(
+  huyLangNgheHangDoi = offlineQueueStore.khoiTao(
     (baoCao) => themMarkerBaoCao(baoCao, activeLayer.value),
     (ketQua, goc) => sos.ghiNhanKetQuaThatTuHangDoi(ketQua, goc.lat, goc.lng)
   )
+  daKhoiTaoLanDau = true
 })
-onUnmounted(() => destroyMap())
+
+// Theo dõi thẳng store thay vì bắt sự kiện từ các nút: đổi phiên có thể tới từ modal đăng
+// nhập, nút đăng xuất trên thanh trên cùng, HOẶC từ interceptor 401 trong services/http.ts
+// tự đăng xuất khi token hết hạn — ca cuối không có nút nào để phát sự kiện, nên cách bắt
+// sự kiện sẽ bỏ sót đúng nó. Store là nguồn sự thật duy nhất nên watch ở đây bao hết.
+// Watch theo user?.id (giá trị nguyên thuỷ) chứ không watch cả object: fetchMe() lúc khởi
+// động gán lại user mới cùng id, watch object sẽ chạy lại thừa một lần vô ích.
+watch(
+  () => authStore.user?.id,
+  () => {
+    if (!daKhoiTaoLanDau) return
+    void khoiTaoTheoRole()
+  }
+)
+
+onUnmounted(() => {
+  destroyMap()
+  huyLangNgheHangDoi?.()
+  huyLangNgheHangDoi = null
+})
 
 // Đổi tab lớp (?layer=...) không cần tải lại trang — chỉ cập nhật marker đang hiện.
 watch(activeLayer, (layer) => {
@@ -222,7 +290,7 @@ watch(activeLayer, (layer) => {
 </script>
 
 <template>
-  <div class="map-page">
+  <div class="map-page" :class="{ 'co-nut-sos': coNutSos }">
     <MapTopBar @open-auth="isAuthOpen = true" />
     <MapStats />
     <div id="map"></div>
@@ -231,7 +299,7 @@ watch(activeLayer, (layer) => {
          đang chờ response gửi (dangGui) — thiếu vế sau từng là race condition thật: dialog
          đóng ngay lúc bấm "Gửi ngay" nhưng dangHoatDong chỉ true SAU khi API trả về, nên
          trong lúc mạng chậm nút SOS hiện lại được và bấm gửi trùng lần 2. -->
-    <div v-if="laVictim && !sos.dangHoatDong.value && !sos.dangGui.value" class="sos-fab">
+    <div v-if="coNutSos" class="sos-fab">
       <SosButton @open="moSosDialog" />
     </div>
     <SosConfirmDialog
@@ -264,7 +332,10 @@ watch(activeLayer, (layer) => {
         </div>
       </div>
     </div>
-    <div class="socket-status" :class="{ connected: isConnected }">
+    <!-- Chỉ hiện khi đã đăng nhập: khách vãng lai không được phép mở kết nối socket (gateway
+         verify JWT rồi disconnect ngay), nên báo "chưa kết nối" với họ là báo động giả —
+         khiến người ta tưởng hệ thống hỏng đúng lúc cần tin tưởng nó nhất. -->
+    <div v-if="authStore.isLoggedIn" class="socket-status" :class="{ connected: isConnected }">
       <span class="dot"></span>{{ isConnected ? 'Cập nhật thời gian thực: đang bật' : 'Cập nhật thời gian thực: chưa kết nối' }}
     </div>
     <div v-if="offlineQueueStore.soLuongChoGui > 0" class="offline-badge">

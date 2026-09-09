@@ -53,6 +53,8 @@ export class SosRequest {
   @Column({ name: 'assigned_team_id', nullable: true }) assignedTeamId: string;
   @Column({ name: 'ward_code', nullable: true }) wardCode: string;
   @Column({ name: 'false_alarm_count', default: 0 }) falseAlarmCount: number;
+  @Column({ name: 'location_estimated', default: false })
+  locationEstimated: boolean;
   @Column({ name: 'cancel_deadline', nullable: true }) cancelDeadline: Date;
   @CreateDateColumn({ name: 'created_at' }) createdAt: Date;
   @UpdateDateColumn({ name: 'updated_at' }) updatedAt: Date;

@@ -28,8 +28,21 @@ export function useSocket(handlers: SocketHandlers = {}) {
   let socket: AppSocket | null = null
 
   function connect(url: string) {
-    daThuKetNoi.value = true
     const authStore = useAuthStore()
+
+    // Ngắt kết nối cũ trước khi mở kết nối mới. connect() giờ được gọi lại mỗi lần đổi
+    // phiên đăng nhập (xem MapView.vue), mà trước đây gọi lần 2 chỉ ghi đè biến `socket` —
+    // socket cũ vẫn sống, vẫn nghe event và vẫn mang JWT của người dùng CŨ.
+    disconnect()
+
+    // sos.gateway.ts verify JWT trong handleConnection() và disconnect() ngay nếu không
+    // có/không hợp lệ. Nối khi chưa đăng nhập vì thế luôn thất bại, lại còn khiến
+    // socket.io thử lại 5 lần (reconnectionAttempts) hoàn toàn vô ích. Không nối, và để
+    // isConnected = false — MapView.vue ẩn hẳn chỉ báo "Thời gian thực" khi chưa đăng nhập
+    // vì báo "mất kết nối" cho người vốn không được phép kết nối là báo động giả.
+    if (!authStore.accessToken) return
+
+    daThuKetNoi.value = true
 
     socket = io(url, {
       // Gửi kèm JWT ngay lúc bắt tay — backend verify trong handleConnection().

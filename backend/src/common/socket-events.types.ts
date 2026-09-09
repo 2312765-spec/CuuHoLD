@@ -53,6 +53,9 @@ export interface SosNewPayload {
   status: SosStatus;
   lat: number;
   lng: number;
+  // true nếu toạ độ chỉ là ước tính (GPS thất bại/bị từ chối quyền, xem CreateSosDto) —
+  // rescuer/commander cần biết để không hoàn toàn tin vào ghim trên bản đồ.
+  locationEstimated: boolean;
   wardCode: string;
   createdAt: string;
   cancelDeadline: string;

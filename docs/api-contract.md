@@ -58,17 +58,23 @@ Mọi request/response body dùng `lat`/`lng` riêng biệt (không phải GeoJS
 convert sang `ST_MakePoint(lng, lat)` — **frontend không cần quan tâm thứ tự này, chỉ cần
 gửi đúng field `lat`/`lng` như spec dưới**.
 
-### ⚠️ Rate limit trong CLAUDE.md — CHƯA implement
-CLAUDE.md Mục 10 mô tả rate limit (5 SOS/giờ/user, 5 login/15 phút/IP, 3 đăng ký/giờ/IP)
-nhưng **backend hiện KHÔNG có `@nestjs/throttler` hay middleware giới hạn nào** — gọi
-liên tục không bị chặn. Đừng code frontend dựa trên giả định có rate limit ở server.
+### Rate limit — ĐÃ implement (từ 2026-09-06)
+`@nestjs/throttler` đã bật: `POST /api/auth/login` (5/15 phút), `POST /api/auth/register`
+(3/giờ), `POST /api/sos` (5/giờ), mọi route khác baseline 100/phút. Bucket theo `user.id`
+khi có Bearer token hợp lệ, fallback IP cho route công khai. Xem CLAUDE.md Mục 15.1.
+(Dòng này từng ghi "CHƯA implement" — đã lỗi thời so với code, sửa lại 2026-09-06.)
 
 ---
 
 ## 1. Auth (`/api/auth`)
 
 ### POST /api/auth/register
-Public.
+Public. **Luôn tạo tài khoản role `victim`** — KHÔNG có field `role` trong body (đã cố ý xoá
+2026-09-06, xem CLAUDE.md Mục 15: từng là lỗ hổng leo thang đặc quyền — ai gọi thẳng API
+cũng tự phong mình làm `commander`/`rescuer` được). Gửi kèm `role` trong body bị `400` (
+`ValidationPipe` `forbidNonWhitelisted: true`). Muốn tạo tài khoản `rescuer`/`commander`:
+chạy `gis/06-seed-demo-users.sql` (demo) hoặc thao tác trực tiếp trên DB — không có endpoint
+public nào tạo được.
 
 **Body**
 ```json
@@ -76,8 +82,7 @@ Public.
   "phone": "0901234567",       // bắt buộc, regex ^0\d{9,10}$
   "name": "Nguyễn Văn A",      // bắt buộc, 2-100 ký tự
   "password": "matkhau123",    // bắt buộc, tối thiểu 8 ký tự
-  "role": "victim",            // optional, enum victim|rescuer|commander, default victim
-  "wardCode": "24823"          // bắt buộc — mã xã/phường (ma_xa), KHÔNG còn districtCode
+  "wardCode": "24823"          // optional — mã xã/phường (ma_xa)
 }
 ```
 
@@ -134,7 +139,9 @@ Role: `victim`.
   "lng": 108.4419,            // bắt buộc, -180..180
   "type": "flood",            // bắt buộc, enum: flood|landslide|accident|medical|fire|lost|drowning|agricultural|adventure|other
   "description": "...",       // optional
-  "imageUrl": "https://..."   // optional
+  "imageUrl": "https://...",  // optional
+  "locationEstimated": false  // optional, default false — true nếu toạ độ chỉ là ước tính
+                               // (GPS thất bại/bị từ chối quyền ở client), xem CLAUDE.md Mục 15 (fix P0 an toàn)
 }
 ```
 Backend **tự suy ra `wardCode`** từ `lat/lng` qua trigger DB (`ST_Contains`) — không gửi
@@ -151,13 +158,23 @@ Backend **tự suy ra `wardCode`** từ `lat/lng` qua trigger DB (`ST_Contains`)
     "status": "pending",
     "ward_code": "24823",
     "created_at": "2026-09-03T08:00:00.000Z",
-    "cancel_deadline": "2026-09-03T08:03:00.000Z"
+    "cancel_deadline": "2026-09-03T08:03:00.000Z",
+    "location_estimated": false
   }
 }
 ```
 ⚠️ **Field trong `data` là `snake_case`** (`ward_code`, `created_at`, `cancel_deadline`) —
 khác với payload Socket.io tương ứng (`SosNewPayload`) là `camelCase`. Đừng dùng chung 1
 interface cho cả 2, map riêng.
+
+**Tự động phân công đội gần nhất (từ 2026-09-06).** Ngay sau khi INSERT, backend gọi
+`GisService.findNearestTeams(lat, lng, 10000, 1)` — nếu có đội `available` trong bán kính
+10km, tự gán luôn (`status` trong `data` trả về đã là `"assigned"`, không phải `"pending"`)
+và emit thêm `sos:updated` (ngoài `sos:new`) để rescuer đội đó nhận nhiệm vụ ngay qua đúng
+luồng UI sẵn có cho phân công tay. Không tìm thấy đội nào → giữ nguyên `"pending"`, commander
+phân công tay như cũ qua `PATCH /:id/assign`. `sos_timeline` ghi 1 dòng `action:"assigned"`
+với `actor_id` = chính victim (không có actor "hệ thống" tách riêng) và `note` phân biệt rõ
+đây là tự động, không phải victim tự thao tác.
 
 Ngay sau khi tạo, backend emit Socket.io `sos:new` vào room `ward:{wardCode}` +
 `province:lamdong`, và gọi SMS dự phòng (không block response).
@@ -179,7 +196,7 @@ Role: `rescuer` (chỉ SOS trong `wardCode` của mình) hoặc `commander` (to�
   "data": [
     {
       "id": "uuid", "type": "flood", "status": "pending", "ward_code": "24823",
-      "created_at": "...", "lat": 11.9465, "lng": 108.4419,
+      "created_at": "...", "lat": 11.9465, "lng": 108.4419, "location_estimated": false,
       "victim_name": "Nguyễn Văn A", "victim_phone": "0901234567"
     }
   ]
@@ -209,7 +226,7 @@ SOS cùng `wardCode` (`403` nếu khác), `commander` xem được tất cả.
   "data": {
     "id": "uuid", "victim_id": "uuid", "type": "flood", "status": "assigned",
     "description": null, "image_url": null, "ward_code": "24823",
-    "false_alarm_count": 0, "cancel_deadline": "...",
+    "false_alarm_count": 0, "cancel_deadline": "...", "location_estimated": false,
     "created_at": "...", "updated_at": "...", "resolved_at": null,
     "lat": 11.9465, "lng": 108.4419,
     "assigned_team_id": "uuid", "team_name": "Đội cứu hộ Đà Lạt 1", "team_status": "busy",
@@ -231,15 +248,13 @@ Role: `victim`, phải là chủ SOS (`403` nếu không phải).
 
 **200 OK**
 ```json
-{ "success": true, "message": "Đã hủy SOS", "data": { "sosId": "uuid", "status": "cancelled", "penaltyApplied": false } }
+{ "success": true, "message": "Đã hủy SOS", "data": { "sosId": "uuid", "status": "cancelled", "penaltyApplied": false, "accountFlagged": false } }
 ```
-`penaltyApplied = true` nếu hủy **sau** `cancel_deadline` (3 phút kể từ lúc tạo). Lỗi
-`400` nếu SOS đã ở trạng thái kết thúc (`resolved`/`cancelled`/`false_alarm`).
-
-> ⚠️ Backend hiện **chưa cộng dồn `false_alarm_count` / auto-flag tài khoản sau 3 lần
-> phạt** như mô tả CLAUDE.md Mục 10 — `cancel()` chỉ update `status`, không đụng tới
-> `false_alarm_count`. Đừng hiển thị UI "cảnh báo tài khoản" dựa trên field này ở FE vì
-> backend chưa tính.
+`penaltyApplied = true` nếu hủy **sau** `cancel_deadline` (3 phút kể từ lúc tạo) — khi đó
+`sos_requests.false_alarm_count` (+1) và `users.late_cancel_count` (+1) đều tăng, `accountFlagged`
+lên `true` khi `late_cancel_count` đạt ngưỡng 3 (`users.is_flagged`). Lỗi `400` nếu SOS đã ở
+trạng thái kết thúc (`resolved`/`cancelled`/`false_alarm`). Message trả về đổi thành
+`"Đã hủy SOS. Cảnh báo: tài khoản đã huỷ trễ nhiều lần và bị đánh dấu."` khi `accountFlagged`.
 
 ### PATCH /api/sos/:id/assign
 Role: `commander`.
@@ -408,10 +423,18 @@ không tự định nghĩa lại tên event hay field (xem checklist tích hợp
 ## 6. Chưa implement / khác với CLAUDE.md
 
 - `POST /api/auth/refresh` — không có route.
-- Rate limiting (5 SOS/giờ, 5 login/15 phút, 3 đăng ký/giờ) — không có `ThrottlerGuard` nào trong code.
-- `false_alarm_count` tăng dần + auto-flag tài khoản sau 3 lần phạt — `cancel()` chưa cập nhật field này.
 - `GET /api/ranhgioi` (ranh giới xã/phường qua API) — không tồn tại và **sẽ không được thêm**;
   dùng file tĩnh `public/data/lamdong-wards.geojson` ở frontend (theo CLAUDE.md Mục 5).
+- `GET /api/gis/sos-heatmap` — có route, có SQL, nhưng **không có nơi nào ở frontend gọi**
+  (`DashboardView.vue` chưa vẽ heatmap); SQL đang `GROUP BY location` (toạ độ tuyệt đối)
+  nên `incident_count` gần như luôn = 1 kể cả khi nối dây xong — xem CLAUDE.md Mục 15.6.
+- 3 socket event client→server ở CLAUDE.md Mục 8 (`sos:victim-cancel`, `commander:assign-team`,
+  `rescuer:update-status`) — không có `@SubscribeMessage` nào trong `sos.gateway.ts` khớp;
+  chỉ `team:update-location` là thật. Frontend dùng REST cho 3 việc kia, đúng.
+
+> Đã sửa khỏi danh sách này (từng ghi ở đây, nay đã implement — xem CLAUDE.md Mục 15.1/15.6):
+> rate limiting (`@nestjs/throttler`, từ 2026-09-06), `false_alarm_count`/auto-flag tài khoản
+> sau 3 lần huỷ trễ (từ 2026-09-06), tự động phân công đội gần nhất lúc tạo SOS (từ 2026-09-06).
 
 ---
 

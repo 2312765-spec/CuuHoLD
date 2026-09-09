@@ -34,7 +34,12 @@ const cards: FeatureCardData[] = [
       <span class="feat-num">{{ card.num }}</span>
       <h3>{{ card.title }}</h3>
       <p>{{ card.desc }}</p>
-      <RouterLink class="go" :to="{ path: '/map', query: { layer: card.layer } }" target="_blank" rel="noopener">
+      <!-- KHÔNG dùng target="_blank": phiên đăng nhập lưu trong sessionStorage (riêng từng
+           tab, xem stores/auth.store.ts) và rel="noopener" chặn trình duyệt sao chép nó
+           sang tab mới — mở tab mới là mất phiên, người dùng vừa đăng nhập ở trang chủ
+           xong sang bản đồ lại bị đòi đăng nhập lần nữa. Đi cùng tab thì store Pinia còn
+           nguyên trong RAM, không cần khôi phục gì cả. -->
+      <RouterLink class="go" :to="{ path: '/map', query: { layer: card.layer } }">
         {{ card.linkLabel }}
       </RouterLink>
     </div>

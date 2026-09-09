@@ -68,18 +68,34 @@
 .pin-popup b{ display:block; font-family:'Fraunces',serif; font-size:14px; margin-bottom:2px; }
 .pin-popup span{ font-size:12px; color:rgba(42,42,36,0.65); }
 
-/* marker tuỳ chỉnh (L.divIcon) — ghi đè style mặc định Leaflet gắn cho mọi div icon */
-.custom-marker-pin{
+/* marker tuỳ chỉnh (L.divIcon) — ghi đè style mặc định Leaflet gắn cho mọi div icon.
+   ⚠️ Tên class ở đây PHẢI khớp đúng thứ utils/markerIcon.ts sinh ra. Trước đây cả khối này
+   viết cho '.custom-marker-pin' trong khi code sinh ra 'custom-marker-icon' + '.marker-pin'
+   — không selector nào khớp, nên toàn bộ đổ bóng, hiệu ứng hover và vòng nhấp nháy cảnh báo
+   Khẩn cấp chưa từng chạy, và marker hiện ra dưới dạng ô VUÔNG thay vì hình ghim bản đồ. */
+.custom-marker-icon{
   background:transparent !important;
   border:none !important;
   filter:drop-shadow(0 3px 4px rgba(0,0,0,0.28));
   transition:transform .15s ease;
 }
-.custom-marker-pin:hover{ transform:scale(1.12); z-index:1000 !important; }
+.custom-marker-icon:hover{ transform:scale(1.12); z-index:1000 !important; }
+
+/* Hình ghim bản đồ: tròn 3 góc, nhọn ở góc dưới-trái rồi xoay -45° cho mũi nhọn chúc
+   xuống — khớp iconAnchor [16,32] (neo ở đáy) trong markerIcon.ts. SVG bên trong phải xoay
+   ngược +45° để icon vẫn đứng thẳng. */
+.marker-pin{
+  width:28px; height:28px;
+  border-radius:50% 50% 50% 0;
+  transform:rotate(-45deg);
+  display:flex; align-items:center; justify-content:center;
+  box-sizing:border-box;
+}
+.marker-pin svg{ width:15px; height:15px; transform:rotate(45deg); }
 
 /* vòng nhấp nháy cảnh báo cho báo cáo mức Khẩn cấp — hiệu ứng CSS này KHÔNG làm được
    với circleMarker cũ vì circleMarker không phải phần tử HTML thật. */
-.custom-marker-pin--khan::before{
+.custom-marker-icon--khan::before{
   content:"";
   position:absolute;
   left:50%; top:14px;
@@ -157,7 +173,11 @@
   .stat-note{ display:inline; }
   .modal-card{ margin:0; width:100%; }
 }
-/* ---------- chỉ báo trạng thái kết nối real-time (góc dưới phải) ---------- */
+/* ---------- chỉ báo trạng thái kết nối real-time (góc dưới phải) ----------
+   Khi nút SOS đang hiện (chỉ victim, và chỉ lúc chưa có SOS nào đang chạy), 3 huy hiệu
+   dưới đây phải nhường chỗ — nút SOS cao 120px chiếm nguyên góc dưới phải. Bù trừ bằng
+   class .co-nut-sos do MapView.vue gắn lên .map-page thay vì đẩy lên cố định: với
+   rescuer/commander (không bao giờ có nút SOS) mà vẫn chừa 164px trống thì trông như lỗi. */
 .socket-status{
   position:fixed; right:20px; bottom:24px; z-index:900;
   display:flex; align-items:center; gap:8px;
@@ -169,12 +189,17 @@
 .socket-status.connected{ color:var(--pine); }
 
 /* ---------- nút SOS nổi (chỉ victim) ---------- */
+/* Góc dưới PHẢI ở mọi kích thước màn hình: đây là hành động quan trọng nhất của victim nên
+   đặt trong tầm ngón cái. Trước đây nút nằm góc dưới TRÁI (≥760px) và đè thẳng lên bảng
+   chú thích .map-legend-panel — cùng góc, cùng vùng toạ độ. */
 .sos-fab{
-  position:fixed; left:50%; bottom:30px; transform:translateX(-50%); z-index:950;
+  position:fixed; right:24px; bottom:24px; z-index:950;
 }
-@media (min-width:760px){
-  /* trên màn hình rộng, đưa xuống góc trái để không che bản đồ giữa */
-  .sos-fab{ left:30px; transform:none; }
+
+/* Nút zoom Leaflet chuyển sang góc dưới trái, nâng lên phía trên bảng chú thích
+   (.map-legend-panel cao ~98px, đáy cách 24px) để hai thứ không chồng nhau. */
+.leaflet-bottom.leaflet-left .leaflet-control-zoom{
+  margin-left:20px; margin-bottom:134px;
 }
 
 /* ---------- phần bên phải thanh topbar bản đồ (nút + user) ---------- */
@@ -194,3 +219,8 @@
 .offline-badge .dot{ width:7px; height:7px; border-radius:50%; background:var(--clay); flex-shrink:0; }
 .offline-badge--sos{ bottom:100px; color:var(--clay); font-weight:600; }
 .offline-badge--sos .dot{ background:var(--clay); }
+
+/* Nút SOS chiếm góc dưới phải (24px + 120px cao) → đẩy cả 3 huy hiệu lên trên nó. */
+.co-nut-sos .socket-status{ bottom:164px; }
+.co-nut-sos .offline-badge{ bottom:204px; }
+.co-nut-sos .offline-badge--sos{ bottom:244px; }

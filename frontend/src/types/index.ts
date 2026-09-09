@@ -16,6 +16,9 @@ export interface SosRequest {
   image_url: string | null
   ward_code: string
   cancel_deadline: string
+  // true nếu toạ độ chỉ là ước tính (GPS thất bại/bị từ chối quyền) — không phải vị trí
+  // thật, rescuer/commander cần biết để không hoàn toàn tin vào ghim trên bản đồ.
+  location_estimated: boolean
   created_at: string
   updated_at: string
   resolved_at: string | null
@@ -35,6 +38,7 @@ export interface CreateSosResult {
   ward_code: string | null
   created_at: string
   cancel_deadline: string
+  location_estimated: boolean
 }
 
 // ---- SOS tóm tắt: khớp response GET /api/sos (danh sách) ----
@@ -46,6 +50,7 @@ export interface SosListItem {
   created_at: string
   lat: number
   lng: number
+  location_estimated: boolean
   victim_name: string
   victim_phone: string
 }
@@ -83,6 +88,9 @@ export interface CancelSosResult {
   sosId: string
   status: 'cancelled'
   penaltyApplied: boolean
+  // true khi huỷ trễ lần này khiến tài khoản đạt ngưỡng 3 lần → users.is_flagged=true
+  // (xem CLAUDE.md Mục 10, Mục 15.1). Không chặn gửi SOS/đăng nhập, chỉ để cảnh báo UI.
+  accountFlagged: boolean
 }
 
 // ---- Kết quả PATCH /api/sos/:id/assign (camelCase — khác các route SOS khác) ----

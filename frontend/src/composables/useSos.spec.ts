@@ -39,7 +39,8 @@ const KET_QUA_MAU: CreateSosResult = {
   status: 'pending',
   ward_code: '24781',
   created_at: '2026-01-01T00:00:00.000Z',
-  cancel_deadline: '2026-01-01T00:03:00.000Z'
+  cancel_deadline: '2026-01-01T00:03:00.000Z',
+  location_estimated: false
 }
 
 describe('useSos', () => {
@@ -69,6 +70,15 @@ describe('useSos', () => {
     expect(sos.dangHoatDong.value).toBe(true)
   })
 
+  it('guiYeuCauSos() lưu lại locationEstimated từ response server (fix P0 an toàn — cảnh báo vị trí ước tính)', async () => {
+    vi.mocked(sosService.guiSos).mockResolvedValue({ ...KET_QUA_MAU, location_estimated: true })
+    const sos = setupUseSos()
+
+    await sos.guiYeuCauSos({ lat: 11.94, lng: 108.44, type: 'flood', locationEstimated: true })
+
+    expect(sos.activeSos.value?.locationEstimated).toBe(true)
+  })
+
   it('dangHoatDong là false khi SOS đã ở trạng thái kết thúc (resolved/cancelled/false_alarm)', async () => {
     vi.mocked(sosService.guiSos).mockResolvedValue({ ...KET_QUA_MAU, status: 'resolved' })
     const sos = setupUseSos()
@@ -80,7 +90,12 @@ describe('useSos', () => {
 
   it('huyYeuCauSos() cập nhật đúng trạng thái trả về từ server', async () => {
     vi.mocked(sosService.guiSos).mockResolvedValue(KET_QUA_MAU)
-    const ketQuaHuy: CancelSosResult = { sosId: 'sos-1', status: 'cancelled', penaltyApplied: false }
+    const ketQuaHuy: CancelSosResult = {
+      sosId: 'sos-1',
+      status: 'cancelled',
+      penaltyApplied: false,
+      accountFlagged: false
+    }
     vi.mocked(sosService.huySos).mockResolvedValue(ketQuaHuy)
 
     const sos = setupUseSos()
@@ -120,7 +135,7 @@ describe('useSos', () => {
   it('datSosChoGui() rồi ghiNhanKetQuaThatTuHangDoi() thay id tạm bằng dữ liệu thật (luồng hàng đợi offline)', () => {
     const sos = setupUseSos()
 
-    sos.datSosChoGui({ localId: 'local-1', lat: 11.9, lng: 108.4, type: 'flood' })
+    sos.datSosChoGui({ localId: 'local-1', lat: 11.9, lng: 108.4, type: 'flood', locationEstimated: false })
     expect(sos.activeSos.value?.localId).toBe('local-1')
     expect(sos.activeSos.value?.status).toBe('pending')
     expect(sos.dangHoatDong.value).toBe(true)
@@ -137,8 +152,9 @@ describe('useSos', () => {
     // sai từ "bây giờ" sẽ vô tình cho thêm 3 phút mới, sai với hạn huỷ miễn phạt thật.
     const taoLuc = new Date(Date.now() - 2 * 60_000).toISOString()
 
-    sos.datSosChoGui({ localId: 'local-1', lat: 11.9, lng: 108.4, type: 'flood', taoLuc })
+    sos.datSosChoGui({ localId: 'local-1', lat: 11.9, lng: 108.4, type: 'flood', locationEstimated: true, taoLuc })
 
+    expect(sos.activeSos.value?.locationEstimated).toBe(true)
     expect(sos.activeSos.value?.createdAt).toBe(taoLuc)
     expect(sos.activeSos.value?.cancelDeadline).toBe(
       new Date(new Date(taoLuc).getTime() + 3 * 60_000).toISOString()

@@ -28,8 +28,9 @@ const router = createRouter({
 router.beforeEach((to) => {
   const authStore = useAuthStore()
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
-    // Chưa đăng nhập mà vào khu vực cần quyền → đưa về trang chủ (modal đăng nhập ở đó).
-    return { name: 'home' }
+    // Chưa đăng nhập mà vào khu vực cần quyền → về trang chủ (cổng vào duy nhất) kèm
+    // ?auth=1 để HomeView tự bật sẵn modal đăng nhập, khỏi bắt người dùng tự mò nút.
+    return { name: 'home', query: { auth: '1' } }
   }
   const roles = to.meta.roles as UserRole[] | undefined
   if (roles && authStore.role && !roles.includes(authStore.role)) {

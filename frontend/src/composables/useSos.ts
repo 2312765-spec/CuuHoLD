@@ -24,6 +24,9 @@ export interface ActiveSos {
   status: SosStatus
   lat: number
   lng: number
+  // true nếu toạ độ chỉ là ước tính (GPS thất bại/bị từ chối quyền lúc gửi) — dùng hiện
+  // cảnh báo cho victim ở SosTrackerPanel (fix P0 an toàn, xem CLAUDE.md Mục 15).
+  locationEstimated: boolean
   createdAt: string
   cancelDeadline: string
   // Có giá trị CHỈ khi SOS này đang nằm trong hàng đợi offline, chưa từng tới server
@@ -72,6 +75,7 @@ export function useSos() {
     lng: number
     type: SosType
     description?: string
+    locationEstimated?: boolean
   }): Promise<CreateSosResult> {
     dangGui.value = true
     try {
@@ -84,6 +88,7 @@ export function useSos() {
         // (server lưu y hệt, chỉ suy thêm ward_code từ đó qua trigger PostGIS).
         lat: payload.lat,
         lng: payload.lng,
+        locationEstimated: res.location_estimated,
         createdAt: res.created_at,
         cancelDeadline: res.cancel_deadline
       }
@@ -108,6 +113,7 @@ export function useSos() {
     lat: number
     lng: number
     type: SosType
+    locationEstimated: boolean
     taoLuc?: string
   }): void {
     const createdAt = local.taoLuc ?? new Date().toISOString()
@@ -117,6 +123,7 @@ export function useSos() {
       status: 'pending',
       lat: local.lat,
       lng: local.lng,
+      locationEstimated: local.locationEstimated,
       createdAt,
       // Hạn huỷ miễn phạt tính tạm từ lúc lưu — sẽ được thay bằng giá trị thật của server
       // ngay khi hàng đợi gửi thành công (ghiNhanKetQuaThatTuHangDoi).
@@ -136,6 +143,7 @@ export function useSos() {
       status: res.status,
       lat,
       lng,
+      locationEstimated: res.location_estimated,
       createdAt: res.created_at,
       cancelDeadline: res.cancel_deadline
     }
@@ -156,6 +164,7 @@ export function useSos() {
         status: detail.status,
         lat: detail.lat,
         lng: detail.lng,
+        locationEstimated: detail.location_estimated,
         createdAt: detail.created_at,
         cancelDeadline: detail.cancel_deadline
       }

@@ -48,6 +48,10 @@ const demNguocHuy = computed(() => {
       <span class="sos-tracker-status">{{ SOS_STATUS_LABEL[activeSos.status] }}</span>
     </div>
 
+    <p v-if="activeSos.locationEstimated" class="sos-tracker-note sos-tracker-note--warn">
+      ⚠️ Vị trí gửi là ước tính (không lấy được GPS chính xác) — hãy mô tả rõ vị trí thật nếu
+      liên hệ được với trung tâm điều phối.
+    </p>
     <p v-if="activeSos.localId" class="sos-tracker-note sos-tracker-note--warn">
       Không có mạng — đã lưu trên máy, sẽ tự gửi ngay khi có mạng trở lại
     </p>

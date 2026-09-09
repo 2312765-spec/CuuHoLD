@@ -131,9 +131,24 @@ export function useLeafletMap() {
     applyLayerVisibility(mapInstance.value, activeLayer)
   }
 
+  // Nhận diện phản hồi JSON thật, tránh nuốt nhầm index.html do SPA fallback trả về.
+  // GeoJSON có thể được phục vụ dưới 'application/json' hoặc 'application/geo+json'.
+  function laJson(res: Response): boolean {
+    return (res.headers.get('content-type') ?? '').includes('json')
+  }
+
   async function initMap(containerId: string, activeLayer: MapLayerKey) {
-    const map = L.map(containerId, { zoomControl: false }).setView([11.94, 108.44], 8)
-    L.control.zoom({ position: 'bottomright' }).addTo(map)
+    // preferCanvas: lớp ranh giới 123 xã/phường có ~510.000 điểm toạ độ. Renderer SVG mặc
+    // định tạo mỗi vùng một phần tử DOM và giật rõ khi pan/zoom ở mật độ này; canvas vẽ
+    // toàn bộ vào một thẻ <canvas> nên mượt hơn hẳn.
+    const map = L.map(containerId, { zoomControl: false, preferCanvas: true }).setView(
+      [11.94, 108.44],
+      8
+    )
+    // bottomleft chứ không phải bottomright: góc dưới PHẢI nay dành cho nút SOS (hành động
+    // chính của victim, đặt trong tầm ngón cái). Ở vị trí cũ nút zoom còn đè lên chỉ báo
+    // "Cập nhật thời gian thực" — cả hai cùng nằm sát góc phải dưới.
+    L.control.zoom({ position: 'bottomleft' }).addTo(map)
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
@@ -151,14 +166,26 @@ export function useLeafletMap() {
       let laRanhGioiXa = true
 
       const resWards = await fetch('/data/lamdong-wards.geojson')
-      if (resWards.ok) {
+      // KHÔNG chỉ kiểm res.ok: khi file không tồn tại, dev server Vite (và mọi host cấu
+      // hình SPA fallback) trả về index.html kèm mã 200 chứ không phải 404. res.ok khi đó
+      // là true, .json() ném SyntaxError, và nhánh fallback bên dưới KHÔNG BAO GIỜ chạy —
+      // mất sạch ranh giới thay vì lùi về ranh giới tỉnh. Phải kiểm cả content-type.
+      if (resWards.ok && laJson(resWards)) {
         geojson = await resWards.json()
       } else {
         // Fallback: file xã/phường chưa có → dùng ranh giới tỉnh tạm.
         laRanhGioiXa = false
         const resTinh = await fetch('/lamdong_tinh.geojson')
-        if (!resTinh.ok) throw new Error(`Không tải được ranh giới (mã ${resTinh.status})`)
+        if (!resTinh.ok || !laJson(resTinh)) {
+          throw new Error(`Không tải được ranh giới (mã ${resTinh.status})`)
+        }
         geojson = await resTinh.json()
+      }
+
+      // Ghi công nguồn dữ liệu ranh giới ngay trên bản đồ, cạnh attribution của
+      // OpenStreetMap (xem public/data/README.md để biết nguồn đầy đủ).
+      if (laRanhGioiXa) {
+        map.attributionControl.addAttribution('Ranh giới: gis.vn')
       }
 
       const boundaryLayer = L.geoJSON(geojson as GeoJSON.GeoJsonObject, {
@@ -172,9 +199,24 @@ export function useLeafletMap() {
             // Tên field tuỳ nguồn dữ liệu wards — thử vài tên phổ biến (ten_xa, TenXa, name...).
             const tenXa = p.ten_xa ?? p.TenXa ?? p.name ?? p.NAME ?? 'Xã/phường'
             const maXa = p.ma_xa ?? p.MaXa ?? p.ward_code ?? ''
+            // loai/dtich_km2/dan_so/sap_nhap có sẵn trong nguồn (và khớp đúng các cột của
+            // bảng `wards`) nhưng trước đây bị bỏ phí — popup chỉ hiện mỗi tên + mã.
+            const dongMoTa = [
+              p.loai,
+              typeof p.dtich_km2 === 'number'
+                ? `${p.dtich_km2.toLocaleString('vi-VN')} km²`
+                : null,
+              typeof p.dan_so === 'number'
+                ? `${p.dan_so.toLocaleString('vi-VN')} dân`
+                : null
+            ]
+              .filter(Boolean)
+              .join(' · ')
             layer.bindPopup(
               `<div class="pin-popup"><b>${tenXa}</b>` +
-                (maXa ? `<span>Mã: ${maXa}</span>` : '') +
+                (dongMoTa ? `<span>${dongMoTa}</span>` : '') +
+                (maXa ? `<span>Mã xã: ${maXa}</span>` : '') +
+                (p.sap_nhap ? `<span>Sáp nhập từ: ${p.sap_nhap}</span>` : '') +
                 `</div>`
             )
           } else {

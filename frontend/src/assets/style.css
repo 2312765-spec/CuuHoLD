@@ -66,7 +66,11 @@
   .hero h1{font-size:clamp(38px,6vw,64px); line-height:1.06; margin-bottom:22px;}
   .hero h1 em{font-style:normal; color:var(--clay);}
   .hero p{font-size:18px; color:rgba(42,42,36,0.72); max-width:520px; margin-bottom:34px;}
-  .hero-actions{display:flex; gap:14px; margin-bottom:56px;}
+  /* flex-wrap + align-items: hero-actions giờ có thêm link phụ "xem bản đồ không cần đăng
+     nhập" làm item thứ 3 — không cho xuống dòng thì tràn ngang trên màn hình hẹp. */
+  .hero-actions{display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-bottom:56px;}
+  .hero-map-link{font-size:14px; color:var(--pine-deep); text-decoration:underline; text-underline-offset:3px; opacity:0.7;}
+  .hero-map-link:hover{opacity:1;}
   .hero-stats{display:flex; gap:40px; justify-content:center;flex-wrap:wrap;}
   .hero-stat b{display:block; font-family:'Fraunces',serif; font-size:28px; color:var(--fog);}
   .hero-stat span{font-size:13px; color:rgba(245,241,230,0.6);}

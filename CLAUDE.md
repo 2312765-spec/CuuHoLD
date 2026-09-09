@@ -227,7 +227,8 @@ rescue-gis-lamdong/
 │
 ├── gis/
 │   ├── 01-schema-wards.sql             ← Bảng wards (xã/phường) + RLS + GiST index
-│   ├── 02-seed-wards.sql               ← 123 xã/phường Lâm Đồng mới (sau sáp nhập 2025)
+│   ├── 02-seed-wards.sql               ← 123/124 xã/phường Lâm Đồng mới (thiếu Đam Rông 2,
+│   │                                      xem frontend/public/data/README.md)
 │   ├── 03-migrate-existing-tables.sql  ← users/sos_requests: district_code → ward_code
 │   └── queries.sql                     ← PostGIS queries khác (C viết, B dùng)
 │
@@ -312,9 +313,12 @@ rescue-gis-lamdong/
     │   └── types/
     │       └── index.ts               ← Re-export từ shared/
     └── public/data/
-        └── lamdong-wards.geojson      ← Ranh giới xã/phường (không dùng GADM cũ —
-                                           đã lỗi thời sau sáp nhập 2025, xem
-                                           gis/02-seed-wards.sql cho nguồn dữ liệu)
+        ├── lamdong-wards.geojson      ← Ranh giới xã/phường (không dùng GADM cũ —
+        │                                  đã lỗi thời sau sáp nhập 2025). KHÔNG sửa tay:
+        │                                  sinh bằng `npm run build:wards`
+        │                                  (frontend/scripts/build-wards-geojson.mjs)
+        └── README.md                  ← Nguồn dữ liệu (gis.vn), ghi công, và ghi chú
+                                           thiếu Xã Đam Rông 2 (123/124 đơn vị)
 ```
 
 ---
@@ -553,6 +557,12 @@ Rescuer:   phone=0900000002  password=demo1234  ward=Xuân Hương - Đà Lạt 
 Commander: phone=0900000003  password=demo1234  ward=Toàn tỉnh
 ```
 
+> ⚠️ **Từ 2026-09-06:** `POST /api/auth/register` không còn nhận field `role` (luôn tạo
+> `victim` — xem Mục 15, fix lỗ hổng leo thang đặc quyền). 3 tài khoản demo ở trên phải được
+> tạo bằng cách chạy `gis/06-seed-demo-users.sql` trên Supabase SQL Editor (SAU
+> `01-03`, TRƯỚC `04-create-rescue-teams.sql` vì 04 cần sẵn user `0900000002`) — không còn
+> cách nào tạo qua API public nữa.
+
 ---
 
 ## 13. Lệnh thường dùng
@@ -626,13 +636,81 @@ openssl rand -base64 32
 
 **Bug liên quan phát hiện thêm lúc sửa Case 2 — Đã xử lý (2026-09-06).** `offlineQueueStore.khoiTao()` trước đây chỉ tự gửi hàng đợi khi bắt được sự kiện DOM `'online'` — nếu victim đóng hẳn tab lúc mất mạng rồi mở lại app khi ĐÃ có mạng sẵn (không có pha chuyển offline→online nào xảy ra trong phiên mới), hàng đợi im lặng nằm yên trong IndexedDB vô thời hạn tới lần mất-rồi-có-mạng kế tiếp. Đã tách phần xử lý ra hàm `guiLaiHangDoiNeuCoMang()` dùng chung cho cả 2 chỗ, và gọi ngay 1 lần lúc `khoiTao()` chạy nếu `navigator.onLine` đã `true` sẵn — không chỉ đăng ký chờ event nữa. `xuLyHangDoiKhiCoMang()`/`xuLyHangDoiSosKhiCoMang()` đã tự return sớm nếu hàng đợi rỗng nên gọi thừa lúc không có gì để gửi vô hại. Đã kiểm chứng: `vue-tsc --noEmit`/`eslint`/`npm run build`/`npm test` (10 test FE) đều sạch.
 
+### 15.4.1 Bug thật đã sửa — toast trùng/sai khi đăng nhập bị rate-limit
+- [x] **Bị chặn 429 (too many requests) lúc đăng nhập nhưng vẫn hiện thêm toast "Sai số điện thoại hoặc mật khẩu".** — **Đã xử lý (2026-09-06).** `AuthModal.vue dangNhap()` có `catch` bắt MỌI lỗi rồi luôn hiện cứng 1 câu "Sai số điện thoại hoặc mật khẩu" bất kể lỗi thật là gì — trong khi interceptor toàn cục `http.ts` đã tự hiện đúng toast theo status thật (401 sai mật khẩu, 429 rate-limit, mất mạng...) rồi. Vì `toastStore` xếp hàng đợi (không đè lên nhau, cố ý để không mất toast khi dồn dập — xem `stores/toast.ts`), user thấy CẢ 2 toast nối tiếp: toast đúng (429) rồi tới toast sai/thừa (401 giả). **Fix:** không phải thêm `if (status === 401)` vào component (dạy component đọc HTTP status là band-aid, lặp lại kiến thức đã có sẵn ở `http.ts`) — mà xoá hẳn toast cứng đó, để `catch {}` rỗng kèm comment, đúng quy ước ĐÃ CÓ SẴN ở mọi nơi khác gọi API trong codebase (`RescuerView.vue`, `DashboardView.vue`, `MapView.vue`, `stores/mapData.ts` đều dùng pattern này). `AuthModal.vue` là chỗ DUY NHẤT lệch quy ước, giờ đã khớp lại. Đã kiểm chứng: `eslint`, `npm run build` sạch.
+
 ### 15.5 Vận hành
 - [ ] **Chưa có health-check endpoint** (`GET /api/health`). Deploy lên Render.com (Mục 2) mà thiếu endpoint này thì platform không có cách xác định server còn sống hay đã treo để tự restart.
 - [ ] **`frontend/.env` bị root `.gitignore` (`**/.env`) chặn**, trong khi comment ở `frontend/.gitignore` khẳng định ngược lại ("không phải secret, commit để cả nhóm dùng chung cấu hình chuẩn"). Hai file `.gitignore` đang mâu thuẫn — cần thêm exception `!frontend/.env` ở root hoặc sửa lại comment sai.
 - [ ] **Trước khi coi một phiên làm việc là "xong": luôn chạy `git status` ở cả `backend/` và `frontend/`.** Từng xảy ra thật: toàn bộ `frontend/` chưa commit lần nào dù đã có nhiều tính năng hoàn chỉnh — dễ mất việc nếu máy hỏng/branch bị xoá nhầm.
 
+### 15.6 Audit senior 2026-09-06 — bảo mật + an toàn nghiệp vụ (rà độc lập với 15.1-15.5)
+
+> Rà theo góc nhìn "senior review", không chỉ đối chiếu tài liệu-code như các mục trên — tìm lỗ hổng bảo mật thật (khai thác được) và lỗi an toàn nghiệp vụ (ảnh hưởng trực tiếp tới việc điều phối cứu hộ thật), không phải chỉ style/lint.
+
+**P0 — nghiêm trọng, đã xử lý:**
+- [x] **Leo thang đặc quyền qua `POST /api/auth/register`.** — **Đã xử lý (2026-09-06).** Trước đây `RegisterDto.role` cho client tự chọn `victim|rescuer|commander` tự do — ai gọi thẳng API (không qua UI, frontend luôn hardcode `role:'victim'`) cũng tự phong mình làm `commander` được, xem toàn bộ PII nạn nhân (tên/SĐT/GPS) toàn tỉnh + tự `PATCH /assign` phân công đội cho SOS thật; tự phong `rescuer` nhẹ hơn (không điều khiển được `rescue_teams` thật vì `leader_id` cố định từ SQL seed) nhưng vẫn đọc được PII nạn nhân trong `wardCode` tự khai. Đúng loại OWASP #1 Broken Access Control. **Fix:** xoá hẳn field `role` khỏi `RegisterDto` (`auth/dto/register.dto.ts`) — nhờ `forbidNonWhitelisted: true` sẵn có ở `main.ts`, gửi kèm `role` trong body giờ bị từ chối thẳng `400` thay vì âm thầm bỏ qua; `UsersService.create()` ép cứng `role: 'victim'` không đọc từ DTO nữa. **Hệ quả cần xử lý:** 3 tài khoản demo (Mục 12) trước đây được tạo bằng chính đường register-với-role-tự-do này — giờ route đó chỉ tạo được `victim`, nên thêm `gis/06-seed-demo-users.sql` (INSERT trực tiếp `users` với password đã bcrypt cost=12 sẵn, verify bằng `compareSync` trước khi ghi vào file) để thay thế bước đó — **cần tự chạy** trên Supabase SQL Editor (agent không tự chạy migration lên DB thật), chạy TRƯỚC `04-create-rescue-teams.sql` (04 cần sẵn user `0900000002`). Đã kiểm chứng: thêm `users/users.service.spec.ts` (test "leo thang" bằng payload cast tay có `role:'commander'` → vẫn ra `victim`), tổng 33 test BE pass, `npm run build`/`eslint` sạch.
+- [x] **GPS lỗi/bị từ chối quyền → âm thầm gửi toạ độ giả (tâm tỉnh) mà không báo ai.** — **Đã xử lý (2026-09-06).** `MapView.vue layViTriHienTai()` trước đây fallback về `{lat:11.94,lng:108.44}` khi `navigator.geolocation` lỗi/timeout/bị từ chối, trong khi dialog xác nhận vẫn khẳng định "vị trí hiện tại của bạn sẽ được gửi" (`SosConfirmDialog.vue`) — nạn nhân, rescuer, commander không ai biết vị trí đã gửi là bịa, đội có thể bị điều tới sai chỗ giữa 1 tình huống khẩn cấp thật. **Fix xuyên suốt cả 2 tầng:** (1) FE: `layViTriHienTai()` trả thêm cờ `uocLuong: boolean`; khi `true`, hiện toast cảnh báo victim NGAY trước khi gửi ("không xác định được vị trí GPS chính xác..."); cờ này (đổi tên `locationEstimated` khi qua API) được truyền xuyên suốt: `useSos.ts` (`ActiveSos.locationEstimated`, `guiYeuCauSos`/`datSosChoGui`/`ghiNhanKetQuaThatTuHangDoi`/`khoiPhucSosDangHoatDong`), `types/offline.ts` (`QueuedSos.locationEstimated` — giữ nguyên qua hàng đợi offline nếu vừa mất mạng vừa mất GPS), hiện badge cảnh báo "⚠️ Vị trí ước tính" ở `SosTrackerPanel.vue` (cho victim), `RescuerView.vue` + `DashboardView.vue` (cho rescuer/commander, kể cả trong modal phân công đội — nơi quan trọng nhất vì đội gần nhất được tính theo đúng toạ độ có thể sai này). (2) BE: cột mới `sos_requests.location_estimated BOOLEAN DEFAULT false` (`gis/07-add-location-estimated.sql`, **cần tự chạy** trên Supabase), `CreateSosDto.locationEstimated` optional (mặc định `false` nếu client cũ không gửi), lan qua `SosService.create()`/`findAll()`/`SOS_DETAIL_SELECT` (dùng chung cho `findById`/`findMyActive`), và `SosNewPayload` (cả 2 file mirror `backend/src/common/socket-events.types.ts` + `frontend/src/shared/socket-events.types.ts` — PHẢI sửa đồng bộ cả 2, xem comment đầu file mirror). Đã kiểm chứng: thêm test cho `SosService.create()` (2 case: có/không `locationEstimated`) + test `useSos.ts` (lưu đúng cờ khi gửi thật lẫn khi khôi phục từ hàng đợi offline) — 33 test BE + 11 test FE pass, build/lint cả 2 sạch.
+
+**P1 — cao, đã xử lý:**
+- [x] **"Tự động phân công đội gần nhất" ở Mục 10 bước 4 chưa từng được code.** — **Đã xử lý (2026-09-06).** Chọn hướng (a): code auto-assign thật thay vì sửa docs, vì hạ tầng `GisService.findNearestTeams()` đã có sẵn và đây đúng là hành vi mong muốn cho app cứu hộ (giảm phụ thuộc vào có người trực dashboard). `SosService.create()` giờ gọi `findNearestTeams(lat, lng, 10000, 1)` ngay sau INSERT — có đội `available` trong 10km thì tự UPDATE `sos_requests.status='assigned'` + `rescue_teams.status='busy'` + ghi `sos_timeline` (action `'assigned'`, `actor_id`=victim vì bảng không có khái niệm actor "hệ thống", `note` phân biệt rõ là tự động) + emit thêm `sos:updated` (ngoài `sos:new` như cũ) để rescuer đội đó nhận nhiệm vụ qua đúng listener `onSosUpdated` đã có sẵn ở `RescuerView.vue` — **không cần sửa gì ở frontend**. Không tìm thấy đội nào → giữ nguyên `'pending'`, luồng phân công tay qua `PATCH /:id/assign` không đổi. Cần `GisModule` export `GisService` + `SosModule` import `GisModule` (không có vòng phụ thuộc — đã boot thật `node dist/main.js` xác nhận DI graph resolve sạch, route `/api/sos/mine/active` vẫn map đúng trước `:id`). Đã kiểm chứng: thêm 2 test (`sos.service.spec.ts` — có đội/không có đội), tổng 35 test BE pass, `npm run build`/`eslint` sạch, `docs/api-contract.md` Mục 2 cập nhật mô tả hành vi mới.
+- [x] **`docs/api-contract.md` Mục 6 vẫn ghi "`false_alarm_count`/auto-flag CHƯA cập nhật" và "rate limit CHƯA implement"** — **Đã xử lý (2026-09-06).** Cả 2 dòng đều lỗi thời (đã làm xong từ trước, xem Mục 15.1) — xoá khỏi Mục 6, thêm dòng "đã sửa khỏi danh sách" liệt kê rõ 3 việc từng ghi nhầm là chưa làm (rate limit, false_alarm_count/auto-flag, và giờ thêm auto-assign). Tiện thể sửa luôn ví dụ response `PATCH /:id/cancel` ở Mục 2 (thiếu field `accountFlagged` trong JSON mẫu — response thật đã trả từ 2026-09-06).
+
+**P2 — trung bình, CHƯA xử lý (biết để không mất thời gian sau này):**
+- [ ] **Mục 8 liệt kê 3 socket event client→server (`sos:victim-cancel`, `commander:assign-team`, `rescuer:update-status`) không tồn tại trong `sos.gateway.ts`** — chỉ có `team:update-location` là thật, 3 việc kia frontend đúng khi dùng REST thay thế. Tài liệu vẽ ra mô hình chưa từng được xây, agent sau đọc Mục 8 dễ tưởng lầm.
+- [ ] **`GET /api/gis/sos-heatmap` có sẵn ở BE + khai báo URL ở FE (`config.ts`) nhưng không nơi nào gọi** — `DashboardView.vue` chưa có heatmap. Kể cả nối dây xong, SQL `GROUP BY location` (toạ độ tuyệt đối) thay vì gom theo vùng/ward khiến `incident_count` gần như luôn = 1 (GPS hiếm khi trùng y hệt) — cần sửa cách gom nhóm trước khi tính năng này có ý nghĩa.
+- [ ] **`CreateSosDto.imageUrl` chỉ `@IsString()`, không `@IsUrl()`** — chấp nhận cả chuỗi `javascript:...`. Chưa ai render field này ra `<a>`/`<img>` nên chưa khai thác được, nhưng nên siết trước khi có UI "xem ảnh" cho rescuer/commander.
+- [x] **`accountFlagged` backend trả từ lâu nhưng frontend bỏ qua hoàn toàn.** — **Đã xử lý (2026-09-06).** `types/index.ts` → `CancelSosResult` thêm field `accountFlagged: boolean`; `MapView.vue xacNhanHuySos()` hiện thêm 1 toast cảnh báo riêng khi `result.accountFlagged === true` (tận dụng `toastStore` đã có hàng đợi từ trước — gọi `showToast()` 2 lần liên tiếp không mất toast nào). `useSos.ts huyYeuCauSos()` không cần sửa vì đã trả nguyên `result` từ server, không transform field nào — `accountFlagged` tự lan qua sẵn. Đã kiểm chứng: `vue-tsc --noEmit`/`eslint`/`npm run build`/`npm test` (11 test FE) đều sạch.
+
+### 15.7 Audit 2026-09-08 — bản đồ trắng khi zoom (CHƯA sửa — kịch bản đã chốt)
+
+> Triệu chứng người dùng báo: *"mỗi khi zoom map để xem chi tiết đều bị nền trắng che mất"*. Điều tra bằng Chrome headless + CDP trên `/map` (đo thật, không đọc code suy đoán). **Chưa sửa dòng code nào** — mục này ghi lại kết luận + kịch bản sửa để lần sau không phải điều tra lại từ đầu.
+
+**Vùng "trắng" đó là gì:** nền của chính bản đồ lộ ra ở nơi ảnh tile không có — `.leaflet-container{ background:#eae3d0 }` ([`frontend/src/assets/map-style.css`](frontend/src/assets/map-style.css) dòng 51). Chặn mạng tới OSM rồi chụp lại `/map` cho ra **đúng** màu be trong ảnh báo lỗi, chỉ còn ranh giới đỏ (vector, không cần tile) vẽ đè lên. Không element nào khác trong `src/` tô màu này ở kích thước lớn.
+
+**⛔ ĐÃ LOẠI TRỪ BẰNG SỐ ĐO — đừng điều tra lại 3 hướng này:**
+- **KHÔNG phải lỗi CSS/layout.** Đo ở mọi mức zoom (viewport 1366×768): `containerClientWidth/Height` luôn = 1366×768 = kích thước thật, lưới tile phủ kín container, **`uncoveredPct: 0`** ở tất cả các bước. Triệu chứng nằm ở CSS nhưng nguyên nhân thì không — `map-style.css` vô can.
+- **KHÔNG phải thiếu `invalidateSize()`.** Đúng là toàn bộ codebase không gọi hàm này ở đâu (`grep` ra 0 kết quả) và trông rất khả nghi, nhưng số đo ở trên đã bác bỏ. Đừng thêm "cho chắc" — sẽ để lại một dòng không ai dám xoá vì không ai biết nó chữa gì.
+- **`#map{ padding-top:96px }` là no-op với Leaflet**, không tạo khoảng hở: pane Leaflet là `position:absolute` nên neo vào *padding box* (bỏ qua padding), và `clientHeight` cũng đã tính cả padding.
+
+**Nguyên nhân gốc: tile không về được, và app không có gì xử lý ca đó.** 4 điểm trong [`frontend/vite.config.ts`](frontend/vite.config.ts) + [`useLeafletMap.ts`](frontend/src/composables/useLeafletMap.ts), cả 4 đều chỉ phát tác khi zoom sâu (lúc đó mọi tile đều cache-miss):
+1. **100% tile đi qua service worker** — đo được `tileReqFromSW: 168`, `tileReqFromPage: 0`. SW chạy cả trong `npm run dev` vì `devOptions: { enabled: true }`.
+2. **`handler: 'NetworkFirst'` không có `networkTimeoutSeconds`** → mỗi tile *bắt buộc* chờ trọn một vòng mạng tới OSM trước khi được vẽ, kể cả khi tile đó đã nằm sẵn trong cache `osm-tiles`. Mạng chậm → SW chờ vô thời hạn → Leaflet để trống → be. Comment trong file tự tố cáo lập luận sai: *"bản đồ luôn cần mới nhất khi có mạng"* — đúng với **dữ liệu** (vị trí SOS, trạng thái đội), sai với **ảnh nền raster** (OSM đổi theo đơn vị tháng, tile địa chỉ hoá bằng `z/x/y`, gần như bất biến).
+3. **`a/b/c.tile.openstreetmap.org` là server cộng đồng miễn phí, không SLA**, Tile Usage Policy cho phép họ chặn bất cứ lúc nào không báo trước; zoom liên tục qua nhiều bậc trên bản đồ 123 xã/phường đúng là pattern bị throttle (429/418).
+4. **`cacheableResponse: { statuses: [0, 200] }` là guard vô hiệu** — ảnh Leaflet là request `no-cors` nên SW chỉ thấy `opaque, status 0`, **không phân biệt được PNG thật với trang lỗi 429** và sẽ cache trang lỗi như một tile hợp lệ (giữ 30 ngày). Sửa `statuses` là vô ích; phải bật `crossOrigin` trên `L.tileLayer` để request thành CORS thật thì SW mới thấy status thật.
+
+**Phát hiện kèm theo (kiểm chứng từ `node_modules/workbox-build`):** file ranh giới **đang thực sự dùng** — `public/data/lamdong-wards.geojson`, **9.66 MB, ~510k điểm** — **không được SW cache ở bất kỳ đâu**, trong khi file fallback gần như không dùng thì lại có `StaleWhileRevalidate`. Cache đang cấu hình cho đúng cái file sai:
+- `runtimeCaching` urlPattern là `/\/lamdong_tinh\.geojson$/` → **không khớp** `lamdong-wards.geojson`.
+- `globPatterns` mặc định = `["**/*.{js,wasm,css,html}"]` → `.geojson` không được precache.
+- `maximumFileSizeToCacheInBytes` mặc định = `2097152` (2 MB) → file 9.66 MB bị loại kể cả nếu pattern có khớp.
+
+→ **Câu chuyện offline của PWA hiện là hư cấu:** app có hàng đợi SOS offline (IndexedDB) + badge "sẽ tự gửi khi có mạng", nhưng thứ rescuer cần nhất khi ở vùng lũ mất sóng — bản đồ — thì có 200 tile `NetworkFirst` và lớp ranh giới không cache byte nào. Cắt mạng là mất sạch nền lẫn ranh giới. Đây là bất nhất kiến trúc, không phải bug lẻ.
+
+**Ngoài ra, `preferCanvas:true` + 510k điểm làm treo main thread mỗi lần zoom** — đo `longtask`: **601ms / 684ms / 381ms / 178ms / 187ms** cho 5 bậc zoom liên tiếp. Không đủ gây màn trắng, nhưng cộng vào đúng lúc tile đang chờ thì cảm giác "đứng hình" rõ hơn. Vấn đề là 510k điểm, **không phải renderer** — đừng tắt `preferCanvas`, canvas là lựa chọn đúng ở mật độ này.
+
+**⚠️ Vì sao phải sửa, không phải chuyện thẩm mỹ:** vùng be trống **đọc ra thành "khu vực này không có gì"**, trong khi sự thật là "nền bản đồ không tải được" — với commander đang điều phối, hai thứ đó dẫn tới hai quyết định khác nhau. Đây **cùng một họ lỗi** với P0 GPS ở Mục 15.6 (hệ thống thất bại im lặng, người dùng không có cách nào biết). PR nào sửa mục này mà chỉ đổi config cache, không làm lỗi trở nên trung thực → **request changes**.
+
+**Kịch bản sửa (thứ tự đã chốt, chưa làm):**
+
+| # | Việc | Vì sao ở vị trí này |
+|---|---|---|
+| 1 | `crossOrigin` trên `L.tileLayer` + đổi sang `CacheFirst` (hoặc giữ `NetworkFirst` + `networkTimeoutSeconds: 3`) + `statuses: [200]` | Rẻ nhất, chặn ngay việc cache bị nhiễm response lỗi. `crossOrigin` là điều kiện tiên quyết để `statuses` có tác dụng — xem điểm 4 ở trên |
+| 2 | Bắt event `tileerror` của Leaflet → đếm → banner *"Không tải được nền bản đồ — vị trí các marker vẫn chính xác"* | Làm lỗi trung thực. Phải đi **cùng** #1, không phải sau. Câu sau quan trọng: marker SOS/đội/ranh giới đều là vector, **vẫn vẽ đúng** trên nền trống |
+| 3 | Giảm `lamdong-wards.geojson` (mapshaper, ~50–100 lần) + đưa vào runtime cache | Sửa một phát cả tải chậm (9.66 MB trên 4G vùng thiên tai) lẫn giật khi zoom |
+| 4 | Đổi nhà cung cấp tile có API key (MapTiler/Stadia/Carto free tier) + referrer restriction | Đúng nhất, nhưng cần quyết định của team. Nếu giữ OSM vì thời gian → **phải ghi rõ là giới hạn đã biết ngay tại mục này**, không để nằm im như lỗi ngẫu nhiên |
+| 5 | Chốt + ghi rõ phạm vi offline (đề xuất: precache tile Lâm Đồng z9–z13, `CacheFirst` phần còn lại, **tuyên bố thẳng** rằng zoom sâu hơn z13 cần mạng) | Cần #3, #4 xong mới nói được con số thật. Giới hạn tuyên bố rõ thì đáng tin; lời hứa offline không thành thì tệ hơn không hứa |
+
+**Tiêu chí nghiệm thu (đo được, không phải "trông có vẻ ổn"):**
+- Zoom z8→z16 liên tục 10 lần: **0 tile trống**.
+- Cắt mạng trong DevTools rồi zoom: **có banner cảnh báo**, marker vẫn đúng vị trí.
+- Long task mỗi lần zoom **< 100 ms** (hiện tại 178–684 ms).
+
+**Cách phân biệt nhanh nguyên nhân (2) chờ mạng vs (3) bị OSM chặn, nếu tái hiện trên máy thật:** F12 → **Network** → lọc `tile.openstreetmap` → zoom vào chỗ hay trắng. Status **200** nhưng Time treo vài giây = (2). Status **429/418**, hoặc `(from ServiceWorker)` mà ảnh hỏng = (3)+(4) — kiểm tra thêm **Application → Cache Storage → `osm-tiles`**, mở một entry xem có đúng là PNG không.
+
 ---
 
+*Phiên bản: 2.4.0 — Cập nhật: 2026-09-08 (thêm Mục 15.7 — điều tra bản đồ trắng khi zoom: nguyên nhân gốc ở tile/service worker, KHÔNG phải CSS; kịch bản sửa + tiêu chí nghiệm thu, chưa sửa code)*
+*Phiên bản: 2.3.0 — Cập nhật: 2026-09-06 (Mục 15.4/15.6 — fix đăng xuất khi F5, SOS active/offline-queue mất sau F5, leo thang đặc quyền qua register, GPS fallback âm thầm gửi toạ độ giả)*
 *Phiên bản: 2.2.0 — Cập nhật: 2026-09-05 (thêm Mục 15 — checklist audit bảo mật/tooling/tài liệu, phát hiện qua rà code thật)*
 *Phiên bản: 2.1.0 — Cập nhật: 2026-08-24 (chuyển district_code → ward_code sau sáp nhập hành chính 2025)*
 *Tích hợp AI Skills từ: PatrickJS/awesome-cursorrules · Kadajett/agent-nestjs-skills · j4flmao/agent_skills_nodejs_nestjs · BehiSecc/awesome-claude-skills · Anthropic official skills*

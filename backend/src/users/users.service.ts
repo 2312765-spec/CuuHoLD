@@ -23,7 +23,9 @@ export class UsersService {
       phone: dto.phone,
       name: dto.name,
       passwordHash,
-      role: dto.role || 'victim',
+      // Luôn 'victim' — RegisterDto không có field role (xem comment ở đó). Đăng ký công
+      // khai không được phép tạo tài khoản rescuer/commander.
+      role: 'victim',
       wardCode: dto.wardCode,
     });
     try {

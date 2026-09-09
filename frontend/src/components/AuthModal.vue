@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { register as apiRegister } from '@/services/auth.service'
-import type { UserRole } from '@/types'
 
 function layThongBaoLoi(err: unknown): string | null {
   if (!isAxiosError(err)) return null
@@ -20,7 +18,6 @@ const emit = defineEmits<{ close: []; loggedIn: [] }>()
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
-const router = useRouter()
 
 const cheDo = ref<'login' | 'register'>('login')
 const phone = ref('')
@@ -28,15 +25,12 @@ const password = ref('')
 const name = ref('')
 const dangGui = ref(false)
 
-// Trước đây đăng nhập xong chỉ đóng modal, không điều hướng — rescuer/commander đăng nhập
-// xong bị kẹt nguyên trên /map (nơi duy nhất có nút đăng nhập), không có link nào trong UI
-// dẫn tới /rescuer hay /dashboard, phải gõ tay URL mới vào được. Victim thì ở lại /map là
-// đúng ý (trang gửi SOS), nên chỉ điều hướng cho 2 role còn lại.
-function dieuHuongTheoRole(role: UserRole) {
-  if (role === 'rescuer') router.push({ name: 'rescuer' })
-  else if (role === 'commander') router.push({ name: 'dashboard' })
-}
-
+// Modal này CỐ Ý không điều hướng sau khi đăng nhập: đăng nhập chỉ làm mỗi việc đăng
+// nhập, còn đi đâu là do người dùng bấm. Trước đây nó tự đẩy rescuer/commander sang
+// /rescuer /dashboard ngay giây đăng nhập xong — nay trang chủ đổi nhãn nút CTA theo role
+// (useCtaTheoRole.ts) nên tự nhảy trang sẽ khiến họ không bao giờ kịp thấy nút đổi. Ở lại
+// đúng chỗ vừa đăng nhập cũng giúp hành vi giống nhau ở mọi nơi mở modal (trang chủ hay
+// bản đồ), không phải nhớ "chỗ này nhảy, chỗ kia không".
 async function dangNhap() {
   if (!phone.value || !password.value) {
     toastStore.showToast('Vui lòng nhập số điện thoại và mật khẩu.')
@@ -48,9 +42,12 @@ async function dangNhap() {
     toastStore.showToast(`Xin chào ${user.name}`)
     emit('loggedIn')
     emit('close')
-    dieuHuongTheoRole(user.role)
   } catch {
-    toastStore.showToast('Sai số điện thoại hoặc mật khẩu.')
+    // Interceptor http.ts đã hiện đúng toast theo lỗi thật (sai mật khẩu 401, rate-limit
+    // 429, mất mạng...) — trước đây ở đây tự hiện thêm 1 toast cứng "Sai số điện thoại
+    // hoặc mật khẩu" bất kể lỗi gì, nên bị rate-limit vẫn hiện lẫn thông báo sai mật khẩu
+    // ngay sau, gây hiểu lầm. Không hiện gì thêm ở đây, khớp đúng quy ước mọi nơi khác
+    // trong codebase (xem RescuerView.vue/DashboardView.vue/MapView.vue).
   } finally {
     dangGui.value = false
   }

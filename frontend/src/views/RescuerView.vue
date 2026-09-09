@@ -221,7 +221,7 @@ onUnmounted(() => {
     <header class="rescuer-top">
       <h1>Nhiệm vụ cứu hộ</h1>
       <div class="rescuer-top-right">
-        <span class="socket-status" :class="{ connected: isConnected }">
+        <span class="realtime-status" :class="{ connected: isConnected }">
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
         <span class="rescuer-user">{{ authStore.user?.name }}</span>
@@ -245,6 +245,9 @@ onUnmounted(() => {
 
           <div class="sos-victim">{{ sos.victim_name }} · {{ sos.victim_phone }}</div>
 
+          <p v-if="sos.location_estimated" class="sos-location-warn">
+            ⚠️ Vị trí ước tính — nạn nhân không lấy được GPS chính xác, gọi điện xác nhận vị trí thật nếu có thể
+          </p>
           <div class="sos-meta">
             <a :href="googleMapsLink(sos.lat, sos.lng)" target="_blank" rel="noopener noreferrer">
               {{ sos.lat.toFixed(5) }}, {{ sos.lng.toFixed(5) }} — Mở Google Maps
@@ -297,20 +300,24 @@ onUnmounted(() => {
   color: var(--pine-deep);
   font-weight: 500;
 }
-.socket-status {
+/* Class name riêng (không phải .socket-status) để tránh kế thừa style pill nổi
+   (position: fixed, background trắng, box-shadow...) từ map-style.css — file đó định
+   nghĩa .socket-status cho huy hiệu NỔI trên bản đồ ở MapView.vue (victim), khác hoàn
+   toàn mục đích ở đây (mục text tĩnh trong header, nằm cạnh tên tài khoản). */
+.realtime-status {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: rgba(42, 42, 36, 0.55);
 }
-.socket-status .dot {
+.realtime-status .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #9ca3af;
 }
-.socket-status.connected .dot {
+.realtime-status.connected .dot {
   background: #16a34a;
 }
 
@@ -371,6 +378,14 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 500;
   margin-bottom: 6px;
+}
+.sos-location-warn {
+  font-size: 12px;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
 }
 .sos-meta {
   font-size: 12px;

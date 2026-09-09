@@ -7,6 +7,7 @@ import { SosRequest } from './sos.entity';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RescueTeamsModule } from '../rescue-teams/rescue-teams.module';
+import { GisModule } from '../gis/gis.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RescueTeamsModule } from '../rescue-teams/rescue-teams.module';
     AuthModule,
     NotificationsModule,
     forwardRef(() => RescueTeamsModule),
+    GisModule,
   ],
   controllers: [SosController],
   providers: [SosService, SosGateway],

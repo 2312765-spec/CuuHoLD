@@ -21,6 +21,7 @@ export async function guiSos(payload: {
   type: SosType
   description?: string
   imageUrl?: string
+  locationEstimated?: boolean
 }): Promise<CreateSosResult> {
   const { data } = await http.post(CONFIG.endpoints.sos, payload)
   return data.data as CreateSosResult

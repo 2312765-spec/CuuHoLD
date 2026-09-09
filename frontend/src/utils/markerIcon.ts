@@ -17,7 +17,9 @@ const ICON_SVG: Record<MarkerKind, string> = {
 
 export function taoIconMarker(mau: string, kind: MarkerKind): L.DivIcon {
   return L.divIcon({
-    className: 'custom-marker-icon',
+    // Modifier '--khan' bật vòng nhấp nháy cảnh báo trong map-style.css. Trước đây CSS có
+    // sẵn hiệu ứng đó nhưng không ai gắn class, nên sự cố Khẩn cấp trông y hệt sự cố thường.
+    className: 'custom-marker-icon' + (kind === 'khan-cap' ? ' custom-marker-icon--khan' : ''),
     html: `<div class="marker-pin" style="background:${mau}">${ICON_SVG[kind]}</div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 32],
