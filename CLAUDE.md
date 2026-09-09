@@ -662,9 +662,11 @@ openssl rand -base64 32
 - [ ] **`CreateSosDto.imageUrl` chỉ `@IsString()`, không `@IsUrl()`** — chấp nhận cả chuỗi `javascript:...`. Chưa ai render field này ra `<a>`/`<img>` nên chưa khai thác được, nhưng nên siết trước khi có UI "xem ảnh" cho rescuer/commander.
 - [x] **`accountFlagged` backend trả từ lâu nhưng frontend bỏ qua hoàn toàn.** — **Đã xử lý (2026-09-06).** `types/index.ts` → `CancelSosResult` thêm field `accountFlagged: boolean`; `MapView.vue xacNhanHuySos()` hiện thêm 1 toast cảnh báo riêng khi `result.accountFlagged === true` (tận dụng `toastStore` đã có hàng đợi từ trước — gọi `showToast()` 2 lần liên tiếp không mất toast nào). `useSos.ts huyYeuCauSos()` không cần sửa vì đã trả nguyên `result` từ server, không transform field nào — `accountFlagged` tự lan qua sẵn. Đã kiểm chứng: `vue-tsc --noEmit`/`eslint`/`npm run build`/`npm test` (11 test FE) đều sạch.
 
-### 15.7 Audit 2026-09-08 — bản đồ trắng khi zoom (CHƯA sửa — kịch bản đã chốt)
+### 15.7 Audit 2026-09-08 — bản đồ trắng khi zoom (phần tile: CHƯA sửa)
 
-> Triệu chứng người dùng báo: *"mỗi khi zoom map để xem chi tiết đều bị nền trắng che mất"*. Điều tra bằng Chrome headless + CDP trên `/map` (đo thật, không đọc code suy đoán). **Chưa sửa dòng code nào** — mục này ghi lại kết luận + kịch bản sửa để lần sau không phải điều tra lại từ đầu.
+> Triệu chứng người dùng báo: *"mỗi khi zoom map để xem chi tiết đều bị nền trắng che mất"*. Điều tra bằng Chrome headless + CDP trên `/map` (đo thật, không đọc code suy đoán).
+>
+> ⚠️ **ĐỌC KÈM MỤC 15.8.** Sau khi viết mục này, người dùng làm rõ triệu chứng thật của họ là **"vỡ hình + lag khi zoom in, zoom out hết cỡ mới hết"** — một bug KHÁC, nguyên nhân khác, **đã sửa xong ở Mục 15.8**. Phần tile/service worker ghi dưới đây vẫn **chưa sửa** và vẫn đúng: nó là một lỗ hổng thật, chỉ là không phải cái người dùng đang gặp.
 
 **Vùng "trắng" đó là gì:** nền của chính bản đồ lộ ra ở nơi ảnh tile không có — `.leaflet-container{ background:#eae3d0 }` ([`frontend/src/assets/map-style.css`](frontend/src/assets/map-style.css) dòng 51). Chặn mạng tới OSM rồi chụp lại `/map` cho ra **đúng** màu be trong ảnh báo lỗi, chỉ còn ranh giới đỏ (vector, không cần tile) vẽ đè lên. Không element nào khác trong `src/` tô màu này ở kích thước lớn.
 
@@ -690,7 +692,7 @@ openssl rand -base64 32
 
 **⚠️ Vì sao phải sửa, không phải chuyện thẩm mỹ:** vùng be trống **đọc ra thành "khu vực này không có gì"**, trong khi sự thật là "nền bản đồ không tải được" — với commander đang điều phối, hai thứ đó dẫn tới hai quyết định khác nhau. Đây **cùng một họ lỗi** với P0 GPS ở Mục 15.6 (hệ thống thất bại im lặng, người dùng không có cách nào biết). PR nào sửa mục này mà chỉ đổi config cache, không làm lỗi trở nên trung thực → **request changes**.
 
-**Kịch bản sửa (thứ tự đã chốt, chưa làm):**
+**Kịch bản sửa — trạng thái: mục 3 đã làm (xem 15.8), 1/2/4/5 CHƯA làm:**
 
 | # | Việc | Vì sao ở vị trí này |
 |---|---|---|
@@ -707,8 +709,39 @@ openssl rand -base64 32
 
 **Cách phân biệt nhanh nguyên nhân (2) chờ mạng vs (3) bị OSM chặn, nếu tái hiện trên máy thật:** F12 → **Network** → lọc `tile.openstreetmap` → zoom vào chỗ hay trắng. Status **200** nhưng Time treo vài giây = (2). Status **429/418**, hoặc `(from ServiceWorker)` mà ảnh hỏng = (3)+(4) — kiểm tra thêm **Application → Cache Storage → `osm-tiles`**, mở một entry xem có đúng là PNG không.
 
+### 15.8 Bug thật đã sửa (2026-09-09) — "vỡ hình" + lag mỗi lần zoom in
+
+> Người dùng làm rõ triệu chứng thật, khác với Mục 15.7: *"khi zoom in bản đồ gây hơi lag, mỗi khi zoom in thường bị vỡ, zoom out hết cỡ thì mới trở lại bình thường"*. Không liên quan tới tile/service worker.
+
+**Nguyên nhân gốc — xác định bằng cách đọc thẳng `node_modules/leaflet/dist/leaflet-src.js`, không suy đoán:**
+1. `Canvas._update()` (dòng ~12664) **thoát sớm** khi `map._animatingZoom`: trong lúc animate zoom, canvas renderer **không** resize, **không** vẽ lại — giữ nguyên bitmap cũ.
+2. `Map._animateZoom()` (dòng ~4798) gắn class `leaflet-zoom-anim` lên `mapPane`, CSS-transform kéo giãn **toàn bộ pane** (gồm cả canvas chứa nét kẻ mảnh) trong 250ms. Ảnh tile kéo giãn thì chỉ hơi nhoè; **nét vector kéo giãn thì méo, dày mỏng không đều, lệch khỏi tile bên dưới** → đúng cảm giác "vỡ hình".
+3. Hết 250ms Leaflet mới thật sự vẽ lại — nhưng đo được việc này tốn **178–684ms** với 512.755 điểm, tức **gấp 1–3 lần** thời gian animation cho phép. Bấm zoom tiếp trước khi xong → méo chồng méo.
+4. **Vì sao zoom out hết cỡ lại hết:** không phải nó tự phục hồi. `_tryAnimatedZoom()` (dòng ~4779) bỏ hẳn animation khi `Math.abs(zoom - this._zoom) > zoomAnimationThreshold` (mặc định **4**). Zoom out hết cỡ thường nhảy quá 4 mức → đi đường vẽ lại tức thì, sạch. Tức là người dùng đã vô tình **né** được đường code lỗi, chứ không phải sửa được nó.
+
+**Đã sửa (2 commit):**
+- [x] **Simplify lớp ranh giới bằng `mapshaper`** ngay trong `frontend/scripts/build-wards-geojson.mjs` (**không** làm tay qua mapshaper.org — script tự tải lại nguồn mỗi lần chạy nên bản sửa tay sẽ bị ghi đè mất ở lần build sau, im lặng). Dùng mapshaper vì nó **dựng topology** trước khi simplify: biên chung giữa 2 xã liền kề là cùng một cung, giản lược đúng một lần → hai bên vẫn khớp. `turf`/`simplify-js`/tự viết đều simplify từng vòng độc lập → hở khe/chồng lấn giữa 123 xã kề nhau. Kết quả: **512.755 → 57.475 điểm (÷8.9), 9.21 → 1.05 MB**. Chọn `interval=25m` theo số đo thật (15m→93.889 điểm, 25m→60.602, 40m→40.430, 100m→17.493).
+- [x] **Ẩn lớp ranh giới từ zoom 14** (`ZOOM_AN_RANH_GIOI` trong `useLeafletMap.ts`). ⚠️ **BẮT BUỘC bám event `zoomend`, KHÔNG phải `zoom`/`zoomstart`** — gọi `addLayer`/`removeLayer` giữa lúc đang animate là ép Leaflet làm thêm việc đúng vào khung 250ms vốn đã không đủ, làm "vỡ hình" **nặng thêm** thay vì nhẹ đi.
+- [x] **Ghi chú trong `MapLegend.vue`**: "Ranh giới chỉ mang tính minh hoạ và tự ẩn khi phóng to. Xã chính thức xác định theo toạ độ GPS." Cùng nguyên tắc với cảnh báo "vị trí ước tính" ở Mục 15.6 — báo trước, đừng để người dùng tự suy diễn sai.
+
+**Kết quả đo (Chrome headless + CDP, 1366×768, Long Task API), 5 bậc zoom liên tiếp:**
+
+| | bậc 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Trước | 601ms | 684ms | 381ms | 178ms | 187ms |
+| Sau | 353ms* | **0** | **0** | **0** | **0** |
+
+*bậc 1 gồm cả chi phí khởi tạo trang. Tiêu chí <100ms ở Mục 15.7 — đạt. Đã xác minh thêm bằng ảnh chụp: zoom 13 ranh giới hiện và nét vẫn mượt, zoom 15 ẩn hoàn toàn.
+
+**⚠️ Hai điều người sau PHẢI biết:**
+- **Guard "đếm số feature" sau simplify gần như vô dụng.** Kiểm chứng thật: chạy `SAI_SO_MET=20000` (20 km, hình méo hoàn toàn) **vẫn ra đủ 123 đơn vị và vẫn pass** — vì cờ `keep-shapes` giữ mọi polygon. Guard **thật sự** có tác dụng là kiểm **lệch diện tích từng xã < 12%** (đã kiểm chứng chặn đúng ở `SAI_SO_MET=200`, báo xã Phú Quý lệch 31.89%). Đừng tin kiểm đếm feature là đủ.
+- **`mapshaper` kéo theo 209 gói và 5 vulnerability mới** (`@ngageoint/geopackage`, `adm-zip`, `image-size`, `file-type`, `fflate` — đều từ phần hỗ trợ GeoPackage/zip không dùng tới). Chấp nhận có chủ đích: `devDependency`, không vào bundle trình duyệt, chạy lúc build trên dữ liệu từ nguồn đã biết. Nếu team muốn gỡ, phải tìm thư viện khác **có dựng topology** — không được thay bằng `turf`/`simplify-js`.
+
+**Không ảnh hưởng nghiệp vụ:** file geojson chỉ để hiển thị. `ward_code` của mỗi SOS do trigger `ST_Contains` ở backend suy ra từ bảng `wards` (sinh riêng bởi `gis/02-seed-wards.sql`, **giữ nguyên độ chính xác gốc**, không simplify); điều đội thì `findNearestTeams()` tính theo khoảng cách GPS thật, không theo ranh giới xã. Ở vĩ độ Lâm Đồng 1 pixel ≈ 18.7m tại zoom 13, nên sai số 25m luôn **dưới 1.3 pixel** ở mọi mức zoom mà ranh giới còn hiển thị.
+
 ---
 
+*Phiên bản: 2.5.0 — Cập nhật: 2026-09-09 (thêm Mục 15.8 — fix "vỡ hình"/lag khi zoom: simplify ranh giới bằng mapshaper + ẩn ở zoom sâu, long task 684ms → 0ms)*
 *Phiên bản: 2.4.0 — Cập nhật: 2026-09-08 (thêm Mục 15.7 — điều tra bản đồ trắng khi zoom: nguyên nhân gốc ở tile/service worker, KHÔNG phải CSS; kịch bản sửa + tiêu chí nghiệm thu, chưa sửa code)*
 *Phiên bản: 2.3.0 — Cập nhật: 2026-09-06 (Mục 15.4/15.6 — fix đăng xuất khi F5, SOS active/offline-queue mất sau F5, leo thang đặc quyền qua register, GPS fallback âm thầm gửi toạ độ giả)*
 *Phiên bản: 2.2.0 — Cập nhật: 2026-09-05 (thêm Mục 15 — checklist audit bảo mật/tooling/tài liệu, phát hiện qua rà code thật)*
