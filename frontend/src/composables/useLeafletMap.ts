@@ -31,6 +31,21 @@ export function useLeafletMap() {
   let diemCuuTroLayer: L.LayerGroup | null = null
   let baoCaoLayer: L.LayerGroup | null = null
   let sosOwnMarker: L.Marker | null = null
+  let boundaryLayer: L.GeoJSON | null = null
+
+  // Từ mức zoom này trở lên thì ẩn hẳn lớp ranh giới hành chính. Hai lý do, theo thứ tự
+  // quan trọng:
+  //
+  // 1. NỘI DUNG: zoom ≥ 14 là mức nhìn từng con phố. Lúc đó người dùng đang tìm vị trí SOS
+  //    hoặc đội cứu hộ cụ thể, không phải tra xem đang ở xã nào — đường ranh giới hành chính
+  //    chạy ngang màn hình lúc này chỉ thêm nhiễu.
+  // 2. HIỆU NĂNG + ĐỘ CHÍNH XÁC: lớp ranh giới vẽ bằng canvas (preferCanvas) nên mỗi lần
+  //    zoom nó phải chiếu lại toàn bộ toạ độ; ẩn ở zoom sâu là bỏ hẳn phần việc đó đúng lúc
+  //    người dùng zoom liên tục nhất. Đồng thời dữ liệu đã simplify với sai số ~25m
+  //    (scripts/build-wards-geojson.mjs) — ở vĩ độ Lâm Đồng 1 pixel ≈ 18.7m tại zoom 13,
+  //    nên giữ ngưỡng ở 14 đảm bảo sai số luôn dưới 1.3 pixel ở mọi mức còn hiển thị.
+  //    ⚠️ Đổi ngưỡng này thì phải xem lại SAI_SO_MET trong build-wards-geojson.mjs cho khớp.
+  const ZOOM_AN_RANH_GIOI = 14
 
   const SOS_STATUS_COLOR: Record<SosStatus, string> = {
     pending: '#dc2626',
@@ -137,6 +152,16 @@ export function useLeafletMap() {
     return (res.headers.get('content-type') ?? '').includes('json')
   }
 
+  // Ẩn/hiện lớp ranh giới theo mức zoom hiện tại. Idempotent — gọi thừa không sao, nên
+  // dùng được cho cả lần khởi tạo lẫn mỗi sự kiện zoomend.
+  function capNhatHienThiRanhGioi(map: L.Map): void {
+    if (!boundaryLayer) return
+    const nenHien = map.getZoom() < ZOOM_AN_RANH_GIOI
+    const dangHien = map.hasLayer(boundaryLayer)
+    if (nenHien && !dangHien) boundaryLayer.addTo(map)
+    else if (!nenHien && dangHien) map.removeLayer(boundaryLayer)
+  }
+
   async function initMap(containerId: string, activeLayer: MapLayerKey) {
     // preferCanvas: lớp ranh giới 123 xã/phường có ~510.000 điểm toạ độ. Renderer SVG mặc
     // định tạo mỗi vùng một phần tử DOM và giật rõ khi pan/zoom ở mật độ này; canvas vẽ
@@ -188,7 +213,7 @@ export function useLeafletMap() {
         map.attributionControl.addAttribution('Ranh giới: gis.vn')
       }
 
-      const boundaryLayer = L.geoJSON(geojson as GeoJSON.GeoJsonObject, {
+      boundaryLayer = L.geoJSON(geojson as GeoJSON.GeoJsonObject, {
         // Ranh giới xã: đường mảnh, nhạt (nhiều vùng). Ranh giới tỉnh: đường đậm hơn.
         style: laRanhGioiXa
           ? { color: '#a8462b', weight: 1, fillColor: '#1f3d2e', fillOpacity: 0.03 }
@@ -230,6 +255,18 @@ export function useLeafletMap() {
         }
       }).addTo(map)
       map.fitBounds(boundaryLayer.getBounds(), { padding: [30, 30] })
+
+      // ⚠️ BẮT BUỘC dùng 'zoomend', KHÔNG dùng 'zoom'/'zoomstart'.
+      // Trong lúc đang animate zoom, Leaflet cố tình không cho canvas renderer vẽ lại
+      // (Canvas._update() thoát sớm khi map._animatingZoom) và kéo giãn cả pane bằng CSS
+      // transform trong 250ms. Gọi addLayer/removeLayer giữa lúc đó là ép Leaflet làm thêm
+      // việc đúng vào khung thời gian vốn đã không đủ — làm hiện tượng "vỡ hình" khi zoom
+      // NẶNG THÊM thay vì nhẹ đi. 'zoomend' chạy sau khi animation kết thúc, an toàn.
+      map.on('zoomend', () => capNhatHienThiRanhGioi(map))
+      // Áp ngay một lần: fitBounds() ở trên có thể đã đưa map tới mức zoom ≥ ngưỡng
+      // (tỉnh nhỏ, màn hình lớn), lúc đó ranh giới phải ẩn ngay chứ không đợi người dùng
+      // zoom lần đầu mới đúng trạng thái.
+      capNhatHienThiRanhGioi(map)
     } catch (err) {
       console.error(err)
       boundaryError.value =
@@ -241,9 +278,11 @@ export function useLeafletMap() {
   }
 
   function destroyMap() {
+    // Không cần off('zoomend') thủ công: map.remove() tự gỡ mọi listener gắn trên map.
     mapInstance.value?.remove()
     mapInstance.value = null
     sosOwnMarker = null
+    boundaryLayer = null
   }
 
   return {
