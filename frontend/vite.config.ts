@@ -52,7 +52,13 @@ export default defineConfig({
             options: {
               cacheName: 'osm-tiles',
               expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] }
+              // statuses:[200] — CHỈ hợp lệ vì L.tileLayer đã bật crossOrigin:'anonymous'
+              // (useLeafletMap.ts, RescueMap.vue). Không có crossOrigin, request là no-cors,
+              // response luôn 'opaque' với status hiển thị =0 bất kể server trả 200 hay 429
+              // — guard statuses sẽ vô nghĩa, bắt buộc phải nhận cả 0 mới cache được gì.
+              // Có crossOrigin, giờ đọc được status thật: trang lỗi 429 KHÔNG bị cache nhầm
+              // thành tile hợp lệ nữa (trước đây bị cache 30 ngày do statuses cho qua cả 0).
+              cacheableResponse: { statuses: [200] }
             }
           },
           {

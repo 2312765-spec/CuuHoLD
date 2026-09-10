@@ -75,9 +75,12 @@ function buildTeamLayer() {
 onMounted(() => {
   if (!mapContainer.value) return
   map = L.map(mapContainer.value, { zoomControl: true }).setView([11.9465, 108.4419], 9)
+  // crossOrigin: xem giải thích đầy đủ trong useLeafletMap.ts (cùng thay đổi, áp cho
+  // đúng nguồn tile OSM). Đã kiểm chứng OSM hỗ trợ CORS trước khi bật cờ này.
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 18
+    maxZoom: 18,
+    crossOrigin: 'anonymous'
   })
     .on('tileerror', () => {
       loiTile.value = true

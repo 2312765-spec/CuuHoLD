@@ -182,9 +182,17 @@ export function useLeafletMap() {
     // tileerror/tileload không dedupe tay: gán lại true nhiều lần liên tiếp không đổi
     // giá trị ref, nên watch(tileError) ở MapView.vue chỉ bắn đúng 1 lần cho mỗi đợt lỗi
     // (VD 20-30 tile cùng hỏng lúc mất mạng) — không phải 1 toast cho từng tile.
+    // crossOrigin: BẮT BUỘC để service worker (Workbox) đọc được status thật của response
+    // (200/429/500...) thay vì 'opaque, status luôn=0' của request no-cors mặc định — nếu
+    // không, statuses:[200] ở vite.config.ts vô nghĩa vì mọi response đều trông như nhau.
+    // ĐÃ KIỂM CHỨNG (2026-09-10, DevTools Console, fetch mode:'cors' tới chính OSM): server
+    // OSM CÓ hỗ trợ CORS — an toàn để bật. Nếu đổi sang nhà cung cấp tile khác, PHẢI kiểm
+    // lại y hệt trước, thiếu bước này khiến toàn bộ tile vỡ ngay từ tải đầu tiên, không phải
+    // lỗi rải rác như bug cũ.
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 18
+      maxZoom: 18,
+      crossOrigin: 'anonymous'
     })
       .on('tileerror', () => {
         tileError.value = true
