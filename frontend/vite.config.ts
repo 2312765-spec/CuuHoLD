@@ -2,6 +2,10 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+// File này CHỈ được chứa hằng số thuần (không import.meta.env) — xem comment đầu file
+// tileProvider.ts để biết lý do: import.meta.env không tồn tại đúng cách trong ngữ cảnh
+// Node của vite.config.ts, import nhầm file có dùng nó sẽ làm vỡ ngay lúc build/dev.
+import { TILE_HOST_PATTERN } from './src/constants/tileProvider'
 
 export default defineConfig({
   plugins: [
@@ -47,7 +51,7 @@ export default defineConfig({
             // Tile OpenStreetMap: ưu tiên MẠNG trước (bản đồ luôn cần mới nhất khi có mạng),
             // cache chỉ để dự phòng lúc mất mạng — và giới hạn số lượng, tự hết hạn sau
             // 30 ngày, tránh cache phình to vô hạn vì có rất nhiều tile khác nhau.
-            urlPattern: /^https:\/\/[abc]\.tile\.openstreetmap\.org\/.*/,
+            urlPattern: TILE_HOST_PATTERN,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'osm-tiles',

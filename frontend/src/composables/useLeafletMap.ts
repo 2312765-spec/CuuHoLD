@@ -11,6 +11,7 @@ import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth.store'
 import { taoIconMarker, type MarkerKind } from '@/utils/markerIcon'
 import MarkerPopupCard from '@/components/map/MarkerPopupCard.vue'
+import { TILE_URL, TILE_ATTRIBUTION } from '@/constants/tileProvider'
 
 interface GeoJsonProps {
   TinhThanh: string
@@ -189,8 +190,8 @@ export function useLeafletMap() {
     // OSM CÓ hỗ trợ CORS — an toàn để bật. Nếu đổi sang nhà cung cấp tile khác, PHẢI kiểm
     // lại y hệt trước, thiếu bước này khiến toàn bộ tile vỡ ngay từ tải đầu tiên, không phải
     // lỗi rải rác như bug cũ.
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
+    L.tileLayer(TILE_URL, {
+      attribution: TILE_ATTRIBUTION,
       maxZoom: 18,
       crossOrigin: 'anonymous'
     })
