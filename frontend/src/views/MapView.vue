@@ -152,6 +152,7 @@ const offlineQueueStore = useOfflineQueueStore()
 const {
   mapInstance,
   boundaryError,
+  tileError,
   initMap,
   applyLayerVisibility,
   themMarkerBaoCao,
@@ -161,6 +162,14 @@ const {
 
 watch(boundaryError, (msg) => {
   if (msg) toastStore.showToast(msg)
+})
+
+// Tile nền OSM lỗi (mất mạng, OSM chặn...) — marker SOS/đội/ranh giới đều là vector nên
+// vẫn đúng vị trí, chỉ nền raster bị thiếu. Không báo trước thì người xem tự suy diễn
+// "hệ thống hỏng" thay vì đúng bản chất "chỉ mất ảnh nền" — cùng nguyên tắc với cảnh báo
+// GPS ước lượng (CLAUDE.md Mục 15.6).
+watch(tileError, (loi) => {
+  if (loi) toastStore.showToast('Không tải được nền bản đồ — vị trí các marker vẫn chính xác')
 })
 
 function apDungMarkerSos(): void {

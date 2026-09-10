@@ -14,7 +14,7 @@ const props = defineProps<{
   selectedSosId?: string | null
 }>()
 
-const emit = defineEmits<{ 'select-sos': [id: string] }>()
+const emit = defineEmits<{ 'select-sos': [id: string]; 'tile-error': [loi: boolean] }>()
 
 const STATUS_COLOR: Record<SosStatus, string> = {
   pending: '#dc2626',
@@ -30,6 +30,12 @@ const mapContainer = ref<HTMLDivElement | null>(null)
 let map: L.Map | null = null
 let sosLayer: L.LayerGroup | null = null
 let teamLayer: L.LayerGroup | null = null
+
+// true khi tile nền OSM đang lỗi. Chỉ emit lúc giá trị THỰC SỰ đổi (watch trên ref, không
+// gọi emit thẳng trong .on('tileerror', ...)) — nhiều tile lỗi liên tiếp không tạo nhiều
+// emit, tránh DashboardView.vue hiện lặp lại cùng 1 toast cho từng tile.
+const loiTile = ref(false)
+watch(loiTile, (loi) => emit('tile-error', loi))
 
 function buildSosLayer() {
   if (!sosLayer) return
@@ -72,7 +78,14 @@ onMounted(() => {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 18
-  }).addTo(map)
+  })
+    .on('tileerror', () => {
+      loiTile.value = true
+    })
+    .on('tileload', () => {
+      loiTile.value = false
+    })
+    .addTo(map)
 
   sosLayer = L.layerGroup().addTo(map)
   teamLayer = L.layerGroup().addTo(map)

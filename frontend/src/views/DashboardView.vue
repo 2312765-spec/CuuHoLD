@@ -131,6 +131,13 @@ function onSelectSosFromMap(id: string) {
   if (sos) openAssignModal(sos)
 }
 
+// Tile nền OSM lỗi — marker SOS/đội vẫn đúng vị trí (vector), chỉ nền raster thiếu.
+// RescueMap.vue tự dedupe trước khi emit (xem loiTile/watch ở đó) nên ở đây không cần
+// debounce lại lần nữa.
+function onTileError(loi: boolean) {
+  if (loi) toastStore.showToast('Không tải được nền bản đồ — vị trí các marker vẫn chính xác')
+}
+
 function closeModal() {
   modalOpen.value = false
   modalSos.value = null
@@ -175,6 +182,7 @@ async function confirmAssign(team: NearestTeam) {
           :teams="teams"
           :selected-sos-id="selectedSosId"
           @select-sos="onSelectSosFromMap"
+          @tile-error="onTileError"
         />
       </div>
 

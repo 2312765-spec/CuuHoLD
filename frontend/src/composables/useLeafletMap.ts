@@ -26,6 +26,10 @@ export function useLeafletMap() {
 
   const soDiemHienThi = ref(0)
   const boundaryError = ref<string | null>(null)
+  // true khi tile nền OSM đang lỗi (mất mạng, OSM chặn...) — KHÔNG dùng chung với
+  // boundaryError vì đây là 2 lỗi khác nhau (nền bản đồ vs lớp ranh giới xã/phường).
+  // MapView.vue watch ref này để hiện toast, đúng pattern boundaryError đã có sẵn.
+  const tileError = ref(false)
   const mapInstance = shallowRef<L.Map | null>(null)
 
   let diemCuuTroLayer: L.LayerGroup | null = null
@@ -175,10 +179,20 @@ export function useLeafletMap() {
     // "Cập nhật thời gian thực" — cả hai cùng nằm sát góc phải dưới.
     L.control.zoom({ position: 'bottomleft' }).addTo(map)
 
+    // tileerror/tileload không dedupe tay: gán lại true nhiều lần liên tiếp không đổi
+    // giá trị ref, nên watch(tileError) ở MapView.vue chỉ bắn đúng 1 lần cho mỗi đợt lỗi
+    // (VD 20-30 tile cùng hỏng lúc mất mạng) — không phải 1 toast cho từng tile.
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 18
-    }).addTo(map)
+    })
+      .on('tileerror', () => {
+        tileError.value = true
+      })
+      .on('tileload', () => {
+        tileError.value = false
+      })
+      .addTo(map)
 
     buildMarkerLayers()
     applyLayerVisibility(map, activeLayer)
@@ -289,6 +303,7 @@ export function useLeafletMap() {
     mapInstance,
     soDiemHienThi,
     boundaryError,
+    tileError,
     initMap,
     applyLayerVisibility,
     themMarkerBaoCao,
