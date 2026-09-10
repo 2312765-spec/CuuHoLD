@@ -51,6 +51,14 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'osm-tiles',
+              // Không có cờ này, NetworkFirst chờ mạng VÔ THỜI HẠN trước khi chịu dùng
+              // cache — mạng chập chờn thì bản đồ trắng kéo dài dù tile đã có sẵn trong máy.
+              // AN TOÀN với mạng chậm, đã kiểm chứng trong source workbox-strategies
+              // (NetworkFirst.ts): khi hết 3s mà cache RỖNG, nó KHÔNG bỏ cuộc — rơi tiếp
+              // vào `await networkPromise`, tức vẫn chờ mạng như cũ. Nên cờ này chỉ có tác
+              // dụng "rút ngắn chờ khi đã có cache", không bao giờ làm hỏng tile lẽ ra tải
+              // được. Hệ quả cần biết: lần truy cập ĐẦU TIÊN (cache rỗng) không nhanh lên.
+              networkTimeoutSeconds: 3,
               expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
               // statuses:[200] — CHỈ hợp lệ vì L.tileLayer đã bật crossOrigin:'anonymous'
               // (useLeafletMap.ts, RescueMap.vue). Không có crossOrigin, request là no-cors,
@@ -64,7 +72,14 @@ export default defineConfig({
           {
             // Dữ liệu ranh giới hành chính: tĩnh, hiếm khi đổi — ưu tiên CACHE trước,
             // vẫn cập nhật ngầm phía sau (stale-while-revalidate) để không kẹt bản quá cũ.
-            urlPattern: /\/lamdong_tinh\.geojson$/,
+            //
+            // PHẢI khớp CẢ HAI file, không chỉ một: useLeafletMap.ts tải
+            // `/data/lamdong-wards.geojson` (ranh giới xã/phường — nguồn CHÍNH, 1.05 MB),
+            // và chỉ khi file đó lỗi mới lùi về `/lamdong_tinh.geojson` (ranh giới tỉnh,
+            // 42 KB). Trước đây pattern chỉ khớp file FALLBACK, nên nguồn chính — thứ gần
+            // như luôn được dùng — không được cache byte nào: mất mạng là mất sạch ranh
+            // giới, trái với đúng lời hứa "ưu tiên cache" ghi ngay trên dòng này.
+            urlPattern: /\/(lamdong-wards|lamdong_tinh)\.geojson$/,
             handler: 'StaleWhileRevalidate',
             options: { cacheName: 'boundary-data' }
           }
