@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -55,6 +56,14 @@ describe('SosService', () => {
   describe('create', () => {
     const victim = buildUser({ id: 'victim-1' });
 
+    // Từ khi có phép chặn "chỉ 1 SOS active/user" (SRS F-SOS-01), truy vấn ĐẦU TIÊN của
+    // create() là kiểm tra SOS đang hoạt động. Mặc định cho "không có" để các test bên
+    // dưới chỉ tập trung vào phần chúng thật sự kiểm; test nào cần ca ngược thì tự
+    // mockResolvedValueOnce trước khi gọi (xem test 'chặn khi đã có SOS...').
+    beforeEach(() => {
+      dataSource.query.mockResolvedValueOnce([]);
+    });
+
     it('lưu location_estimated=true khi client báo toạ độ chỉ là ước tính (fix P0 an toàn)', async () => {
       dataSource.query.mockResolvedValueOnce([
         {
@@ -79,7 +88,8 @@ describe('SosService', () => {
       );
 
       expect(result.location_estimated).toBe(true);
-      const [sql, params] = dataSource.query.mock.calls[0] as [
+      // calls[0] la truy van kiem tra SOS active (F-SOS-01), INSERT la calls[1]
+      const [sql, params] = dataSource.query.mock.calls[1] as [
         string,
         unknown[],
       ];
@@ -109,7 +119,7 @@ describe('SosService', () => {
         victim,
       );
 
-      const [, params] = dataSource.query.mock.calls[0] as [string, unknown[]];
+      const [, params] = dataSource.query.mock.calls[1] as [string, unknown[]];
       expect(params[params.length - 1]).toBe(false);
     });
 
@@ -145,8 +155,8 @@ describe('SosService', () => {
         10000,
         1,
       );
-      expect(dataSource.query).toHaveBeenCalledTimes(4);
-      const [assignSql, assignParams] = dataSource.query.mock.calls[1] as [
+      expect(dataSource.query).toHaveBeenCalledTimes(5); // +1: kiem tra SOS active
+      const [assignSql, assignParams] = dataSource.query.mock.calls[2] as [
         string,
         unknown[],
       ];
@@ -186,8 +196,58 @@ describe('SosService', () => {
       );
 
       expect(result.status).toBe('pending');
-      expect(dataSource.query).toHaveBeenCalledTimes(1); // chỉ INSERT, không có UPDATE/timeline
+      expect(dataSource.query).toHaveBeenCalledTimes(2); // kiểm tra SOS active + INSERT, không có UPDATE/timeline
       expect(gateway.emitSosUpdated).not.toHaveBeenCalled();
+    });
+
+    // SRS F-SOS-01: "Chỉ 1 SOS active cùng lúc/user".
+    it('chặn khi victim đã có SOS chưa kết thúc (ConflictException, KHÔNG insert thêm)', async () => {
+      // Ghi đè mock rỗng của beforeEach: lần này truy vấn kiểm tra TÌM THẤY một SOS active.
+      dataSource.query.mockReset();
+      dataSource.query.mockResolvedValueOnce([{ id: 'sos-dang-chay' }]);
+
+      await expect(
+        service.create({ lat: 11.94, lng: 108.44, type: 'flood' }, victim),
+      ).rejects.toThrow(ConflictException);
+
+      // Chỉ đúng 1 truy vấn (phép kiểm) — KHÔNG được chạy tới INSERT.
+      expect(dataSource.query).toHaveBeenCalledTimes(1);
+      expect(gateway.emitNewSos).not.toHaveBeenCalled();
+      expect(notifications.sendSosSms).not.toHaveBeenCalled();
+
+      const [sql, params] = dataSource.query.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+      expect(sql).toContain('NOT (status = ANY($2))');
+      expect(params).toEqual([
+        'victim-1',
+        ['resolved', 'cancelled', 'false_alarm'],
+      ]);
+    });
+
+    it('cho phép gửi SOS mới khi các SOS cũ đều đã kết thúc', async () => {
+      // beforeEach đã cho truy vấn kiểm tra trả [] (không có SOS active) — đây chính là ca
+      // ngược của test trên, xác nhận phép chặn không chặn nhầm người dùng hợp lệ.
+      dataSource.query.mockResolvedValueOnce([
+        {
+          id: 'sos-moi',
+          type: 'flood',
+          status: 'pending',
+          ward_code: '24781',
+          created_at: new Date('2026-01-01T00:00:00Z'),
+          cancel_deadline: new Date('2026-01-01T00:03:00Z'),
+          location_estimated: false,
+        },
+      ]);
+
+      const result = await service.create(
+        { lat: 11.94, lng: 108.44, type: 'flood' },
+        victim,
+      );
+
+      expect(result.id).toBe('sos-moi');
+      expect(gateway.emitNewSos).toHaveBeenCalled();
     });
   });
 
@@ -338,8 +398,13 @@ describe('SosService', () => {
         string,
         unknown[],
       ];
-      expect(sql).toContain("NOT IN ('resolved', 'cancelled', 'false_alarm')");
-      expect(params).toEqual(['victim-1']);
+      // Danh sách trạng thái kết thúc giờ truyền qua THAM SỐ ($2) thay vì nhúng thẳng vào
+      // chuỗi SQL — dùng chung hằng số SOS_TERMINAL_STATUSES với phép chặn trong create().
+      expect(sql).toContain('NOT (s.status = ANY($2))');
+      expect(params).toEqual([
+        'victim-1',
+        ['resolved', 'cancelled', 'false_alarm'],
+      ]);
     });
 
     it('trả về SOS mới nhất kèm timeline khi có SOS đang hoạt động', async () => {

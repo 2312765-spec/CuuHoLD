@@ -3,10 +3,11 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { SosRequest, SOS_STATUSES } from './sos.entity';
+import { SosRequest, SOS_STATUSES, SOS_TERMINAL_STATUSES } from './sos.entity';
 import type { SosStatus, SosType } from './sos.entity';
 import { CreateSosDto } from './dto/create-sos.dto';
 import { User } from '../users/user.entity';
@@ -162,6 +163,28 @@ export class SosService {
   ) {}
 
   async create(dto: CreateSosDto, victim: User): Promise<CreateSosResult> {
+    // SRS F-SOS-01: "Chỉ 1 SOS active cùng lúc/user". Trước đây KHÔNG được enforce —
+    // giới hạn duy nhất là rate limit 5 SOS/giờ, nên victim bấm nút 2 lần (hoảng loạn,
+    // hoặc tay run) là tạo ra 2 bản ghi: 2 đội có thể bị điều tới cùng một người, và
+    // thẻ theo dõi phía victim chỉ bám được 1 cái, cái còn lại treo vô chủ.
+    //
+    // ⚠️ Đây là phép chặn ở tầng ứng dụng nên VẪN CÒN khe hở đua (race): 2 request gửi
+    // đúng cùng lúc có thể cùng qua được phép kiểm này rồi cùng INSERT. Bịt kín phải dùng
+    // unique partial index dưới DB (`WHERE status NOT IN (...)`) — cần chạy migration tay
+    // trên Supabase, chưa làm. Với rate limit 5/giờ sẵn có thì khe hở này rất hẹp, nhưng
+    // ghi rõ ra để người sau biết đây không phải bảo đảm tuyệt đối.
+    const dangHoatDong = await this.dataSource.query<{ id: string }[]>(
+      `SELECT id FROM sos_requests
+       WHERE victim_id = $1 AND NOT (status = ANY($2))
+       LIMIT 1`,
+      [victim.id, SOS_TERMINAL_STATUSES],
+    );
+    if (dangHoatDong[0]) {
+      throw new ConflictException(
+        'Bạn đang có một yêu cầu cứu trợ chưa kết thúc. Hãy theo dõi hoặc huỷ yêu cầu đó trước khi gửi yêu cầu mới.',
+      );
+    }
+
     const cancelDeadline = new Date();
     cancelDeadline.setMinutes(cancelDeadline.getMinutes() + 3);
 
@@ -394,10 +417,10 @@ export class SosService {
     const rows = await this.dataSource.query<SosDetailRow[]>(
       `${SOS_DETAIL_SELECT}
        WHERE s.victim_id = $1
-         AND s.status NOT IN ('resolved', 'cancelled', 'false_alarm')
+         AND NOT (s.status = ANY($2))
        ORDER BY s.created_at DESC
        LIMIT 1`,
-      [victim.id],
+      [victim.id, SOS_TERMINAL_STATUSES],
     );
     const sos = rows[0];
     if (!sos) return null;

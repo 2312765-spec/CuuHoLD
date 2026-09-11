@@ -32,6 +32,16 @@ export const SOS_STATUSES = [
 ] as const;
 export type SosStatus = (typeof SOS_STATUSES)[number];
 
+// Các trạng thái coi như ĐÃ KẾT THÚC — phần bù của chúng là "đang hoạt động".
+// Dùng chung cho findMyActive() và phép chặn "chỉ 1 SOS active/user" trong create()
+// (SRS F-SOS-01). Trước đây danh sách này gõ tay trong findMyActive(); thêm chỗ dùng
+// thứ hai mà copy lại là tạo đúng kiểu lệch âm thầm khi sau này có thêm trạng thái mới.
+export const SOS_TERMINAL_STATUSES: readonly SosStatus[] = [
+  'resolved',
+  'cancelled',
+  'false_alarm',
+];
+
 export interface GeoPoint {
   type: 'Point';
   coordinates: [number, number]; // [longitude, latitude]
