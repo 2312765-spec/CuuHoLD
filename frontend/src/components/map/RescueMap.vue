@@ -7,7 +7,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { SosListItem, RescueTeam, NearestTeam, SosStatus } from '@/types'
-import { TILE_URL, TILE_ATTRIBUTION } from '@/constants/tileProvider'
+import { taoLopTileNen } from '@/utils/tileLayer'
 
 const props = defineProps<{
   sosList: SosListItem[]
@@ -76,13 +76,9 @@ function buildTeamLayer() {
 onMounted(() => {
   if (!mapContainer.value) return
   map = L.map(mapContainer.value, { zoomControl: true }).setView([11.9465, 108.4419], 9)
-  // crossOrigin: xem giải thích đầy đủ trong useLeafletMap.ts (cùng thay đổi, áp cho
-  // đúng nguồn tile OSM). Đã kiểm chứng OSM hỗ trợ CORS trước khi bật cờ này.
-  L.tileLayer(TILE_URL, {
-    attribution: TILE_ATTRIBUTION,
-    maxZoom: 18,
-    crossOrigin: 'anonymous'
-  })
+  // Cấu hình tile (URL, attribution, crossOrigin, ưu tiên bộ offline z8–10) nằm trong
+  // utils/tileLayer.ts — dùng chung với useLeafletMap.ts, xem giải thích đầy đủ ở đó.
+  taoLopTileNen()
     .on('tileerror', () => {
       loiTile.value = true
     })

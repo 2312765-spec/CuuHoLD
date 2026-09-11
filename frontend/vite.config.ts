@@ -44,6 +44,16 @@ export default defineConfig({
       },
 
       workbox: {
+        // ⚠️ Khai globPatterns là GHI ĐÈ mặc định của Workbox (`**/*.{js,wasm,css,html}`),
+        // KHÔNG phải thêm vào. Bỏ sót 4 đuôi gốc đó = app shell không còn được precache =
+        // mất offline hoàn toàn, mà build vẫn xanh nên rất khó phát hiện. Phải giữ nguyên
+        // dòng đầu khi sửa dòng thứ hai.
+        //
+        // 'tiles/**/*.png' là bộ tile nền Lâm Đồng z8–10 (96 tile, ~1,6 MB) tải sẵn bằng
+        // `npm run build:tiles` và commit vào public/tiles/ — SRS F-PWA-03. Xem lý do chọn
+        // z8–10 thay vì z8–14 trong src/constants/tileProvider.ts.
+        globPatterns: ['**/*.{js,wasm,css,html}', 'tiles/**/*.png'],
+
         // Chiến lược cache riêng cho từng loại dữ liệu — xem giải thích trong hội thoại:
         // tile bản đồ & dữ liệu ranh giới không nên xử lý giống nhau.
         runtimeCaching: [
