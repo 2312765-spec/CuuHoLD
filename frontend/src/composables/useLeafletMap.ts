@@ -171,9 +171,9 @@ export function useLeafletMap() {
       8
     )
     // bottomleft chứ không phải bottomright: góc dưới PHẢI nay dành cho nút SOS (hành động
-    // chính của victim, đặt trong tầm ngón cái). Ở vị trí cũ nút zoom còn đè lên chỉ báo
-    // "Cập nhật thời gian thực" — cả hai cùng nằm sát góc phải dưới.
-    L.control.zoom({ position: 'bottomleft' }).addTo(map)
+    // Nút zoom đặt góc phải TRÊN — tránh legend (góc trái dưới) và chỉ báo real-time
+    // (góc phải dưới). Đây là góc trống duy nhất không vướng thành phần nào.
+    L.control.zoom({ position: 'topright' }).addTo(map)
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',

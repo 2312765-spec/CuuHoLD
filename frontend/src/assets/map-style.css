@@ -147,10 +147,16 @@
 /* ============ MOBILE FIRST cho trang /map ============ */
 
 .map-top{ flex-wrap:wrap; gap:10px; padding:12px 16px; }
+.map-back{ order:0; }
+.map-top-right{ order:1; margin-left:auto; }
 .layer-tabs{ order:3; width:100%; overflow-x:auto; }
 .map-stats{ top:96px; }
 #map{ padding-top:132px; }
 .stat-note{ display:none; }
+
+/* Trên mobile: nút trong map-top-right gọn lại, luôn hiện (không bị đẩy khuất) */
+.map-top-right .sos-btn{ padding:8px 14px; font-size:13px; white-space:nowrap; }
+.map-top-right .map-user{ display:none; } /* ẩn tên user trên màn hẹp cho gọn */
 
 /* Modal full-width có lề, không dính sát mép màn hình nhỏ */
 .modal-card{ margin:0 16px; width:calc(100% - 32px); }
@@ -172,6 +178,7 @@
   #map{ padding-top:96px; }
   .stat-note{ display:inline; }
   .modal-card{ margin:0; width:100%; }
+  .map-top-right .map-user{ display:inline; } /* hiện lại tên user trên màn rộng */
 }
 /* ---------- chỉ báo trạng thái kết nối real-time (góc dưới phải) ----------
    Khi nút SOS đang hiện (chỉ victim, và chỉ lúc chưa có SOS nào đang chạy), 3 huy hiệu
@@ -196,10 +203,10 @@
   position:fixed; right:24px; bottom:24px; z-index:950;
 }
 
-/* Nút zoom Leaflet chuyển sang góc dưới trái, nâng lên phía trên bảng chú thích
-   (.map-legend-panel cao ~98px, đáy cách 24px) để hai thứ không chồng nhau. */
-.leaflet-bottom.leaflet-left .leaflet-control-zoom{
-  margin-left:20px; margin-bottom:134px;
+/* Nút zoom Leaflet đặt góc phải TRÊN (position:'topright' trong useLeafletMap.ts).
+   Đẩy xuống dưới thanh MapStats (~96px từ đỉnh) để không bị thanh trên che. */
+.leaflet-top.leaflet-right .leaflet-control-zoom{
+  margin-top:106px; margin-right:16px;
 }
 
 /* ---------- phần bên phải thanh topbar bản đồ (nút + user) ---------- */
