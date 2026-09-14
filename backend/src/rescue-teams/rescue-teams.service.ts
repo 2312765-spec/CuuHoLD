@@ -49,6 +49,17 @@ export class RescueTeamsService {
     @Inject(forwardRef(() => SosGateway)) private sosGateway: SosGateway,
   ) {}
 
+  // Dùng lúc rescuer kết nối WebSocket — cần biết họ làm leader của những đội nào để
+  // join đúng room `team:{id}`, phục vụ nhận sự kiện SOS được giao cho đội mình dù SOS
+  // đó ở xã khác (xem CLAUDE.md Mục 15.10).
+  async findTeamIdsByLeader(leaderId: string): Promise<string[]> {
+    const rows = await this.dataSource.query<{ id: string }[]>(
+      `SELECT id FROM rescue_teams WHERE leader_id = $1`,
+      [leaderId],
+    );
+    return rows.map((r) => r.id);
+  }
+
   async findAll(): Promise<RescueTeamListRow[]> {
     return this.dataSource.query<RescueTeamListRow[]>(`
       SELECT rt.id, rt.name, rt.status, rt.specialties, rt.ward_code,
@@ -87,7 +98,11 @@ export class RescueTeamsService {
     const team = await this.assertOwnership(teamId, actingUserId);
 
     // LƯU Ý: ST_MakePoint(longitude, latitude) — lng TRƯỚC, lat SAU
-    const rows = await this.dataSource.query<{ updated_at: Date }[]>(
+    // TypeORM trả UPDATE...RETURNING dạng tuple [rows, affectedCount] (khác SELECT/INSERT
+    // trả thẳng mảng rows) — phải destructure [rows], không phải gán thẳng rồi đọc rows[0].
+    const [rows] = await this.dataSource.query<
+      [{ updated_at: Date }[], number]
+    >(
       `
       UPDATE rescue_teams
       SET current_location = ST_SetSRID(ST_MakePoint($1, $2), 4326), updated_at = NOW()
@@ -122,7 +137,10 @@ export class RescueTeamsService {
   ): Promise<UpdateTeamStatusResult> {
     await this.assertOwnership(teamId, actingUserId);
 
-    const rows = await this.dataSource.query<{ updated_at: Date }[]>(
+    // Xem chú thích ở updateLocation() — UPDATE...RETURNING trả tuple [rows, affectedCount].
+    const [rows] = await this.dataSource.query<
+      [{ updated_at: Date }[], number]
+    >(
       `UPDATE rescue_teams SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING updated_at`,
       [status, teamId],
     );

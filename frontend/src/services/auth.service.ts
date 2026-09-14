@@ -14,7 +14,6 @@ export async function register(payload: {
   phone: string
   name: string
   password: string
-  role?: 'victim' | 'rescuer' | 'commander'
 }): Promise<AuthData> {
   const { data } = await http.post(CONFIG.endpoints.auth + '/register', payload)
   return data.data as AuthData

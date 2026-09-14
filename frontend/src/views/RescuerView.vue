@@ -3,6 +3,9 @@
 // Theo dõi GPS: khi có SOS active (assigned/in_progress/arrived), watchPosition() giữ
 // toạ độ mới nhất, setInterval 30s gửi định kỳ lên PATCH /api/rescue-teams/:id/location
 // (CLAUDE.md Mục 8: "Rescuer gửi GPS mỗi 30 giây").
+// Bản đồ (SRS 6.1 "route di chuyển trên bản đồ"): đường THẲNG từ vị trí GPS của mình tới
+// nạn nhân của nhiệm vụ đang chọn + khoảng cách/ETA ước tính. Dẫn đường theo đường bộ thật
+// giao cho Google Maps (link "Chỉ đường") — không gọi dịch vụ định tuyến ngoài nào.
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth.store'
@@ -11,7 +14,9 @@ import { useSocket } from '@/composables/useSocket'
 import { CONFIG } from '@/config'
 import { layDanhSachSos, xemChiTietSos, capNhatTienDo } from '@/services/sosService'
 import { fetchRescueTeams, capNhatViTriDoi } from '@/services/rescueTeamsService'
-import type { SosRequest, SosType, SosStatus } from '@/types'
+import { khoangCachMet, etaPhut } from '@/utils/geo'
+import RescueMap from '@/components/map/RescueMap.vue'
+import type { SosRequest, SosType, SosStatus, RescueTeam } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
 
 const authStore = useAuthStore()
@@ -63,8 +68,10 @@ function formatTime(iso: string): string {
   })
 }
 
-function googleMapsLink(lat: number, lng: number): string {
-  return `https://www.google.com/maps?q=${lat},${lng}`
+// Link dẫn đường của Google Maps: bỏ trống origin để Google tự lấy vị trí hiện tại của
+// máy (chính xác hơn toạ độ app đang giữ, vốn có thể đã cũ vài giây).
+function chiDuongLink(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
 }
 
 // ---------- Xác định đội mình phụ trách ----------
@@ -205,6 +212,37 @@ watch(
   { immediate: true }
 )
 
+// ---------- Bản đồ: đường từ vị trí mình tới nạn nhân của nhiệm vụ đang chọn ----------
+// Đội cứu hộ khác không vẽ — rescuer chỉ cần thấy chính mình và nạn nhân.
+const KHONG_VE_DOI: RescueTeam[] = []
+
+const selectedSosId = ref<string | null>(null)
+// Chưa chọn (hoặc nhiệm vụ đang chọn vừa kết thúc) → mặc định nhiệm vụ đầu danh sách.
+const selectedSos = computed(
+  () => sosList.value.find((s) => s.id === selectedSosId.value) ?? sosList.value[0] ?? null
+)
+const route = computed(() =>
+  lastPosition.value && selectedSos.value
+    ? { from: lastPosition.value, to: { lat: selectedSos.value.lat, lng: selectedSos.value.lng } }
+    : null
+)
+
+function chonNhiemVu(id: string): void {
+  selectedSosId.value = id
+}
+
+function quangDuong(sos: SosRequest): string | null {
+  if (!lastPosition.value) return null
+  const met = khoangCachMet(lastPosition.value, sos)
+  return `≈ ${(met / 1000).toFixed(1)} km đường chim bay · ~${etaPhut(met)} phút (ước tính 40 km/h)`
+}
+
+// Tile nền OSM lỗi — marker SOS và đường tới nạn nhân vẫn đúng (vector), chỉ nền raster
+// thiếu. RescueMap.vue tự dedupe trước khi emit, giống DashboardView.vue.
+function onTileError(loi: boolean): void {
+  if (loi) toastStore.showToast('Không tải được nền bản đồ — vị trí các marker vẫn chính xác')
+}
+
 onMounted(async () => {
   await taiDoiCuaMinh()
   await taiDanhSachNhiemVu()
@@ -236,36 +274,63 @@ onUnmounted(() => {
       </div>
       <div v-else-if="sosList.length === 0" class="panel-empty">Chưa có nhiệm vụ nào được phân công.</div>
 
-      <ul v-else class="sos-list">
-        <li v-for="sos in sosList" :key="sos.id" class="sos-card" :class="`status-${sos.status}`">
-          <div class="sos-card-top">
-            <span class="sos-badge">{{ SOS_TYPE_LABEL[sos.type] }}</span>
-            <span class="sos-status-badge">{{ SOS_STATUS_LABEL[sos.status] }}</span>
-          </div>
+      <template v-else>
+        <div class="rescuer-map">
+          <RescueMap
+            :sos-list="sosList"
+            :teams="KHONG_VE_DOI"
+            :selected-sos-id="selectedSos?.id ?? null"
+            :route="route"
+            @select-sos="chonNhiemVu"
+            @tile-error="onTileError"
+          />
+        </div>
+        <p class="map-hint">
+          {{
+            lastPosition
+              ? 'Nét đứt là đường chim bay, không phải tuyến đường bộ — bấm "Chỉ đường" để được dẫn đường thật.'
+              : 'Đang chờ vị trí GPS của bạn để vẽ đường tới nạn nhân...'
+          }}
+        </p>
 
-          <div class="sos-victim">{{ sos.victim_name }} · {{ sos.victim_phone }}</div>
-
-          <p v-if="sos.location_estimated" class="sos-location-warn">
-            ⚠️ Vị trí ước tính — nạn nhân không lấy được GPS chính xác, gọi điện xác nhận vị trí thật nếu có thể
-          </p>
-          <div class="sos-meta">
-            <a :href="googleMapsLink(sos.lat, sos.lng)" target="_blank" rel="noopener noreferrer">
-              {{ sos.lat.toFixed(5) }}, {{ sos.lng.toFixed(5) }} — Mở Google Maps
-            </a>
-          </div>
-          <div class="sos-meta">Gửi lúc {{ formatTime(sos.created_at) }}</div>
-          <p v-if="sos.description" class="sos-desc">{{ sos.description }}</p>
-
-          <button
-            v-if="NEXT_ACTION[sos.status]"
-            class="btn btn-primary"
-            :disabled="updatingId === sos.id"
-            @click="capNhat(sos)"
+        <ul class="sos-list">
+          <li
+            v-for="sos in sosList"
+            :key="sos.id"
+            class="sos-card"
+            :class="[`status-${sos.status}`, { active: sos.id === selectedSos?.id }]"
+            @click="chonNhiemVu(sos.id)"
           >
-            {{ updatingId === sos.id ? 'Đang cập nhật...' : NEXT_ACTION[sos.status]!.label }}
-          </button>
-        </li>
-      </ul>
+            <div class="sos-card-top">
+              <span class="sos-badge">{{ SOS_TYPE_LABEL[sos.type] }}</span>
+              <span class="sos-status-badge">{{ SOS_STATUS_LABEL[sos.status] }}</span>
+            </div>
+
+            <div class="sos-victim">{{ sos.victim_name }} · {{ sos.victim_phone }}</div>
+
+            <p v-if="sos.location_estimated" class="sos-location-warn">
+              ⚠️ Vị trí ước tính — nạn nhân không lấy được GPS chính xác, gọi điện xác nhận vị trí thật nếu có thể
+            </p>
+            <div class="sos-meta">
+              <a :href="chiDuongLink(sos.lat, sos.lng)" target="_blank" rel="noopener noreferrer">
+                {{ sos.lat.toFixed(5) }}, {{ sos.lng.toFixed(5) }} — Chỉ đường (Google Maps)
+              </a>
+            </div>
+            <div v-if="quangDuong(sos)" class="sos-meta">{{ quangDuong(sos) }}</div>
+            <div class="sos-meta">Gửi lúc {{ formatTime(sos.created_at) }}</div>
+            <p v-if="sos.description" class="sos-desc">{{ sos.description }}</p>
+
+            <button
+              v-if="NEXT_ACTION[sos.status]"
+              class="btn btn-primary"
+              :disabled="updatingId === sos.id"
+              @click="capNhat(sos)"
+            >
+              {{ updatingId === sos.id ? 'Đang cập nhật...' : NEXT_ACTION[sos.status]!.label }}
+            </button>
+          </li>
+        </ul>
+      </template>
     </main>
 
     <div class="toast" :class="{ show: toastStore.visible }">{{ toastStore.message }}</div>
@@ -279,7 +344,11 @@ onUnmounted(() => {
   min-height: 100vh;
   background: var(--fog);
 }
+/* style.css có rule toàn cục `header { position: fixed }` viết cho header trang chủ — áp
+   nhầm lên cả header này, khiến nó không chiếm chỗ và phần đầu nội dung (bản đồ, thẻ đầu
+   tiên) bị che dưới header. sticky: vẫn dính trên cùng khi cuộn nhưng chiếm chỗ bình thường. */
 .rescuer-top {
+  position: sticky;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -335,6 +404,23 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+/* position+z-index tạo stacking context riêng: các pane của Leaflet có z-index 400+, nếu
+   không cô lập thì bản đồ vẽ ĐÈ lên header fixed (z-index 50) khi nằm/cuộn dưới header. */
+.rescuer-map {
+  position: relative;
+  z-index: 0;
+  height: 42vh;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.map-hint {
+  margin: 8px 2px 14px;
+  font-size: 12px;
+  color: rgba(42, 42, 36, 0.55);
+}
+
 .sos-list {
   list-style: none;
   display: flex;
@@ -347,6 +433,10 @@ onUnmounted(() => {
   border-left: 4px solid transparent;
   border-radius: 10px;
   background: #fff;
+  cursor: pointer;
+}
+.sos-card.active {
+  box-shadow: 0 0 0 2px var(--pine-deep);
 }
 .sos-card.status-assigned {
   border-left-color: #f97316;

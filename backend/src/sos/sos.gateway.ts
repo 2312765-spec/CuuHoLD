@@ -63,6 +63,18 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (payload.role === 'commander') {
         await client.join('province:lamdong');
       }
+      if (payload.role === 'rescuer') {
+        // Đội được auto-assign/commander phân công theo khoảng cách GPS (findNearestTeams),
+        // không theo ranh giới xã — đội có thể được giao SOS ở xã khác room `ward:*` của
+        // leader không phủ tới. Join thêm room theo TỪNG đội leader này phụ trách để
+        // emitSosUpdated() (bên dưới) chắc chắn tới được leader bất kể xã nào.
+        const teamIds = await this.rescueTeamsService.findTeamIdsByLeader(
+          payload.sub,
+        );
+        for (const id of teamIds) {
+          await client.join(`team:${id}`);
+        }
+      }
       console.log(
         `✅ Connected: ${maskPhone(payload.phone)} (${payload.role})`,
       );
@@ -88,6 +100,13 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): void {
     this.server.to(`sos:${sosId}`).emit(SOCKET_EVENTS.SOS_UPDATED, data);
     this.server.to(`ward:${wardCode}`).emit(SOCKET_EVENTS.SOS_UPDATED, data);
+    // Đội được giao có thể ở khác xã với SOS (phân công theo GPS) — room ward:* ở trên
+    // không phủ tới leader đội đó, nên bắn thêm vào room riêng theo đội.
+    if (data.assignedTeamId) {
+      this.server
+        .to(`team:${data.assignedTeamId}`)
+        .emit(SOCKET_EVENTS.SOS_UPDATED, data);
+    }
   }
 
   emitTeamLocationUpdated(wardCode: string, data: TeamLocationPayload): void {

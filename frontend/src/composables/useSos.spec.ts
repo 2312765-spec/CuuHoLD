@@ -8,12 +8,13 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useSos } from './useSos'
 import * as sosService from '@/services/sosService'
-import type { CreateSosResult, CancelSosResult } from '@/types'
+import type { CreateSosResult, CancelSosResult, SosRequest } from '@/types'
 
 vi.mock('@/services/sosService', () => ({
   guiSos: vi.fn(),
   huySos: vi.fn(),
-  xemChiTietSos: vi.fn()
+  xemChiTietSos: vi.fn(),
+  xemSosDangHoatDongCuaToi: vi.fn()
 }))
 
 // useSos() gọi onUnmounted() để dọn interval polling — cần một component instance THẬT
@@ -169,5 +170,59 @@ describe('useSos', () => {
     sos.dongTheoDoi()
 
     expect(sos.activeSos.value).toBeNull()
+  })
+
+  // ---- Fix #2 (CLAUDE.md Mục 15.11): victim thấy đội cứu hộ đang tới ----
+  const CHI_TIET_MAU: SosRequest = {
+    id: 'sos-1',
+    victim_id: 'victim-1',
+    type: 'flood',
+    status: 'assigned',
+    description: null,
+    image_url: null,
+    ward_code: '24781',
+    cancel_deadline: '2026-01-01T00:03:00.000Z',
+    location_estimated: false,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:01:00.000Z',
+    resolved_at: null,
+    lat: 11.9,
+    lng: 108.4,
+    assigned_team_id: 'team-1',
+    team_lat: 11.95,
+    team_lng: 108.45
+  }
+
+  it('khoiPhucSosDangHoatDong() mang theo toạ độ đội được giao', async () => {
+    vi.mocked(sosService.xemSosDangHoatDongCuaToi).mockResolvedValue(CHI_TIET_MAU)
+    const sos = setupUseSos()
+
+    await sos.khoiPhucSosDangHoatDong()
+
+    expect(sos.activeSos.value).toMatchObject({ teamLat: 11.95, teamLng: 108.45 })
+  })
+
+  it('mỗi lượt poll cập nhật toạ độ đội — đội di chuyển thì marker đi theo', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(sosService.guiSos).mockResolvedValue(KET_QUA_MAU)
+      vi.mocked(sosService.xemChiTietSos).mockResolvedValue({
+        ...CHI_TIET_MAU,
+        team_lat: 11.93,
+        team_lng: 108.43
+      })
+      const sos = setupUseSos()
+      await sos.guiYeuCauSos({ lat: 11.9, lng: 108.4, type: 'flood' })
+
+      await vi.advanceTimersByTimeAsync(20000)
+
+      expect(sos.activeSos.value).toMatchObject({
+        status: 'assigned',
+        teamLat: 11.93,
+        teamLng: 108.43
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

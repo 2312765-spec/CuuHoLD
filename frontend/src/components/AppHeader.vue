@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import InstallButton from '@/components/InstallButton.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useCtaTheoRole } from '@/composables/useCtaTheoRole'
 
@@ -42,7 +41,6 @@ const { cta } = useCtaTheoRole()
       <div class="nav-cta">
         <RouterLink v-if="cta.dich" :to="cta.dich" class="btn btn-primary">{{ cta.nhan }}</RouterLink>
         <button v-else class="btn btn-primary" @click="$emit('openAuth')">{{ cta.nhan }}</button>
-        <InstallButton />
       </div>
       <button class="menu-btn" aria-label="Mở menu" @click="isMenuOpen = !isMenuOpen">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 6H19M3 11H19M3 16H19" stroke="#2a2a24" stroke-width="1.6" stroke-linecap="round"/></svg>

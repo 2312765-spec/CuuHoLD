@@ -155,6 +155,8 @@ describe('SosService', () => {
         10000,
         1,
       );
+      // Đã có đội trong 10km → KHÔNG mở rộng lên 20km.
+      expect(gisService.findNearestTeams).toHaveBeenCalledTimes(1);
       expect(dataSource.query).toHaveBeenCalledTimes(5); // +1: kiem tra SOS active
       const [assignSql, assignParams] = dataSource.query.mock.calls[2] as [
         string,
@@ -174,6 +176,46 @@ describe('SosService', () => {
           assignedTeamId: 'team-1',
         }),
       );
+    });
+
+    // SRS F-GIS-01: không có đội trong 10km → mở rộng lên 20km.
+    it('mở rộng lên 20km khi không có đội nào trong 10km', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            id: 'sos-5',
+            type: 'flood',
+            status: 'pending',
+            ward_code: '24781',
+            created_at: new Date('2026-01-01T00:00:00Z'),
+            cancel_deadline: new Date('2026-01-01T00:03:00Z'),
+            location_estimated: false,
+          },
+        ])
+        .mockResolvedValueOnce(undefined) // UPDATE sos_requests
+        .mockResolvedValueOnce(undefined) // UPDATE rescue_teams
+        .mockResolvedValueOnce(undefined); // INSERT sos_timeline
+      gisService.findNearestTeams
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { id: 'team-2', name: 'Đội cứu hộ Lạc Dương' },
+        ]);
+
+      const result = await service.create(
+        { lat: 11.94, lng: 108.44, type: 'flood' },
+        victim,
+      );
+
+      expect(result.status).toBe('assigned');
+      expect(gisService.findNearestTeams.mock.calls).toEqual([
+        [11.94, 108.44, 10000, 1],
+        [11.94, 108.44, 20000, 1],
+      ]);
+      const [, assignParams] = dataSource.query.mock.calls[2] as [
+        string,
+        unknown[],
+      ];
+      expect(assignParams).toEqual(['sos-5', 'team-2']);
     });
 
     it('giữ nguyên pending khi không có đội nào sẵn sàng trong bán kính', async () => {
@@ -326,7 +368,11 @@ describe('SosService', () => {
           },
         ])
         .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce([{ late_cancel_count: 3, is_flagged: true }]);
+        // UPDATE users ... RETURNING → tuple [rows, affectedCount] (xem Mục 15.11).
+        .mockResolvedValueOnce([
+          [{ late_cancel_count: 3, is_flagged: true }],
+          1,
+        ]);
 
       const result = await service.cancel('sos-1', victim);
 
@@ -455,6 +501,18 @@ describe('SosService', () => {
       });
       expect(dataSource.query).toHaveBeenCalledTimes(2);
     });
+
+    // Fix #2 (Mục 15.11): victim thấy đội đang tới — lấy vị trí hiện tại của đội được giao
+    // qua đúng LEFT JOIN rescue_teams sẵn có, không thêm route/socket nào.
+    it('lấy kèm toạ độ hiện tại của đội được giao', async () => {
+      dataSource.query.mockResolvedValueOnce([]);
+
+      await service.findMyActive(victim);
+
+      const [sql] = dataSource.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('ST_Y(rt.current_location::geometry) AS team_lat');
+      expect(sql).toContain('ST_X(rt.current_location::geometry) AS team_lng');
+    });
   });
 
   describe('assign', () => {
@@ -509,7 +567,9 @@ describe('SosService', () => {
           { status: 'pending', ward_code: '24781', assigned_team_id: null },
         ])
         .mockResolvedValueOnce([{ status: 'available' }])
-        .mockResolvedValueOnce([{ updated_at: updatedAt }])
+        // UPDATE...RETURNING: TypeORM trả tuple [rows, affectedCount], KHÔNG phải mảng rows
+        // thẳng như SELECT/INSERT — mock phải đúng hình dạng driver thật (Mục 15.11).
+        .mockResolvedValueOnce([[{ updated_at: updatedAt }], 1])
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce(undefined);
 
@@ -585,7 +645,9 @@ describe('SosService', () => {
           { status: 'assigned', ward_code: '24781', assigned_team_id: 't1' },
         ])
         .mockResolvedValueOnce([{ id: 't1' }])
-        .mockResolvedValueOnce([{ updated_at: updatedAt }])
+        // UPDATE...RETURNING: TypeORM trả tuple [rows, affectedCount], KHÔNG phải mảng rows
+        // thẳng như SELECT/INSERT — mock phải đúng hình dạng driver thật (Mục 15.11).
+        .mockResolvedValueOnce([[{ updated_at: updatedAt }], 1])
         .mockResolvedValueOnce(undefined);
 
       const result = await service.updateStatus(
@@ -610,7 +672,9 @@ describe('SosService', () => {
           { status: 'arrived', ward_code: '24781', assigned_team_id: 't1' },
         ])
         .mockResolvedValueOnce([{ id: 't1' }])
-        .mockResolvedValueOnce([{ updated_at: updatedAt }])
+        // UPDATE...RETURNING: TypeORM trả tuple [rows, affectedCount], KHÔNG phải mảng rows
+        // thẳng như SELECT/INSERT — mock phải đúng hình dạng driver thật (Mục 15.11).
+        .mockResolvedValueOnce([[{ updated_at: updatedAt }], 1])
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce(undefined);
 
@@ -628,6 +692,91 @@ describe('SosService', () => {
         unknown[],
       ];
       expect(teamUpdateCall[0]).toContain("status='available'");
+    });
+  });
+
+  // Bug thật báo qua test tay (2026-09-11): rescuer là leader của đội được auto-assign
+  // (đội gần nhất theo GPS, có thể ở xã khác), nhưng bị ẩn khỏi danh sách vì findAll()/
+  // findById() lọc theo s.ward_code === user.wardCode — không liên quan gì tới việc đội
+  // của họ có được giao SOS đó hay không. Test dưới tái hiện đúng kịch bản: rescuer ở xã
+  // A, SOS ở xã B, nhưng SOS đã được giao cho đội do rescuer này làm leader.
+  describe('findAll — rescuer xem SOS của đội mình dù khác xã', () => {
+    const rescuer = buildUser({
+      id: 'leader-1',
+      role: 'rescuer',
+      wardCode: '24823',
+    });
+
+    it('thêm điều kiện OR theo đội mình làm leader vào WHERE, không chỉ theo ward_code', async () => {
+      dataSource.query.mockResolvedValueOnce([]);
+
+      await service.findAll(rescuer, {});
+
+      const [sql, params] = dataSource.query.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+      expect(sql).toContain('s.ward_code = $1');
+      expect(sql).toContain(
+        's.assigned_team_id IN (SELECT id FROM rescue_teams WHERE leader_id = $2)',
+      );
+      expect(params).toEqual(['24823', 'leader-1']);
+    });
+  });
+
+  describe('findById — rescuer xem chi tiết SOS của đội mình dù khác xã', () => {
+    const rescuer = buildUser({
+      id: 'leader-1',
+      role: 'rescuer',
+      wardCode: '24823',
+    });
+
+    function sosRow(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'sos-1',
+        victim_id: 'victim-1',
+        ward_code: '24778', // khác wardCode của rescuer ở trên
+        assigned_team_id: 'team-1',
+        team_leader_id: 'leader-1',
+        status: 'assigned',
+        ...overrides,
+      };
+    }
+
+    it('cho xem khi khác ward nhưng là leader của đội được giao (fix bug)', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([sosRow()])
+        .mockResolvedValueOnce([]); // timeline
+
+      await expect(service.findById('sos-1', rescuer)).resolves.toMatchObject({
+        id: 'sos-1',
+      });
+    });
+
+    it('vẫn chặn khi khác ward VÀ không phải leader của đội được giao', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        sosRow({ team_leader_id: 'nguoi-khac' }),
+      ]);
+
+      await expect(service.findById('sos-1', rescuer)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('vẫn cho xem bình thường khi cùng ward (hành vi cũ không đổi)', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          sosRow({
+            ward_code: '24823',
+            assigned_team_id: null,
+            team_leader_id: null,
+          }),
+        ])
+        .mockResolvedValueOnce([]);
+
+      await expect(service.findById('sos-1', rescuer)).resolves.toMatchObject({
+        id: 'sos-1',
+      });
     });
   });
 });

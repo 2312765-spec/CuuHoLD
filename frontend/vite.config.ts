@@ -58,7 +58,7 @@ export default defineConfig({
         // tile bản đồ & dữ liệu ranh giới không nên xử lý giống nhau.
         runtimeCaching: [
           {
-            // Tile OpenStreetMap: ưu tiên MẠNG trước (bản đồ luôn cần mới nhất khi có mạng),
+            // Tile nền (nguồn: TILE_URL trong tileProvider.ts): ưu tiên MẠNG trước,
             // cache chỉ để dự phòng lúc mất mạng — và giới hạn số lượng, tự hết hạn sau
             // 30 ngày, tránh cache phình to vô hạn vì có rất nhiều tile khác nhau.
             urlPattern: TILE_HOST_PATTERN,

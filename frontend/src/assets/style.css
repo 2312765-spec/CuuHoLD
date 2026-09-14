@@ -214,13 +214,10 @@ section{ padding:56px 0; }
 /* ---------- thẻ tính năng: nhấn nhẹ khi bấm trên di động (không chỉ hover) ---------- */
 .feat-card:active, .feat2-card:active{ transform: translateY(-1px) scale(0.99); }
 
-/* ---------- nút cài đặt PWA ---------- */
-.install-btn{
-  display:inline-flex; align-items:center; gap:7px;
-  background:var(--clay); color:var(--fog);
+/* ---------- toast (stores/toast.ts) — dùng chung mọi trang, không riêng /map ---------- */
+.toast{
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--pine-deep); color:var(--fog); padding:12px 22px; border-radius:999px;
+  font-size:13px; z-index:3000; opacity:0; pointer-events:none; transition:all .25s ease;
 }
-.install-btn:hover{ background:var(--clay-soft); }
-.install-hint{
-  font-size:12px; color:rgba(42,42,36,0.65); max-width:220px; line-height:1.4;
-}
-.install-hint strong{ color:var(--clay); font-weight:600; }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }

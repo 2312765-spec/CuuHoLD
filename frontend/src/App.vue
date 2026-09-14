@@ -2,6 +2,7 @@
 import { watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import InstallPromptBar from '@/components/InstallPromptBar.vue'
 
 // App.vue chỉ đóng vai trò khung chứa route — toàn bộ nội dung thật nằm trong
 // src/views/HomeView.vue (trang chủ) và src/views/MapView.vue (trang bản đồ).
@@ -46,4 +47,7 @@ watch(
       <component :is="Component" />
     </transition>
   </RouterView>
+  <!-- Ngoài <RouterView> có chủ đích: không bị huỷ/tạo lại mỗi lần chuyển trang, xem
+       comment trong InstallPromptBar.vue để biết lý do đây là phần fix chính. -->
+  <InstallPromptBar />
 </template>

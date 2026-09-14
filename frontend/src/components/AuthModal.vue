@@ -67,8 +67,7 @@ async function dangKy() {
     const res = await apiRegister({
       phone: phone.value,
       name: name.value,
-      password: password.value,
-      role: 'victim'
+      password: password.value
     })
     authStore.setAuth({ accessToken: res.accessToken, refreshToken: res.refreshToken, user: res.user })
     toastStore.showToast(`Tạo tài khoản thành công. Xin chào ${res.user.name}`)

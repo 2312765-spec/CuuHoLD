@@ -28,9 +28,11 @@ const SOS_STATUS_TRANSITIONS: Partial<Record<SosStatus, SosStatus>> = {
 };
 
 // CLAUDE.md Mục 10 bước 4: "GisService.findNearestTeams() → auto-assign team đầu tiên" —
-// bán kính tìm đội tự động lúc tạo SOS. Không tìm thấy đội nào trong bán kính này thì SOS
-// giữ nguyên 'pending', đúng luồng cũ (commander phân công tay qua PATCH /:id/assign).
+// bán kính tìm đội tự động lúc tạo SOS. SRS F-GIS-01: không có đội trong 10km → mở rộng lên
+// 20km. Cả 2 bán kính đều không có đội thì SOS giữ nguyên 'pending', đúng luồng cũ
+// (commander phân công tay qua PATCH /:id/assign).
 const AUTO_ASSIGN_RADIUS_M = 10000;
+const AUTO_ASSIGN_FALLBACK_RADIUS_M = 20000;
 
 // Dùng chung cho findById() và findMyActive() — cùng shape cột, chỉ khác WHERE.
 const SOS_DETAIL_SELECT = `
@@ -40,7 +42,9 @@ const SOS_DETAIL_SELECT = `
          ST_Y(s.location::geometry) AS lat,
          ST_X(s.location::geometry) AS lng,
          u.name AS victim_name, u.phone AS victim_phone,
-         rt.name AS team_name, rt.status AS team_status
+         rt.name AS team_name, rt.status AS team_status, rt.leader_id AS team_leader_id,
+         ST_Y(rt.current_location::geometry) AS team_lat,
+         ST_X(rt.current_location::geometry) AS team_lng
   FROM sos_requests s
   JOIN users u ON u.id = s.victim_id
   LEFT JOIN rescue_teams rt ON rt.id = s.assigned_team_id
@@ -103,6 +107,13 @@ interface SosDetailRow {
   assigned_team_id: string | null;
   team_name: string | null;
   team_status: RescueTeamStatus | null;
+  // leader_id của đội được giao (null nếu chưa giao đội nào) — dùng để rescuer xem được
+  // SOS của chính đội mình dù SOS nằm ở xã khác (xem findById()/findAll() bên dưới).
+  team_leader_id: string | null;
+  // Vị trí GPS gần nhất đội được giao đã gửi lên (null nếu chưa giao đội / đội chưa từng gửi
+  // GPS) — victim dùng để thấy đội đang tới (Fix #2, CLAUDE.md Mục 15.11).
+  team_lat: number | null;
+  team_lng: number | null;
   victim_name: string;
   victim_phone: string;
 }
@@ -279,12 +290,20 @@ export class SosService {
     lng: number,
     victim: User,
   ): Promise<string | null> {
-    const [nearest] = await this.gisService.findNearestTeams(
+    let [nearest] = await this.gisService.findNearestTeams(
       lat,
       lng,
       AUTO_ASSIGN_RADIUS_M,
       1,
     );
+    if (!nearest) {
+      [nearest] = await this.gisService.findNearestTeams(
+        lat,
+        lng,
+        AUTO_ASSIGN_FALLBACK_RADIUS_M,
+        1,
+      );
+    }
     if (!nearest) return null;
 
     await this.dataSource.query(
@@ -322,8 +341,10 @@ export class SosService {
       params.push(user.id);
     }
     if (user.role === 'rescuer') {
-      q += ` AND s.ward_code = $${i++}`;
-      params.push(user.wardCode);
+      // Cùng lý do với findById() ở trên: cùng xã (đi tuần) HOẶC đội của chính rescuer
+      // được giao SOS đó, dù SOS ở xã khác.
+      q += ` AND (s.ward_code = $${i++} OR s.assigned_team_id IN (SELECT id FROM rescue_teams WHERE leader_id = $${i++}))`;
+      params.push(user.wardCode, user.id);
     }
     if (filters.status) {
       const statuses = filters.status
@@ -377,8 +398,10 @@ export class SosService {
     // Flag chỉ để hiện cảnh báo cho victim + hiển thị cho commander.
     let accountFlagged = user.isFlagged;
     if (penaltyApplied) {
-      const updated = await this.dataSource.query<
-        { late_cancel_count: number; is_flagged: boolean }[]
+      // UPDATE...RETURNING: TypeORM trả tuple [rows, affectedCount], KHÔNG phải mảng rows
+      // thẳng như SELECT/INSERT — phải destructure [updated] (xem CLAUDE.md Mục 15.11).
+      const [updated] = await this.dataSource.query<
+        [{ late_cancel_count: number; is_flagged: boolean }[], number]
       >(
         `UPDATE users SET late_cancel_count = late_cancel_count + 1,
            is_flagged = (late_cancel_count + 1) >= $2, updated_at = NOW()
@@ -402,7 +425,14 @@ export class SosService {
     if (user.role === 'victim' && sos.victim_id !== user.id) {
       throw new ForbiddenException('Không có quyền');
     }
-    if (user.role === 'rescuer' && sos.ward_code !== user.wardCode) {
+    // Rescuer xem được nếu SOS cùng xã (đi tuần khu vực) HOẶC đội của chính họ được giao
+    // SOS này — phân công tự động/tay chọn đội gần nhất theo GPS, không theo ranh giới xã,
+    // nên đội có thể được giao SOS ở xã khác (xem CLAUDE.md Mục 15.10).
+    if (
+      user.role === 'rescuer' &&
+      sos.ward_code !== user.wardCode &&
+      sos.team_leader_id !== user.id
+    ) {
       throw new ForbiddenException('Không có quyền');
     }
 
@@ -459,7 +489,10 @@ export class SosService {
       throw new BadRequestException('Đội cứu hộ hiện không sẵn sàng');
     }
 
-    const updated = await this.dataSource.query<{ updated_at: Date }[]>(
+    // UPDATE...RETURNING trả tuple [rows, affectedCount] — xem chú thích ở cancel().
+    const [updated] = await this.dataSource.query<
+      [{ updated_at: Date }[], number]
+    >(
       `UPDATE sos_requests SET assigned_team_id=$2, status='assigned', updated_at=NOW()
        WHERE id=$1 RETURNING updated_at`,
       [sosId, teamId],
@@ -522,7 +555,10 @@ export class SosService {
       );
     }
 
-    const updated = await this.dataSource.query<{ updated_at: Date }[]>(
+    // UPDATE...RETURNING trả tuple [rows, affectedCount] — xem chú thích ở cancel().
+    const [updated] = await this.dataSource.query<
+      [{ updated_at: Date }[], number]
+    >(
       `UPDATE sos_requests SET status=$2, updated_at=NOW()${
         newStatus === 'resolved' ? ', resolved_at=NOW()' : ''
       } WHERE id=$1 RETURNING updated_at`,

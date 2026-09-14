@@ -9,6 +9,7 @@ import { useSocket } from '@/composables/useSocket'
 import { useMapDataStore } from '@/stores/mapData'
 import { useToastStore } from '@/stores/toast'
 import { useOfflineQueueStore } from '@/stores/offlineQueue'
+import { layViTriHienTai } from '@/utils/geolocation'
 import { CONFIG } from '@/config'
 import type { MapLayerKey } from '@/types'
 import MapTopBar from '@/components/map/MapTopBar.vue'
@@ -39,7 +40,14 @@ const sos = useSos()
 // Nút SOS nổi có đang hiện hay không. Dùng cho CẢ v-if của nút lẫn class .co-nut-sos trên
 // .map-page — nút chiếm nguyên góc dưới phải nên các huy hiệu ở đó phải nhường chỗ, và chỉ
 // nhường đúng lúc nút thật sự có mặt (xem map-style.css).
-const coNutSos = computed(() => laVictim.value && !sos.dangHoatDong.value && !sos.dangGui.value)
+const coNutSos = computed(
+  () => laVictim.value && !sos.dangHoatDong.value && !sos.dangGui.value && !dangLayViTri.value
+)
+
+// Trạng thái chờ GPS khoá vệ tinh (enableHighAccuracy có thể mất tới ~15s, xem
+// utils/geolocation.ts) — trước đây không có gì hiển thị trong lúc này, giờ tăng timeout lên
+// 15s mà không báo gì thì người dùng sẽ tưởng máy treo giữa lúc khẩn cấp.
+const dangLayViTri = ref(false)
 
 // ---------- Dialog chọn lý do huỷ ----------
 const isCancelDialogOpen = ref(false)
@@ -91,10 +99,15 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
   // làm ước tính TẠM (uocLuong=true) — KHÔNG được âm thầm gửi toạ độ giả mà không báo (từng
   // là lỗi P0 an toàn thật, xem CLAUDE.md Mục 15: dialog xác nhận nói "vị trí hiện tại của
   // bạn sẽ được gửi" trong khi thực ra gửi toạ độ bịa, không ai biết để xử lý dự phòng).
-  const viTri = await layViTriHienTai()
+  dangLayViTri.value = true
+  const viTri = await layViTriHienTai(navigator.geolocation)
+  dangLayViTri.value = false
   if (viTri.uocLuong) {
+    // uocLuong giờ bật cho CẢ 2 case: GPS lỗi hẳn (dùng tâm tỉnh) LẪN GPS trả toạ độ thật
+    // nhưng sai số quá lớn (xem utils/geolocation.ts) — câu chữ không được khẳng định cứng
+    // "tâm tỉnh" vì ở case sau toạ độ gửi đi vẫn là vị trí thật, chỉ là kém tin cậy.
     toastStore.showToast(
-      'Không xác định được vị trí GPS chính xác — đã gửi vị trí ước tính (tâm tỉnh). Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm nếu có thể.'
+      'Không xác định được vị trí GPS chính xác — đã gửi kèm cảnh báo vị trí ước tính. Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm nếu có thể.'
     )
   }
   try {
@@ -128,20 +141,6 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
     // Lỗi nghiệp vụ khác (VD: vượt 5 SOS/giờ) đã có toast riêng từ interceptor http.ts.
   }
 }
-function layViTriHienTai(): Promise<{ lat: number; lng: number; uocLuong: boolean }> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve({ lat: 11.94, lng: 108.44, uocLuong: true })
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, uocLuong: false }),
-      () => resolve({ lat: 11.94, lng: 108.44, uocLuong: true }), // từ chối quyền/timeout → tâm tỉnh
-      { timeout: 5000 }
-    )
-  })
-}
-
 const route = useRoute()
 const activeLayer = computed<MapLayerKey>(() => (route.query.layer as MapLayerKey) || 'ranh-gioi')
 
@@ -157,6 +156,7 @@ const {
   applyLayerVisibility,
   themMarkerBaoCao,
   capNhatMarkerSosCuaMinh,
+  capNhatMarkerDoiCuuHo,
   destroyMap
 } = useLeafletMap()
 
@@ -181,6 +181,15 @@ function apDungMarkerSos(): void {
       status: active.status,
       label: SOS_STATUS_LABEL[active.status]
     }
+  )
+  // Đội được giao đang tới — chỉ khi SOS chưa kết thúc, để không giữ lại chấm đội cũ sau khi
+  // đã hoàn tất/huỷ (poll dừng lúc đó nên toạ độ sẽ đứng yên, gây hiểu nhầm là đội còn đó).
+  const teamLat = active?.teamLat
+  const teamLng = active?.teamLng
+  capNhatMarkerDoiCuuHo(
+    sos.dangHoatDong.value && teamLat != null && teamLng != null
+      ? { lat: teamLat, lng: teamLng }
+      : null
   )
 }
 
@@ -346,6 +355,9 @@ watch(activeLayer, (layer) => {
          khiến người ta tưởng hệ thống hỏng đúng lúc cần tin tưởng nó nhất. -->
     <div v-if="authStore.isLoggedIn" class="socket-status" :class="{ connected: isConnected }">
       <span class="dot"></span>{{ isConnected ? 'Cập nhật thời gian thực: đang bật' : 'Cập nhật thời gian thực: chưa kết nối' }}
+    </div>
+    <div v-if="dangLayViTri" class="gps-status">
+      <span class="dot"></span>Đang xác định vị trí GPS chính xác...
     </div>
     <div v-if="offlineQueueStore.soLuongChoGui > 0" class="offline-badge">
       <span class="dot"></span>{{ offlineQueueStore.soLuongChoGui }} báo cáo đang chờ gửi

@@ -17,13 +17,27 @@
 // tới khi chạy `vue-tsc -b`. Chạy `npm run build` một lần là hết. CI không dính lỗi này vì
 // nó vốn chạy `npm run build` (tức `vue-tsc -b`, có dựng lại project reference).
 
-export const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-export const TILE_ATTRIBUTION = '&copy; OpenStreetMap contributors'
+// ⚠️ KHÔNG dùng *.openstreetmap.org: Viettel (nhà mạng lớn nhất VN) chặn CẢ tên miền này ở
+// DNS — trả 127.0.0.1 cho tile lẫn wiki (kiểm chứng 2026-09-13, hỏi thẳng DNS Viettel
+// 203.113.131.1). Người dùng Viettel để DNS mặc định mất nền bản đồ ở mọi zoom tải qua mạng.
+//
+// Nguồn đang dùng: style HOT (Humanitarian OSM Team) do OSM France host — cùng dữ liệu OSM,
+// không cần key, có CORS `*`, DNS Viettel không chặn, có tile tới z20. Vẫn là máy chủ TÌNH
+// NGUYỆN, không SLA — lời giải cho đồ án, chưa phải cho triển khai thật (CLAUDE.md Mục 15.7
+// việc #4). Chỉ subdomain a/b/c phục vụ tile — host trần tile.openstreetmap.fr/hot/ trả 404.
+//
+// Đã loại (đều kiểm chứng 2026-09-13, xem ẢNH chứ không chỉ status):
+// - tile.openstreetmap.de: trả 404 (text/html, KHÔNG kèm CORS) ở z18 tại nhiều vùng Lâm
+//   Đồng — trình duyệt báo "lỗi CORS" dù lỗi thật là không có tile → mất nền khi zoom hết cỡ.
+// - Carto: HTTP 200 + CORS đầy đủ nhưng ảnh in chữ "API KEY REQUIRED".
+export const TILE_URL = 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png'
+export const TILE_ATTRIBUTION =
+  '&copy; OpenStreetMap contributors, style <a href="https://www.hotosm.org/">HOT</a>, hosted by <a href="https://openstreetmap.fr/">OSM France</a>'
 
 // Dùng cho urlPattern của runtimeCaching trong vite.config.ts — PHẢI khớp đúng domain
-// trong TILE_URL ở trên. Viết tay riêng vì L.tileLayer dùng cú pháp {s}/{z}/{x}/{y} còn
-// Workbox cần regex thật khớp URL cụ thể.
-export const TILE_HOST_PATTERN = /^https:\/\/[abc]\.tile\.openstreetmap\.org\/.*/
+// trong TILE_URL ở trên (tileProvider.spec.ts kiểm tra điều này). Viết tay riêng vì
+// L.tileLayer dùng cú pháp {s}/{z}/{x}/{y} còn Workbox cần regex thật khớp URL cụ thể.
+export const TILE_HOST_PATTERN = /^https:\/\/[abc]\.tile\.openstreetmap\.fr\/hot\/.*/
 
 // ---------------------------------------------------------------------------
 // BẢN ĐỒ OFFLINE (SRS F-PWA-03)
@@ -42,6 +56,7 @@ export const TILE_HOST_PATTERN = /^https:\/\/[abc]\.tile\.openstreetmap\.org\/.*
 // thì với N người dùng là N×96 — đúng kiểu tải hàng loạt mà chính sách của họ cấm, và
 // nếu bị chặn thì hỏng CẢ bản đồ chính chứ không riêng tính năng offline. Tải sẵn 1 lần
 // lúc dev đưa số request về đúng 1 lần duy nhất, không nhân theo số người dùng.
+export const OFFLINE_TILE_MIN_ZOOM = 8
 export const OFFLINE_TILE_MAX_ZOOM = 10
 
 // Biên đã làm tròn RỘNG RA so với bbox thật của lamdong-wards.geojson
@@ -70,7 +85,9 @@ export function tileY(lat: number, z: number): number {
 export const OFFLINE_TILE_PADDING: Record<number, number> = { 8: 2, 9: 1, 10: 0 }
 
 export function duongDanTileOffline(z: number, x: number, y: number): string | null {
-  if (z > OFFLINE_TILE_MAX_ZOOM) return null
+  // Chặn CẢ HAI đầu: trước đây chỉ chặn trên, nên điện thoại (~390px, mở ở z7 để vừa cả
+  // tỉnh) bị trỏ vào /tiles/7/... không tồn tại → Vite trả index.html → ô trống màu nền.
+  if (z < OFFLINE_TILE_MIN_ZOOM || z > OFFLINE_TILE_MAX_ZOOM) return null
   const p = OFFLINE_TILE_PADDING[z] ?? 0
   const x0 = tileX(LAMDONG_BBOX.minLng, z) - p
   const x1 = tileX(LAMDONG_BBOX.maxLng, z) + p

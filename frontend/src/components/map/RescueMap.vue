@@ -1,18 +1,29 @@
 <script setup lang="ts">
-// Bản đồ Leaflet cho DashboardView (commander) — vẽ marker SOS (màu theo status) và
-// marker đội cứu hộ. Tách riêng khỏi useLeafletMap vì composable đó gắn với dữ liệu
-// minh hoạ (DiemCuuTro/BaoCaoSuCo) + lớp ranh giới, còn ở đây chỉ cần marker SOS thật.
+// Bản đồ Leaflet cho DashboardView (commander) và RescuerView (rescuer) — vẽ marker SOS
+// (màu theo status), marker đội cứu hộ, và (tuỳ chọn) đường từ vị trí rescuer tới nạn nhân.
+// Tách riêng khỏi useLeafletMap vì composable đó gắn với dữ liệu minh hoạ
+// (DiemCuuTro/BaoCaoSuCo) + lớp ranh giới, còn ở đây chỉ cần marker SOS thật.
 
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { SosListItem, RescueTeam, NearestTeam, SosStatus } from '@/types'
+import type { ToaDo } from '@/utils/geo'
 import { taoLopTileNen } from '@/utils/tileLayer'
 
+// Chỉ các field thật sự dùng để vẽ — nhận được cả SosListItem (GET /api/sos, commander)
+// lẫn SosRequest (GET /api/sos/:id, rescuer — ở đó victim_name là optional).
+type SosTrenBanDo = Pick<SosListItem, 'id' | 'type' | 'status' | 'lat' | 'lng'> & {
+  victim_name?: string
+}
+
 const props = defineProps<{
-  sosList: SosListItem[]
+  sosList: SosTrenBanDo[]
   teams: (RescueTeam | NearestTeam)[]
   selectedSosId?: string | null
+  // Đường THẲNG (chim bay) từ vị trí rescuer tới nạn nhân — KHÔNG phải tuyến đường bộ.
+  // Vẽ nét đứt để không bị đọc nhầm thành đường đi thật; chỉ đường thật do Google Maps lo.
+  route?: { from: ToaDo; to: ToaDo } | null
 }>()
 
 const emit = defineEmits<{ 'select-sos': [id: string]; 'tile-error': [loi: boolean] }>()
@@ -31,6 +42,7 @@ const mapContainer = ref<HTMLDivElement | null>(null)
 let map: L.Map | null = null
 let sosLayer: L.LayerGroup | null = null
 let teamLayer: L.LayerGroup | null = null
+let routeLayer: L.LayerGroup | null = null
 
 // true khi tile nền OSM đang lỗi. Chỉ emit lúc giá trị THỰC SỰ đổi (watch trên ref, không
 // gọi emit thẳng trong .on('tileerror', ...)) — nhiều tile lỗi liên tiếp không tạo nhiều
@@ -50,7 +62,7 @@ function buildSosLayer() {
       fillColor: STATUS_COLOR[sos.status],
       fillOpacity: 0.95
     })
-    marker.bindTooltip(`${sos.victim_name} — ${sos.type} (${sos.status})`, { direction: 'top' })
+    marker.bindTooltip(`${sos.victim_name ?? ''} — ${sos.type} (${sos.status})`, { direction: 'top' })
     marker.on('click', () => emit('select-sos', sos.id))
     marker.addTo(sosLayer)
   }
@@ -73,6 +85,47 @@ function buildTeamLayer() {
   }
 }
 
+function buildRouteLayer() {
+  if (!routeLayer) return
+  routeLayer.clearLayers()
+  const r = props.route
+  if (!r) return
+  L.polyline(
+    [
+      [r.from.lat, r.from.lng],
+      [r.to.lat, r.to.lng]
+    ],
+    { color: '#1f3d2e', weight: 3, dashArray: '6 8' }
+  ).addTo(routeLayer)
+  L.circleMarker([r.from.lat, r.from.lng], {
+    radius: 7,
+    color: '#ffffff',
+    weight: 2,
+    fillColor: '#2563eb',
+    fillOpacity: 1
+  })
+    .bindTooltip('Vị trí của bạn', { direction: 'top' })
+    .addTo(routeLayer)
+}
+
+// Đưa khung nhìn tới SOS đang chọn: có route thì ôm trọn cả 2 đầu, không thì zoom tới SOS.
+function focusSelected() {
+  if (!map) return
+  const r = props.route
+  if (r) {
+    map.fitBounds(
+      [
+        [r.from.lat, r.from.lng],
+        [r.to.lat, r.to.lng]
+      ],
+      { padding: [40, 40], maxZoom: 15 }
+    )
+    return
+  }
+  const sos = props.sosList.find((s) => s.id === props.selectedSosId)
+  if (sos) map.setView([sos.lat, sos.lng], Math.max(map.getZoom(), 13))
+}
+
 onMounted(() => {
   if (!mapContainer.value) return
   map = L.map(mapContainer.value, { zoomControl: true }).setView([11.9465, 108.4419], 9)
@@ -89,8 +142,11 @@ onMounted(() => {
 
   sosLayer = L.layerGroup().addTo(map)
   teamLayer = L.layerGroup().addTo(map)
+  routeLayer = L.layerGroup().addTo(map)
   buildSosLayer()
   buildTeamLayer()
+  buildRouteLayer()
+  focusSelected()
 })
 
 onBeforeUnmount(() => {
@@ -98,6 +154,7 @@ onBeforeUnmount(() => {
   map = null
   sosLayer = null
   teamLayer = null
+  routeLayer = null
 })
 
 watch(() => props.sosList, buildSosLayer, { deep: true })
@@ -106,9 +163,17 @@ watch(
   () => props.selectedSosId,
   (id) => {
     buildSosLayer()
-    if (!id || !map) return
-    const sos = props.sosList.find((s) => s.id === id)
-    if (sos) map.setView([sos.lat, sos.lng], Math.max(map.getZoom(), 13))
+    if (id) focusSelected()
+  }
+)
+// Chỉ căn lại khung nhìn khi route vừa XUẤT HIỆN (GPS có fix đầu tiên). Các lần GPS cập nhật
+// sau (vài giây một lần) chỉ vẽ lại đường — căn lại mỗi lần sẽ giật khung nhìn khỏi chỗ
+// rescuer đang tự kéo/zoom xem.
+watch(
+  () => props.route,
+  (moi, cu) => {
+    buildRouteLayer()
+    if (moi && !cu) focusSelected()
   }
 )
 </script>

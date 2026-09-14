@@ -26,6 +26,9 @@ export interface SosRequest {
   lng: number
   assigned_team_id: string | null
   team_name?: string | null
+  // Vị trí hiện tại của đội được giao (null nếu chưa giao đội / đội chưa gửi GPS lần nào).
+  team_lat?: number | null
+  team_lng?: number | null
   victim_name?: string
   victim_phone?: string
 }

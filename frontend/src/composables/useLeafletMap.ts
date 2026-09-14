@@ -36,6 +36,7 @@ export function useLeafletMap() {
   let diemCuuTroLayer: L.LayerGroup | null = null
   let baoCaoLayer: L.LayerGroup | null = null
   let sosOwnMarker: L.Marker | null = null
+  let teamMarker: L.CircleMarker | null = null
   let boundaryLayer: L.GeoJSON | null = null
 
   // Từ mức zoom này trở lên thì ẩn hẳn lớp ranh giới hành chính. Hai lý do, theo thứ tự
@@ -77,6 +78,26 @@ export function useLeafletMap() {
       zIndexOffset: 1000
     })
       .bindPopup(`<div class="pin-popup"><b>SOS của bạn</b><span>${sos.label}</span></div>`)
+      .addTo(mapInstance.value)
+  }
+
+  // Marker đội cứu hộ được giao cho SOS của victim (Fix #2, CLAUDE.md Mục 15.11) — chấm xanh
+  // dương, cùng quy ước màu "đội cứu hộ" với RescueMap.vue. Vị trí có thể trễ tới ~50s (poll
+  // 20s + GPS đội gửi mỗi 30s): đủ để thấy "đội đang tới", không phải để dẫn đường.
+  function capNhatMarkerDoiCuuHo(viTri: { lat: number; lng: number } | null) {
+    if (teamMarker) {
+      teamMarker.remove()
+      teamMarker = null
+    }
+    if (!viTri || !mapInstance.value) return
+    teamMarker = L.circleMarker([viTri.lat, viTri.lng], {
+      radius: 8,
+      color: '#ffffff',
+      weight: 2,
+      fillColor: '#2563eb',
+      fillOpacity: 1
+    })
+      .bindTooltip('Đội cứu hộ được phân công', { direction: 'top' })
       .addTo(mapInstance.value)
   }
 
@@ -296,6 +317,7 @@ export function useLeafletMap() {
     mapInstance.value?.remove()
     mapInstance.value = null
     sosOwnMarker = null
+    teamMarker = null
     boundaryLayer = null
   }
 
@@ -308,6 +330,7 @@ export function useLeafletMap() {
     applyLayerVisibility,
     themMarkerBaoCao,
     capNhatMarkerSosCuaMinh,
+    capNhatMarkerDoiCuuHo,
     destroyMap
   }
 }

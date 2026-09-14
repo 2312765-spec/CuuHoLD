@@ -171,7 +171,8 @@ interface cho cả 2, map riêng.
 `GisService.findNearestTeams(lat, lng, 10000, 1)` — nếu có đội `available` trong bán kính
 10km, tự gán luôn (`status` trong `data` trả về đã là `"assigned"`, không phải `"pending"`)
 và emit thêm `sos:updated` (ngoài `sos:new`) để rescuer đội đó nhận nhiệm vụ ngay qua đúng
-luồng UI sẵn có cho phân công tay. Không tìm thấy đội nào → giữ nguyên `"pending"`, commander
+luồng UI sẵn có cho phân công tay. Không có đội nào trong 10km → gọi lại với bán kính 20km
+(SRS F-GIS-01). Cả 20km cũng không có → giữ nguyên `"pending"`, commander
 phân công tay như cũ qua `PATCH /:id/assign`. `sos_timeline` ghi 1 dòng `action:"assigned"`
 với `actor_id` = chính victim (không có actor "hệ thống" tách riêng) và `note` phân biệt rõ
 đây là tự động, không phải victim tự thao tác.
@@ -180,7 +181,8 @@ Ngay sau khi tạo, backend emit Socket.io `sos:new` vào room `ward:{wardCode}`
 `province:lamdong`, và gọi SMS dự phòng (không block response).
 
 ### GET /api/sos
-Role: `rescuer` (chỉ SOS trong `wardCode` của mình) hoặc `commander` (toàn tỉnh).
+Role: `rescuer` (SOS trong `wardCode` của mình **HOẶC** đã giao cho đội mình làm leader —
+xem Mục 15.10 CLAUDE.md) hoặc `commander` (toàn tỉnh).
 `victim` gọi route này bị `403` (không có trong `@Roles`) — victim dùng `GET /api/sos/:id`
 để xem SOS của chính mình.
 
@@ -216,8 +218,12 @@ cần biết trước `id`, đúng cái bị mất lúc reload).
 
 ### GET /api/sos/:id
 JWT bắt buộc, không giới hạn role trong decorator — nhưng service tự kiểm tra quyền:
-`victim` chỉ xem được SOS của chính mình (`403` nếu không phải), `rescuer` chỉ xem được
-SOS cùng `wardCode` (`403` nếu khác), `commander` xem được tất cả.
+`victim` chỉ xem được SOS của chính mình (`403` nếu không phải), `commander` xem được tất cả.
+`rescuer` xem được nếu **cùng `wardCode`** (đi tuần khu vực) **HOẶC** SOS đã được giao cho
+đội mà rescuer đó làm leader (`403` nếu cả hai đều không đúng) — từ 2026-09-11 (Mục 15.10):
+phân công tự động/tay chọn đội gần nhất theo GPS (`findNearestTeams`), không theo ranh giới
+xã, nên đội có thể được giao SOS ở xã khác `wardCode` của leader. `GET /api/sos` (role
+rescuer/commander) áp cùng quy tắc OR này cho `rescuer`.
 
 **200 OK**
 ```json
@@ -230,6 +236,8 @@ SOS cùng `wardCode` (`403` nếu khác), `commander` xem được tất cả.
     "created_at": "...", "updated_at": "...", "resolved_at": null,
     "lat": 11.9465, "lng": 108.4419,
     "assigned_team_id": "uuid", "team_name": "Đội cứu hộ Đà Lạt 1", "team_status": "busy",
+    "team_leader_id": "uuid",
+    "team_lat": 11.9618, "team_lng": 108.4412, // vị trí GPS gần nhất của đội được giao — null nếu chưa giao đội/đội chưa gửi GPS (CLAUDE.md Mục 15.11, Fix #2)
     "victim_name": "Nguyễn Văn A", "victim_phone": "0901234567",
     "timeline": [
       { "id": "uuid", "actor_id": "uuid", "action": "assigned", "note": null, "created_at": "..." }

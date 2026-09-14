@@ -23,6 +23,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   TILE_URL,
+  OFFLINE_TILE_MIN_ZOOM,
   OFFLINE_TILE_MAX_ZOOM,
   OFFLINE_TILE_PADDING,
   LAMDONG_BBOX,
@@ -30,7 +31,6 @@ import {
   tileY
 } from '../src/constants/tileProvider.ts'
 
-const ZOOM_MIN = 8
 const THU_MUC_GOC = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const THU_MUC_RA = resolve(THU_MUC_GOC, 'public/tiles')
 const DUONG_DAN_GEOJSON = resolve(THU_MUC_GOC, 'public/data/lamdong-wards.geojson')
@@ -84,7 +84,7 @@ if (
 
 // ---------- Dựng danh sách tile cần tải ----------
 const danhSach = []
-for (let z = ZOOM_MIN; z <= OFFLINE_TILE_MAX_ZOOM; z++) {
+for (let z = OFFLINE_TILE_MIN_ZOOM; z <= OFFLINE_TILE_MAX_ZOOM; z++) {
   // Cùng công thức với duongDanTileOffline() trong tileProvider.ts — nếu lệch nhau thì app
   // sẽ trỏ tới file không tồn tại (404) hoặc bỏ phí tile đã tải. Đó là lý do padding/bbox
   // nằm chung một chỗ chứ không khai lại ở đây.
@@ -96,12 +96,14 @@ for (let z = ZOOM_MIN; z <= OFFLINE_TILE_MAX_ZOOM; z++) {
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) danhSach.push({ z, x, y })
 }
 
-console.log(`Cần ${danhSach.length} tile (z${ZOOM_MIN}–${OFFLINE_TILE_MAX_ZOOM}), nghỉ ${NGHI_MS}ms giữa mỗi request`)
+console.log(`Cần ${danhSach.length} tile (z${OFFLINE_TILE_MIN_ZOOM}–${OFFLINE_TILE_MAX_ZOOM}), nghỉ ${NGHI_MS}ms giữa mỗi request`)
 
 // ---------- Tải ----------
-// Bỏ {s}: OSM khuyến nghị dùng thẳng tile.openstreetmap.org, và việc chia subdomain vốn
-// chỉ để lách giới hạn kết nối của HTTP/1.1 — không còn ý nghĩa với script tải tuần tự.
-const MAU_URL = TILE_URL.replace('{s}.', '')
+// Cố định 1 subdomain thay vì XOÁ {s}: script tải tuần tự nên không cần chia subdomain,
+// nhưng KHÔNG được bỏ hẳn — host trần tile.openstreetmap.fr/hot/ trả 404 (kiểm chứng
+// 2026-09-13), chỉ a/b/c mới phục vụ tile. ⚠️ Bộ tile hiện có trong public/tiles/ được tải
+// từ tile.openstreetmap.org TRƯỚC khi đổi nguồn; chạy lại script sẽ tải từ TILE_URL mới.
+const MAU_URL = TILE_URL.replace('{s}', 'a')
 
 let daTai = 0
 let boQua = 0

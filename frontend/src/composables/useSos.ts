@@ -29,6 +29,11 @@ export interface ActiveSos {
   locationEstimated: boolean
   createdAt: string
   cancelDeadline: string
+  // Vị trí đội cứu hộ được giao — lấy từ GET /api/sos/:id (lúc khôi phục + mỗi lượt poll 20s).
+  // undefined/null khi chưa giao đội hoặc đội chưa gửi GPS. Không cập nhật qua socket: GPS đội
+  // chỉ mới mỗi 30s nên poll 20s sẵn có là đủ (Fix #2, CLAUDE.md Mục 15.11).
+  teamLat?: number | null
+  teamLng?: number | null
   // Có giá trị CHỈ khi SOS này đang nằm trong hàng đợi offline, chưa từng tới server
   // (id lúc này là id tạm trên máy, không tra cứu/huỷ qua API được — xem MapView.vue).
   localId?: string
@@ -62,6 +67,8 @@ export function useSos() {
         .then((detail) => {
           if (activeSos.value?.id !== id) return
           activeSos.value.status = detail.status
+          activeSos.value.teamLat = detail.team_lat ?? null
+          activeSos.value.teamLng = detail.team_lng ?? null
           if (TERMINAL_STATUSES.includes(detail.status)) dungTheoDoi()
         })
         .catch(() => {
@@ -166,7 +173,9 @@ export function useSos() {
         lng: detail.lng,
         locationEstimated: detail.location_estimated,
         createdAt: detail.created_at,
-        cancelDeadline: detail.cancel_deadline
+        cancelDeadline: detail.cancel_deadline,
+        teamLat: detail.team_lat ?? null,
+        teamLng: detail.team_lng ?? null
       }
       batDauTheoDoi(detail.id)
     } catch {

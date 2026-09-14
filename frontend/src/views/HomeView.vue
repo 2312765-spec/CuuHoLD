@@ -8,6 +8,7 @@ import ProcessSteps from '@/components/ProcessSteps.vue'
 import HighlightFeatures from '@/components/HighlightFeatures.vue'
 import AuthModal from '@/components/AuthModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import { useToastStore } from '@/stores/toast'
 import { useCtaTheoRole } from '@/composables/useCtaTheoRole'
 
 // ⚠️ Template bên dưới PHẢI có đúng MỘT root node (<div class="home-page">) — kể cả một
@@ -24,6 +25,7 @@ import { useCtaTheoRole } from '@/composables/useCtaTheoRole'
 // nữa — xem comment trong AuthModal.vue).
 const isAuthOpen = ref(false)
 const authStore = useAuthStore()
+const toastStore = useToastStore()
 const { cta } = useCtaTheoRole()
 
 const route = useRoute()
@@ -156,5 +158,6 @@ onMounted(() => {
 
     <AppFooter />
     <AuthModal :is-open="isAuthOpen" @close="isAuthOpen = false" @logged-in="isAuthOpen = false" />
+    <div class="toast" :class="{ show: toastStore.visible }">{{ toastStore.message }}</div>
   </div>
 </template>

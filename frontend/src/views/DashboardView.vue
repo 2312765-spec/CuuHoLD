@@ -12,8 +12,9 @@ import { useSocket } from '@/composables/useSocket'
 import { CONFIG } from '@/config'
 import { layDanhSachSos, phanCongDoi } from '@/services/sosService'
 import { timDoiGanNhat } from '@/services/gisService'
-import type { SosListItem, NearestTeam, SosType, SosStatus } from '@/types'
-import type { SosNewPayload, SosUpdatedPayload } from '@/shared/socket-events.types'
+import { fetchRescueTeams } from '@/services/rescueTeamsService'
+import type { SosListItem, NearestTeam, RescueTeam, SosType, SosStatus } from '@/types'
+import type { SosNewPayload, SosUpdatedPayload, TeamLocationPayload } from '@/shared/socket-events.types'
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
@@ -53,11 +54,8 @@ function formatTime(iso: string): string {
 // ---------- Danh sách SOS + đội cứu hộ hiển thị trên bản đồ ----------
 const sosList = ref<SosListItem[]>([])
 const loadingSos = ref(false)
-const teams = ref<NearestTeam[]>([])
+const teams = ref<RescueTeam[]>([])
 const selectedSosId = ref<string | null>(null)
-
-// Tâm tỉnh Lâm Đồng — dùng để hiển thị tổng quan đội cứu hộ khi chưa chọn SOS nào.
-const TAM_TINH = { lat: 11.9465, lng: 108.4419 }
 
 async function taiDanhSachSos() {
   loadingSos.value = true
@@ -68,9 +66,13 @@ async function taiDanhSachSos() {
   }
 }
 
-async function taiDoiGanTamTinh() {
+// GET /api/rescue-teams trả MỌI đội bất kể trạng thái — khác timDoiGanNhat() (chỉ đội
+// 'available', dùng riêng cho modal phân công bên dưới). Trước đây bản đồ commander dùng
+// nhầm timDoiGanNhat() nên đội đang bận đi cứu hộ — đúng đội cần theo dõi nhất — không
+// hiện trên bản đồ.
+async function taiTatCaDoi() {
   try {
-    teams.value = await timDoiGanNhat(TAM_TINH.lat, TAM_TINH.lng, 10000, 50)
+    teams.value = await fetchRescueTeams()
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server — giữ danh sách rỗng.
   }
@@ -97,12 +99,19 @@ const { isConnected, connect } = useSocket({
   onSosUpdated: (data: SosUpdatedPayload) => {
     const sos = sosList.value.find((s) => s.id === data.sosId)
     if (sos) sos.status = data.status
+  },
+  onTeamLocation: (data: TeamLocationPayload) => {
+    const team = teams.value.find((t) => t.id === data.teamId)
+    if (team) {
+      team.lat = data.lat
+      team.lng = data.lng
+    }
   }
 })
 
 onMounted(() => {
   taiDanhSachSos()
-  taiDoiGanTamTinh()
+  taiTatCaDoi()
   connect(CONFIG.socketUrl)
 })
 
