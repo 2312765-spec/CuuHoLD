@@ -162,9 +162,22 @@
 
  /* ============ MOBILE FIRST — mặc định áp dụng cho MỌI màn hình ============ */
 
-/* Header/Nav: ẩn menu ngang, hiện nút hamburger mặc định */
-.nav-links, .nav-cta .btn-ghost{ display:none; }
+/* Header/Nav: ẩn menu ngang, hiện nút hamburger mặc định (mobile).
+   Dùng !important để chắc chắn thắng dòng .nav-links{display:flex} ở base phía trên. */
+.nav-links{ display:none !important; }
+.nav-cta .btn-ghost{ display:none; }
 .menu-btn{ display:block; }
+
+/* Khi bấm hamburger (class .open): menu xổ xuống dạng dropdown dưới header */
+.nav-links.open{
+  display:flex !important; flex-direction:column; gap:16px;
+  position:absolute; top:100%; left:0; right:0;
+  background:#f5f1e6; padding:20px 28px;
+  border-bottom:1px solid rgba(42,42,36,0.14);
+  box-shadow:0 12px 24px rgba(0,0,0,0.08); z-index:60;
+}
+.nav-links.open a, .nav-links.open .nav-user{ font-size:15px; padding:4px 0; }
+.nav-links.open a[href="#"]{ color:var(--clay); font-weight:500; } /* nút Đăng xuất nổi bật */
 
 /* Grid 3 cột -> mặc định xếp dọc 1 cột trên điện thoại */
 .feat-grid, .feat2-grid{ grid-template-columns:1fr; }
@@ -190,7 +203,8 @@ section{ padding:56px 0; }
 
 /* ============ DESKTOP (≥1024px) — quay về layout gốc như thiết kế ban đầu ============ */
 @media (min-width:1024px){
-  .nav-links, .nav-cta .btn-ghost{ display:flex; }
+  .nav-links{ display:flex !important; flex-direction:row; position:static; padding:0; background:none; box-shadow:none; }
+  .nav-cta .btn-ghost{ display:flex; }
   .menu-btn{ display:none; }
   .feat-grid, .feat2-grid{ grid-template-columns:repeat(3,1fr); }
   .steps{ grid-template-columns:repeat(3,1fr); gap:0; }

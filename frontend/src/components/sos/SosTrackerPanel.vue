@@ -63,6 +63,12 @@ const demNguocHuy = computed(() => {
     </p>
     <p v-else class="sos-tracker-note">Yêu cầu đã kết thúc.</p>
 
+    <!-- Thông tin đội cứu hộ khi đã được phân công (F-SOS-03 phía victim nhận) -->
+    <div v-if="activeSos.assignedTeamId" class="sos-tracker-team">
+      <span class="sos-tracker-team-icon">🚑</span>
+      <span>{{ activeSos.teamDangDiChuyen ? 'Đội cứu hộ đang di chuyển tới bạn' : 'Đã có đội cứu hộ được phân công' }}</span>
+    </div>
+
     <div class="sos-tracker-actions">
       <button v-if="dangHoatDong" class="btn btn-ghost" :disabled="dangHuy" @click="emit('huy')">
         {{ dangHuy ? 'Đang huỷ...' : 'Huỷ yêu cầu' }}
@@ -109,6 +115,21 @@ const demNguocHuy = computed(() => {
 }
 .sos-tracker-note--warn {
   color: var(--clay);
+}
+.sos-tracker-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(31, 61, 46, 0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pine-deep);
+}
+.sos-tracker-team-icon {
+  font-size: 15px;
 }
 .sos-tracker-actions {
   display: flex;

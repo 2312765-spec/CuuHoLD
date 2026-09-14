@@ -117,7 +117,9 @@ export function useLeafletMap() {
       const coQuyenXuLy = authStore.role === 'rescuer' || authStore.role === 'commander'
       const vnode = h(MarkerPopupCard, {
         title: p.ten,
-        subtitle: isDiem ? p.loai : p.mucDo,
+        // Điểm cứu trợ: subtitle là loại điểm. Báo cáo sự cố: không có mô tả riêng ngoài tên,
+        // nên bỏ subtitle (tránh lặp), chỉ dùng badge cho mức độ (Khẩn cấp/Cảnh báo).
+        subtitle: isDiem ? p.loai : undefined,
         badge: isDiem ? undefined : p.mucDo,
         showAction: !isDiem && coQuyenXuLy,
         onAction: () => {
@@ -197,9 +199,9 @@ export function useLeafletMap() {
       8
     )
     // bottomleft chứ không phải bottomright: góc dưới PHẢI nay dành cho nút SOS (hành động
-    // chính của victim, đặt trong tầm ngón cái). Ở vị trí cũ nút zoom còn đè lên chỉ báo
-    // "Cập nhật thời gian thực" — cả hai cùng nằm sát góc phải dưới.
-    L.control.zoom({ position: 'bottomleft' }).addTo(map)
+    // Nút zoom đặt góc phải TRÊN — tránh legend (góc trái dưới) và chỉ báo real-time
+    // (góc phải dưới). Đây là góc trống duy nhất không vướng thành phần nào.
+    L.control.zoom({ position: 'topright' }).addTo(map)
 
     // tileerror/tileload không dedupe tay: gán lại true nhiều lần liên tiếp không đổi
     // giá trị ref, nên watch(tileError) ở MapView.vue chỉ bắn đúng 1 lần cho mỗi đợt lỗi

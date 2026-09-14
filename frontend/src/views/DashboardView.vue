@@ -174,13 +174,16 @@ async function confirmAssign(team: NearestTeam) {
 <template>
   <div class="dashboard-page">
     <header class="dashboard-top">
-      <h1>Bảng điều phối cứu hộ</h1>
+      <div class="dashboard-top-left">
+        <h1>Bảng điều phối cứu hộ</h1>
+      </div>
       <div class="dashboard-top-right">
         <span class="realtime-status" :class="{ connected: isConnected }">
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
         <span class="dashboard-user">{{ authStore.user?.name }}</span>
         <button class="btn btn-ghost" @click="authStore.logout()">Đăng xuất</button>
+        <RouterLink to="/map" class="dashboard-close" aria-label="Đóng bảng điều phối">✕</RouterLink>
       </div>
     </header>
 
@@ -281,6 +284,29 @@ async function confirmAssign(team: NearestTeam) {
 }
 .dashboard-top h1 {
   font-size: 18px;
+}
+.dashboard-top-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.dashboard-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-size: 15px;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.dashboard-close:hover {
+  background: var(--fog-dim);
+  border-color: var(--ink);
 }
 .dashboard-top-right {
   display: flex;

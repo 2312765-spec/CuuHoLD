@@ -26,7 +26,7 @@ const { cta } = useCtaTheoRole()
         </svg>
         Bản Đồ Cứu Trợ Lâm Đồng
       </div>
-      <nav class="nav-links" :style="isMenuOpen ? 'display:flex; position:absolute; top:100%; left:0; right:0; background:#f5f1e6; flex-direction:column; padding:20px 28px; border-bottom:1px solid rgba(42,42,36,0.14); gap:16px;' : ''">
+      <nav class="nav-links" :class="{ open: isMenuOpen }">
         <a href="#gioi-thieu">Giới thiệu</a>
         <a href="#ban-do">Bản đồ</a>
         <a href="#quy-trinh">Quy trình</a>
