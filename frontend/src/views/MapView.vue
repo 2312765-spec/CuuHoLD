@@ -195,6 +195,10 @@ const { isConnected, connect } = useSocket({
     } else {
       toastStore.showToast(`Yêu cầu ${data.sosId.slice(0, 8)} chuyển trạng thái: ${data.status}`)
     }
+  },
+  onTeamLocation: (data) => {
+    // Đội cứu hộ gửi vị trí mới → nếu là đội của SOS mình đang theo dõi, đánh dấu "đang di chuyển".
+    sos.danhDauDoiDiChuyen(data.teamId)
   }
 })
 
@@ -252,7 +256,10 @@ let huyLangNgheHangDoi: (() => void) | null = null
 onMounted(async () => {
   await initMap('map', activeLayer.value)
   await khoiTaoTheoRole()
-  mapDataStore.taiDiemCuuTroTuServer()
+  // Danh sách đội cứu hộ (GET /api/rescue-teams) là route CẦN đăng nhập (JWT). Trang bản đồ
+  // cho xem tự do không cần đăng nhập — nên chỉ tải khi ĐÃ đăng nhập, tránh gọi API lúc chưa
+  // có token khiến backend trả 401 "Unauthorized" (hiện toast lỗi cho người chỉ muốn xem map).
+  if (authStore.isLoggedIn) mapDataStore.taiDiemCuuTroTuServer()
   // Khi có mạng trở lại: báo cáo minh hoạ trong hàng đợi được "gửi" theo đúng luồng
   // themMarkerBaoCao() có sẵn (tái dùng, không viết logic vẽ marker riêng lần 2); SOS thật
   // trong hàng đợi được gửi qua guiSos() thật, kết quả đổ ngược lại thẻ theo dõi hiện tại.
@@ -274,6 +281,9 @@ watch(
   () => {
     if (!daKhoiTaoLanDau) return
     void khoiTaoTheoRole()
+    // Đăng nhập giữa chừng (đang ở /map) → giờ mới có token, tải danh sách đội cứu hộ.
+    // Đăng xuất → isLoggedIn false, không gọi (tránh 401 như đã sửa ở onMounted).
+    if (authStore.isLoggedIn) mapDataStore.taiDiemCuuTroTuServer()
   }
 )
 

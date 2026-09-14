@@ -32,6 +32,12 @@ export interface ActiveSos {
   // Có giá trị CHỈ khi SOS này đang nằm trong hàng đợi offline, chưa từng tới server
   // (id lúc này là id tạm trên máy, không tra cứu/huỷ qua API được — xem MapView.vue).
   localId?: string
+  // Id đội cứu hộ được phân công (có khi status = assigned trở đi). Backend chỉ gửi id,
+  // không gửi tên/ETA trong payload hiện tại — nên UI chỉ báo "đã có đội", không bịa ETA.
+  assignedTeamId?: string
+  // true khi đã nhận được ít nhất 1 cập nhật vị trí đội qua team:location-updated —
+  // dùng để báo victim "đội đang di chuyển tới" thay vì chỉ "đã phân công".
+  teamDangDiChuyen?: boolean
 }
 
 export function useSos() {
@@ -196,7 +202,17 @@ export function useSos() {
   function capNhatTuSocket(data: SosUpdatedPayload): boolean {
     if (!activeSos.value || activeSos.value.id !== data.sosId) return false
     activeSos.value.status = data.status
+    // Lưu id đội được phân công (nếu có) để SosTrackerPanel báo "đã có đội".
+    if (data.assignedTeamId) activeSos.value.assignedTeamId = data.assignedTeamId
     if (TERMINAL_STATUSES.includes(data.status)) dungTheoDoi()
+    return true
+  }
+
+  // Gọi khi nhận team:location-updated — đánh dấu đội đang di chuyển tới victim.
+  function danhDauDoiDiChuyen(teamId: string): boolean {
+    if (!activeSos.value) return false
+    if (activeSos.value.assignedTeamId && activeSos.value.assignedTeamId !== teamId) return false
+    activeSos.value.teamDangDiChuyen = true
     return true
   }
 
@@ -219,6 +235,7 @@ export function useSos() {
     khoiPhucSosDangHoatDong,
     huyYeuCauSos,
     capNhatTuSocket,
+    danhDauDoiDiChuyen,
     dongTheoDoi
   }
 }

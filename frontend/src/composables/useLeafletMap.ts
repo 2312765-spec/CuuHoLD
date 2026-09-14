@@ -91,7 +91,9 @@ export function useLeafletMap() {
       const coQuyenXuLy = authStore.role === 'rescuer' || authStore.role === 'commander'
       const vnode = h(MarkerPopupCard, {
         title: p.ten,
-        subtitle: isDiem ? p.loai : p.mucDo,
+        // Điểm cứu trợ: subtitle là loại điểm. Báo cáo sự cố: không có mô tả riêng ngoài tên,
+        // nên bỏ subtitle (tránh lặp), chỉ dùng badge cho mức độ (Khẩn cấp/Cảnh báo).
+        subtitle: isDiem ? p.loai : undefined,
         badge: isDiem ? undefined : p.mucDo,
         showAction: !isDiem && coQuyenXuLy,
         onAction: () => {
