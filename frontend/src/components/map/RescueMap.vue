@@ -12,6 +12,7 @@ import { dinhDangKhoangCach, type ToaDo } from '@/utils/geo'
 import { taoLopTileNen } from '@/utils/tileLayer'
 import { SOS_TYPE_LABEL, SOS_STATUS_LABEL, RESCUE_TEAM_STATUS_LABEL } from '@/constants/sosLabels'
 
+
 // Chỉ các field thật sự dùng để vẽ — nhận được cả SosListItem (GET /api/sos, commander)
 // lẫn SosRequest (GET /api/sos/:id, rescuer — ở đó victim_name là optional).
 type SosTrenBanDo = Pick<SosListItem, 'id' | 'type' | 'status' | 'lat' | 'lng'> & {
@@ -67,12 +68,12 @@ function buildSosLayer() {
       fillColor: STATUS_COLOR[sos.status],
       fillOpacity: 0.95
     })
-    marker.bindTooltip(
-      `${sos.victim_name ?? ''} — ${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`,
-      { direction: 'top' }
-    )
-    marker.on('click', () => emit('select-sos', sos.id))
-    marker.addTo(sosLayer)
+    // Tooltip dùng nhãn tiếng Việt, bỏ dấu gạch thừa khi thiếu tên nạn nhân, có class riêng
+    // để canh chữ đẹp (không dính viền như tooltip mặc định Leaflet).
+    const tenNan = sos.victim_name?.trim()
+    const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`
+    marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
+
   }
 }
 
@@ -92,8 +93,8 @@ function buildTeamLayer() {
     if ('distanceToVictim' in team && team.distanceToVictim != null && team.estimatedArrival != null) {
       tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
     }
-    marker.bindTooltip(tooltip, { direction: 'top' })
-    marker.addTo(teamLayer)
+    marker.bindTooltip(tooltip, { direction: 'top', className: 'rescue-tooltip' })
+
   }
 }
 

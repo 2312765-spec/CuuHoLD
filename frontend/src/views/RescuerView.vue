@@ -13,6 +13,7 @@ import { useToastStore } from '@/stores/toast'
 import { useSocket } from '@/composables/useSocket'
 import { CONFIG } from '@/config'
 import { layDanhSachSos, xemChiTietSos, capNhatTienDo } from '@/services/sosService'
+import SosTimeline from '@/components/sos/SosTimeline.vue'
 import { fetchRescueTeams, capNhatViTriDoi } from '@/services/rescueTeamsService'
 import { khoangCachMet, etaPhut } from '@/utils/geo'
 import RescueMap from '@/components/map/RescueMap.vue'
@@ -328,6 +329,11 @@ onUnmounted(() => {
             >
               {{ updatingId === sos.id ? 'Đang cập nhật...' : NEXT_ACTION[sos.status]!.label }}
             </button>
+
+            <!-- Lịch sử xử lý — chỉ hiện cho nhiệm vụ đang chọn, tránh rối danh sách -->
+            <div v-if="sos.id === selectedSos?.id && sos.timeline" class="sos-card-timeline">
+              <SosTimeline :timeline="sos.timeline" />
+            </div>
           </li>
         </ul>
       </template>
@@ -492,5 +498,10 @@ onUnmounted(() => {
 }
 .sos-card .btn {
   margin-top: 12px;
+}
+.sos-card-timeline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(42, 42, 36, 0.12);
 }
 </style>

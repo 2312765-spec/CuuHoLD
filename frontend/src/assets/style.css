@@ -235,3 +235,52 @@ section{ padding:56px 0; }
   font-size:13px; z-index:3000; opacity:0; pointer-events:none; transition:all .25s ease;
 }
 .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+/* ============================================================
+   F-UI-05 — Chế độ tối. CÁCH LÀM (bản sửa): KHÔNG remap các token
+   thương hiệu (--fog, --pine-deep... vốn dùng cho CẢ nền lẫn chữ,
+   remap sẽ đụng nhau — chữ sáng nằm trên nền cũng sáng). Thay vào
+   đó GHI ĐÈ trực tiếp: bề mặt SÁNG → tối, và chữ TỐI → sáng. Các
+   khối vốn đã tối (.status, .process, .btn-primary) GIỮ NGUYÊN.
+   ============================================================ */
+:root[data-theme="dark"]{ color-scheme:dark; }
+
+/* Nền + chữ mặc định toàn trang */
+:root[data-theme="dark"] body{ background:#0f1a15; color:#e7e2d4; }
+
+/* Tiêu đề & chữ đang dùng màu tối (--pine-deep / --ink) → sáng lên */
+:root[data-theme="dark"] h1,
+:root[data-theme="dark"] h2,
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] .brand,
+:root[data-theme="dark"] .nav-user,
+:root[data-theme="dark"] .nav-links a,
+:root[data-theme="dark"] .hero-map-link,
+:root[data-theme="dark"] .cov-card b{ color:#ece7d9; }
+
+/* Chữ phụ mờ (rgba ink 42,42,36,*) — trên nền tối gần như biến mất → sáng mờ */
+:root[data-theme="dark"] .hero p,
+:root[data-theme="dark"] .head p,
+:root[data-theme="dark"] .feat-card p,
+:root[data-theme="dark"] .feat2-card p,
+:root[data-theme="dark"] .cov-card span,
+:root[data-theme="dark"] footer .fine{ color:rgba(236,231,217,0.68); }
+
+/* Nút viền (.btn-ghost) đang chữ + viền tối → sáng để đọc được trên hero tối */
+:root[data-theme="dark"] .btn-ghost{ color:#ece7d9; border-color:rgba(236,231,217,0.28); }
+
+/* Header kính mờ (đang nền sáng rgba fog) → nền tối */
+:root[data-theme="dark"] header{ background:rgba(15,26,21,0.88); }
+
+/* Hero: gradient sáng → gradient tối (đây là chỗ khiến chữ trước đây chìm) */
+:root[data-theme="dark"] .hero{ background:linear-gradient(180deg,#14231b 0%,#0f1a15 100%); }
+
+/* Các bề mặt nền trắng/kem → nền tối */
+:root[data-theme="dark"] .feat-card,
+:root[data-theme="dark"] .feat2-card{ background:#16241d; }
+:root[data-theme="dark"] .map-preview-inner{ background:#1b2a22; }
+:root[data-theme="dark"] .map-legend{ background:rgba(22,36,29,0.92); color:#ece7d9; }
+
+/* Menu mobile xổ xuống (nền #f5f1e6) → tối */
+:root[data-theme="dark"] .nav-links.open{
+  background:#14231b; border-bottom-color:rgba(236,231,217,0.14);
+}
