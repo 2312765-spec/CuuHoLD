@@ -203,17 +203,28 @@ export function useLeafletMap() {
     // (góc phải dưới). Đây là góc trống duy nhất không vướng thành phần nào.
     L.control.zoom({ position: 'topright' }).addTo(map)
 
-    // tileerror/tileload không dedupe tay: gán lại true nhiều lần liên tiếp không đổi
-    // giá trị ref, nên watch(tileError) ở MapView.vue chỉ bắn đúng 1 lần cho mỗi đợt lỗi
-    // (VD 20-30 tile cùng hỏng lúc mất mạng) — không phải 1 toast cho từng tile.
+    // 'load' bắn ĐÚNG MỘT LẦN khi mọi tile trong khung nhìn hiện tại đã xong (thành công
+    // hoặc lỗi) — khác 'tileload'/'tileerror' vốn bắn RIÊNG cho TỪNG tile, xen kẽ không
+    // theo thứ tự khi nhiều tile tải song song (tile cache trả về ngay, tile khác đang chờ
+    // mạng). Bản trước gán thẳng tileError.value trong 'tileload'/'tileerror' — mỗi lần
+    // NHIỀU tile hoàn tất đan xen nhau, ref bật/tắt liên tục trong CÙNG một lượt zoom, mỗi
+    // lần đổi giá trị là 1 toast xếp hàng ở toastStore (CLAUDE.md Mục 15 kiểu lỗi tương tự:
+    // hàng chục tile lỗi/thành công xen kẽ → hàng chục toast tồn đọng, phát nối tiếp nhau
+    // rất lâu SAU KHI mạng đã ổn định trở lại — bài học từ lỗi thật đã gặp, xem git log).
+    // Đếm lỗi trong một "đợt" (giữa 'loading' và 'load') rồi chỉ gán tileError.value MỘT
+    // LẦN khi đợt đó xong mới đúng ý đồ dedupe ban đầu.
     // Cấu hình tile (URL, attribution, crossOrigin, ưu tiên bộ offline z8–10) nằm trong
     // utils/tileLayer.ts — dùng chung với RescueMap.vue, xem giải thích đầy đủ ở đó.
+    let coLoiTrongDot = false
     taoLopTileNen()
-      .on('tileerror', () => {
-        tileError.value = true
+      .on('loading', () => {
+        coLoiTrongDot = false
       })
-      .on('tileload', () => {
-        tileError.value = false
+      .on('tileerror', () => {
+        coLoiTrongDot = true
+      })
+      .on('load', () => {
+        tileError.value = coLoiTrongDot
       })
       .addTo(map)
 
