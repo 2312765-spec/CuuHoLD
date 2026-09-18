@@ -34,7 +34,7 @@ const moRong = ref(false)
         </a>
       </div>
     </transition>
-    <!-- <button
+    <button
       class="qc-fab"
       type="button"
       :aria-expanded="moRong"
@@ -43,7 +43,7 @@ const moRong = ref(false)
     >
       <span class="qc-fab-icon" aria-hidden="true">{{ moRong ? '✕' : '📞' }}</span>
       <span class="qc-fab-text">{{ moRong ? 'Đóng' : 'Gọi khẩn cấp' }}</span>
-    </button> -->
+    </button>
   </div>
 </template>
 
