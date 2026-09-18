@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useCtaTheoRole } from '@/composables/useCtaTheoRole'
-
+import ThemeToggle from '@/components/ThemeToggle.vue'
 // Thay cho đoạn thao tác style.cssText trực tiếp trong script.js cũ,
 // giờ dùng state phản ứng (reactive state) của Vue — idiomatic hơn.
 const isMenuOpen = ref(false)
@@ -42,6 +42,7 @@ const { cta } = useCtaTheoRole()
         <RouterLink v-if="cta.dich" :to="cta.dich" class="btn btn-primary">{{ cta.nhan }}</RouterLink>
         <button v-else class="btn btn-primary" @click="$emit('openAuth')">{{ cta.nhan }}</button>
       </div>
+       <ThemeToggle />
       <button class="menu-btn" aria-label="Mở menu" @click="isMenuOpen = !isMenuOpen">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 6H19M3 11H19M3 16H19" stroke="#2a2a24" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>

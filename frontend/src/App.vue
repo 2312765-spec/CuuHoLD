@@ -3,7 +3,8 @@ import { watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import InstallPromptBar from '@/components/InstallPromptBar.vue'
-
+import ConnectionStatusBar from '@/components/ConnectionStatusBar.vue'
+import QuickCallBar from '@/components/QuickCallBar.vue'
 // App.vue chỉ đóng vai trò khung chứa route — toàn bộ nội dung thật nằm trong
 // src/views/HomeView.vue (trang chủ) và src/views/MapView.vue (trang bản đồ).
 //
@@ -50,4 +51,7 @@ watch(
   <!-- Ngoài <RouterView> có chủ đích: không bị huỷ/tạo lại mỗi lần chuyển trang, xem
        comment trong InstallPromptBar.vue để biết lý do đây là phần fix chính. -->
   <InstallPromptBar />
+    <!-- Cùng lý do đặt ngoài <RouterView> như InstallPromptBar: không bị huỷ/tạo lại khi chuyển trang. -->
+  <ConnectionStatusBar />
+  <QuickCallBar />
 </template>

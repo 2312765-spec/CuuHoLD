@@ -6,6 +6,7 @@ import { vReveal } from './directives/reveal'
 import { useToastStore } from './stores/toast'
 import { useAuthStore } from './stores/auth.store'
 import './assets/style.css'
+import './composables/useTheme' // áp dụng chế độ sáng/tối đã lưu NGAY khi nạp, trước app.mount() để tránh nháy màu (F-UI-05)
 
 const app = createApp(App)
 app.use(createPinia())
