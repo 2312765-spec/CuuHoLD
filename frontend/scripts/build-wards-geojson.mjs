@@ -39,13 +39,19 @@
 // gán vào xã nào, cũng không ảnh hưởng việc điều đội (findNearestTeams tính theo khoảng
 // cách GPS thật, không theo ranh giới xã).
 //
-// ⚠️ DỮ LIỆU THIẾU 1 ĐƠN VỊ: Lâm Đồng mới có 124 đơn vị cấp xã theo Nghị quyết
-// 1671/NQ-UBTVQH15 (103 xã + 20 phường + 1 đặc khu, hiệu lực 16/6/2025), nhưng nguồn này
-// chỉ có 123 — khuyết "Xã Đam Rông 2" (dataset có Đam Rông 1, 3, 4). Bảng `wards` trong
-// DB cũng sinh ra từ đúng file này (xem gis/02-seed-wards.sql) nên cùng thiếu, tức bản đồ
-// và DB vẫn nhất quán với nhau. Hệ quả cần biết: SOS gửi từ trong địa phận Đam Rông 2 sẽ
-// không khớp ward nào qua ST_Contains → ward_code NULL → không vào được room ward tương
-// ứng. Khi kiếm được ranh giới Đam Rông 2, bổ sung vào nguồn rồi chạy lại script này.
+// ⚠️ NGUỒN CHÍNH THIẾU 1 ĐƠN VỊ, VÁ BẰNG NGUỒN THỨ 2 (từ 2026-09-17): Lâm Đồng mới có 124
+// đơn vị cấp xã theo Nghị quyết 1671/NQ-UBTVQH15 (103 xã + 20 phường + 1 đặc khu, hiệu lực
+// 16/6/2025), nhưng NGUON_URL ở trên chỉ có 123 — khuyết "Xã Đam Rông 2" (dataset có Đam
+// Rông 1, 3, 4). Vá bằng cách fetch riêng đúng 1 feature này từ nguồn KHÁC (xem NGUON_VA_*
+// dưới) rồi ghép vào TRƯỚC bước simplify, để nó cũng được dựng topology + giản lược cùng
+// 123 xã còn lại như bình thường.
+//
+// ⚠️ Vì 2 nguồn số hoá độc lập, biên chung giữa Đam Rông 2 và láng giềng (Đam Rông 1/3,
+// Quảng Hòa...) có thể lệch vài chục mét — khác các cặp xã còn lại (cùng nguồn gis.vn nên
+// biên trùng khít tuyệt đối). Không ảnh hưởng gán ward_code cho SOS thật (ST_Contains ở
+// gis/09-add-dam-rong-2.sql dùng polygon ĐẦY ĐỦ ĐỘ CHÍNH XÁC GỐC, không qua script này) —
+// chỉ có thể để lại khe hở/chồng lấn rất hẹp, không thấy được ở mức zoom bản đồ thường dùng.
+// Xem gis/09-add-dam-rong-2.sql để biết đầy đủ lý do chọn nguồn này + đối chiếu chéo số liệu.
 
 import mapshaper from 'mapshaper'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
@@ -54,6 +60,19 @@ import { fileURLToPath } from 'node:url'
 
 const NGUON_URL =
   'https://raw.githubusercontent.com/2314283-MVQuang/website-cuu-tro/main/public/data/lam_dong_data.json'
+
+// Vá đúng 1 xã bị thiếu ở NGUON_URL — xem giải thích đầy đủ ở gis/09-add-dam-rong-2.sql.
+const NGUON_VA_URL =
+  'https://raw.githubusercontent.com/thanglequoc/vietnamese-provinces-database/master/json/geojson/68_lam_dong/wards/24877_dam_rong_2.geojson'
+const VA_MA_XA = '24877'
+const VA_THUOC_TINH = {
+  ma_xa: VA_MA_XA,
+  ten_xa: 'Đam Rông 2',
+  loai: 'Xã',
+  sap_nhap: 'Rô Men, Liêng Srônh',
+  dtich_km2: 365.58,
+  dan_so: 16253
+}
 
 // 4 chữ số thập phân ≈ 11 m. Đừng hạ thêm: 3 chữ số (~111 m) bắt đầu thấy méo ranh giới.
 const SO_CHU_SO = 4
@@ -66,8 +85,9 @@ const SO_CHU_SO = 4
 // Nếu tăng con số này, PHẢI xem lại ngưỡng ẩn ranh giới trong useLeafletMap.ts cho khớp.
 const SAI_SO_MET = 25
 
-// Số đơn vị hành chính kỳ vọng — xem ghi chú "thiếu Đam Rông 2" ở đầu file.
-const SO_DON_VI_KY_VONG = 123
+// Số đơn vị hành chính kỳ vọng — 123 từ nguồn chính + 1 vá thêm (Đam Rông 2, xem trên) = 124,
+// đúng đủ 124 xã/phường/đặc khu của Lâm Đồng mới (Nghị quyết 1671/NQ-UBTVQH15).
+const SO_DON_VI_KY_VONG = 124
 
 const thuMucGoc = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DUONG_DAN_RA = resolve(thuMucGoc, 'public/data/lamdong-wards.geojson')
@@ -119,6 +139,26 @@ const featuresGoc = geojson.features.map((f) => ({
 
 const maTrung = featuresGoc.length - new Set(featuresGoc.map((f) => f.properties.ma_xa)).size
 if (maTrung > 0) throw new Error(`Nguồn có ${maTrung} mã xã trùng nhau`)
+
+// ---------- Vá xã bị thiếu (Đam Rông 2) — xem giải thích ở khai báo NGUON_VA_URL ----------
+if (!featuresGoc.some((f) => f.properties.ma_xa === VA_MA_XA)) {
+  console.log(`Nguồn chính thiếu mã xã ${VA_MA_XA} — vá từ: ${NGUON_VA_URL}`)
+  const resVa = await fetch(NGUON_VA_URL)
+  if (!resVa.ok) throw new Error(`Tải nguồn vá thất bại (HTTP ${resVa.status})`)
+  const geojsonVa = await resVa.json()
+  const featureVa = geojsonVa.features[0]
+  if (!featureVa || featureVa.properties.code !== VA_MA_XA) {
+    throw new Error(`Nguồn vá không đúng định dạng kỳ vọng (thiếu feature hoặc sai mã xã)`)
+  }
+  featuresGoc.push({
+    type: 'Feature',
+    properties: VA_THUOC_TINH,
+    geometry: { type: featureVa.geometry.type, coordinates: featureVa.geometry.coordinates }
+  })
+} else {
+  // Nguồn chính đã tự bổ sung xã này — bỏ qua bước vá, khỏi ghi đè bằng dữ liệu cũ hơn.
+  console.log(`Nguồn chính đã có mã xã ${VA_MA_XA} — bỏ qua bước vá.`)
+}
 
 // ---------- Bước 1: simplify (mapshaper, có dựng topology) ----------
 // keep-shapes: KHÔNG được xoá hẳn một polygon dù nó nhỏ tới đâu. Thiếu cờ này, một
@@ -234,7 +274,9 @@ if (lechLonNhat.pct > LECH_DIEN_TICH_TOI_DA) {
 const ketQua = {
   type: 'FeatureCollection',
   name: 'lamdong-wards',
-  nguon: 'gis.vn — qua github.com/2314283-MVQuang/website-cuu-tro',
+  nguon:
+    'gis.vn — qua github.com/2314283-MVQuang/website-cuu-tro (123/124 xã) ' +
+    '+ vá Đam Rông 2 từ github.com/thanglequoc/vietnamese-provinces-database',
   simplify: `visvalingam interval=${SAI_SO_MET}m (mapshaper) — chỉ để hiển thị`,
   features
 }

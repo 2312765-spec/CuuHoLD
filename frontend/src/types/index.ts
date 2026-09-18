@@ -70,6 +70,9 @@ export interface RescueTeam {
   leader_id: string
   leader_name: string
   leader_phone: string
+  // Không có trong response REST — chỉ gán từ socket team:location-updated khi đội có SOS active.
+  distanceToVictim?: number
+  estimatedArrival?: number
 }
 
 // ---- Đội gần nhất: khớp response GET /api/gis/nearest-teams (snake_case) ----

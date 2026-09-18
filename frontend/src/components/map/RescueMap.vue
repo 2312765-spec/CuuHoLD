@@ -8,8 +8,9 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { SosListItem, RescueTeam, NearestTeam, SosStatus } from '@/types'
-import type { ToaDo } from '@/utils/geo'
+import { dinhDangKhoangCach, type ToaDo } from '@/utils/geo'
 import { taoLopTileNen } from '@/utils/tileLayer'
+import { SOS_TYPE_LABEL, SOS_STATUS_LABEL, RESCUE_TEAM_STATUS_LABEL } from '@/constants/sosLabels'
 
 // Chỉ các field thật sự dùng để vẽ — nhận được cả SosListItem (GET /api/sos, commander)
 // lẫn SosRequest (GET /api/sos/:id, rescuer — ở đó victim_name là optional).
@@ -44,9 +45,13 @@ let sosLayer: L.LayerGroup | null = null
 let teamLayer: L.LayerGroup | null = null
 let routeLayer: L.LayerGroup | null = null
 
-// true khi tile nền OSM đang lỗi. Chỉ emit lúc giá trị THỰC SỰ đổi (watch trên ref, không
-// gọi emit thẳng trong .on('tileerror', ...)) — nhiều tile lỗi liên tiếp không tạo nhiều
-// emit, tránh DashboardView.vue hiện lặp lại cùng 1 toast cho từng tile.
+// true khi tile nền OSM đang lỗi. Chỉ emit lúc giá trị THỰC SỰ đổi (watch trên ref) — nhưng
+// giá trị đó phải được gán MỘT LẦN sau khi cả đợt tile (giữa 'loading' và 'load') đã xong,
+// KHÔNG phải trong từng 'tileload'/'tileerror' riêng lẻ: hai event đó bắn cho TỪNG tile,
+// xen kẽ không theo thứ tự khi nhiều tile tải song song, nên gán thẳng ref trong đó khiến
+// nó bật/tắt liên tục trong CÙNG một lượt zoom — mỗi lần đổi là 1 toast xếp hàng ở
+// DashboardView, tồn đọng phát tiếp nối nhau rất lâu sau khi mạng đã ổn định (bug thật đã
+// gặp, xem git log). Xem giải thích đầy đủ ở useLeafletMap.ts (cùng lỗi, cùng cách sửa).
 const loiTile = ref(false)
 watch(loiTile, (loi) => emit('tile-error', loi))
 
@@ -62,7 +67,10 @@ function buildSosLayer() {
       fillColor: STATUS_COLOR[sos.status],
       fillOpacity: 0.95
     })
-    marker.bindTooltip(`${sos.victim_name ?? ''} — ${sos.type} (${sos.status})`, { direction: 'top' })
+    marker.bindTooltip(
+      `${sos.victim_name ?? ''} — ${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`,
+      { direction: 'top' }
+    )
     marker.on('click', () => emit('select-sos', sos.id))
     marker.addTo(sosLayer)
   }
@@ -80,7 +88,11 @@ function buildTeamLayer() {
       fillColor: team.status === 'available' ? '#2563eb' : '#94a3b8',
       fillOpacity: 0.9
     })
-    marker.bindTooltip(`${team.name} (${team.status})`, { direction: 'top' })
+    let tooltip = `${team.name} (${RESCUE_TEAM_STATUS_LABEL[team.status]})`
+    if ('distanceToVictim' in team && team.distanceToVictim != null && team.estimatedArrival != null) {
+      tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
+    }
+    marker.bindTooltip(tooltip, { direction: 'top' })
     marker.addTo(teamLayer)
   }
 }
@@ -131,12 +143,16 @@ onMounted(() => {
   map = L.map(mapContainer.value, { zoomControl: true }).setView([11.9465, 108.4419], 9)
   // Cấu hình tile (URL, attribution, crossOrigin, ưu tiên bộ offline z8–10) nằm trong
   // utils/tileLayer.ts — dùng chung với useLeafletMap.ts, xem giải thích đầy đủ ở đó.
+  let coLoiTrongDot = false
   taoLopTileNen()
-    .on('tileerror', () => {
-      loiTile.value = true
+    .on('loading', () => {
+      coLoiTrongDot = false
     })
-    .on('tileload', () => {
-      loiTile.value = false
+    .on('tileerror', () => {
+      coLoiTrongDot = true
+    })
+    .on('load', () => {
+      loiTile.value = coLoiTrongDot
     })
     .addTo(map)
 

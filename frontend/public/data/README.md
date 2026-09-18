@@ -27,21 +27,24 @@ hiển thị toàn tỉnh.
 Cùng nguồn này đã được dùng để sinh seed cho bảng `wards` trong PostGIS — xem
 `gis/02-seed-wards.sql`. Nên bản đồ và cơ sở dữ liệu luôn khớp nhau.
 
-### ⚠️ Thiếu 1 đơn vị: Xã Đam Rông 2
+### ✅ Đã vá đơn vị từng thiếu: Xã Đam Rông 2 (2026-09-17)
 
 Theo **Nghị quyết 1671/NQ-UBTVQH15** (hiệu lực 16/6/2025), Lâm Đồng mới có **124** đơn vị
-hành chính cấp xã: 103 xã + 20 phường + 1 đặc khu. Nguồn dữ liệu này chỉ có **123** —
-khuyết **Xã Đam Rông 2** (dataset có Đam Rông 1 `24886`, Đam Rông 3 `24875`, Đam Rông 4
-`24853`).
+hành chính cấp xã: 103 xã + 20 phường + 1 đặc khu. Nguồn chính (gis.vn, qua GitHub repo ở
+trên) chỉ có **123** — khuyết **Xã Đam Rông 2** (dataset có Đam Rông 1 `24886`, Đam Rông 3
+`24875`, Đam Rông 4 `24853`).
 
-Bảng `wards` trong DB sinh từ đúng file này nên cùng thiếu — bản đồ và DB vẫn nhất quán.
+`scripts/build-wards-geojson.mjs` giờ tự động vá thêm đúng feature này từ nguồn thứ 2
+(`github.com/thanglequoc/vietnamese-provinces-database`, mã xã `24877`) mỗi lần chạy
+`npm run build:wards` — không cần sửa tay. Diện tích trong file đó (365.58 km²) khớp độc
+lập với số liệu báo chí, đủ tin cậy dù chưa phải bản đo đạc lại chính thức của Chính phủ.
 
-**Hệ quả cần biết:** yêu cầu SOS gửi từ trong địa phận Đam Rông 2 sẽ không khớp ward nào
-qua `ST_Contains` → `ward_code` NULL → không vào được room `ward:{ward_code}` tương ứng,
-nên rescuer/commander của khu vực đó sẽ không nhận được thông báo thời gian thực.
+⚠️ Vì 2 nguồn số hoá độc lập, biên chung giữa Đam Rông 2 và láng giềng (Đam Rông 1/3,
+Quảng Hòa) có thể lệch vài chục mét — không như các cặp xã còn lại (cùng nguồn gis.vn nên
+khớp khít tuyệt đối). Không ảnh hưởng gán `ward_code` cho SOS thật.
 
-Khi kiếm được ranh giới Đam Rông 2: bổ sung vào file nguồn, chạy lại `npm run build:wards`,
-và sinh lại `gis/02-seed-wards.sql` cho DB.
+Bảng `wards` trong DB **cần chạy riêng** `gis/09-add-dam-rong-2.sql` (dùng polygon đầy đủ
+độ chính xác gốc, không qua bước simplify ở trên) — xem file đó để biết đầy đủ nguồn/lý do.
 
 ## `../lamdong_tinh.geojson`
 
