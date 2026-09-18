@@ -20,6 +20,7 @@ const soDiem = computed(() => store.soDiemTheoLop(activeLayer.value))
     <span class="dot-sep">·</span>
     <span><b>124</b> xã, phường</span>
     <span class="dot-sep">·</span>
+     <span><b>2</b> cấp, chính quyền: tỉnh, xã</span>
     <span class="stat-note">Dữ liệu điểm cứu trợ &amp; báo cáo hiện là dữ liệu minh hoạ cho đồ án, chưa nối với PostGIS thật.</span>
   </div>
 </template>

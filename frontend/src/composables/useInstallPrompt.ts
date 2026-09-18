@@ -24,7 +24,13 @@ export function useInstallPrompt() {
 
     // iOS Safari KHÔNG hỗ trợ 'beforeinstallprompt' — không có cách nào chủ động
     // bật hộp thoại cài đặt bằng code trên iOS, chỉ có thể hướng dẫn thao tác thủ công.
-    laIOS.value = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    // iPad iPadOS 13+ báo userAgent giống macOS desktop (không có 'ipad'), nên bắt thêm
+    // trường hợp thiết bị Mac CÓ cảm ứng (maxTouchPoints > 1) = thực chất là iPad.
+    const ua = navigator.userAgent
+    const laAppleCamUng =
+      /iphone|ipad|ipod/i.test(ua) ||
+      (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)
+    laIOS.value = laAppleCamUng
 
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault() // chặn trình duyệt tự hiện popup mặc định, để mình chủ động kích hoạt sau

@@ -31,6 +31,17 @@ export interface SosRequest {
   team_lng?: number | null
   victim_name?: string
   victim_phone?: string
+  // Lịch sử các mốc xử lý — backend trả kèm khi GET /sos/:id.
+  timeline?: SosTimelineRow[]
+}
+
+// Một dòng lịch sử xử lý SOS — khớp SosTimelineRow của backend.
+export interface SosTimelineRow {
+  id: string
+  actor_id: string
+  action: string
+  note: string | null
+  created_at: string
 }
 
 // ---- Kết quả POST /api/sos (snake_case) ----

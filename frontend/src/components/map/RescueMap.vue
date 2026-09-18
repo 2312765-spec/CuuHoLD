@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import type { SosListItem, RescueTeam, NearestTeam, SosStatus } from '@/types'
 import type { ToaDo } from '@/utils/geo'
 import { taoLopTileNen } from '@/utils/tileLayer'
+import { SOS_TYPE_LABEL, SOS_STATUS_LABEL } from '@/constants/sosLabels'
 
 // Chỉ các field thật sự dùng để vẽ — nhận được cả SosListItem (GET /api/sos, commander)
 // lẫn SosRequest (GET /api/sos/:id, rescuer — ở đó victim_name là optional).
@@ -62,7 +63,11 @@ function buildSosLayer() {
       fillColor: STATUS_COLOR[sos.status],
       fillOpacity: 0.95
     })
-    marker.bindTooltip(`${sos.victim_name ?? ''} — ${sos.type} (${sos.status})`, { direction: 'top' })
+    // Tooltip dùng nhãn tiếng Việt, bỏ dấu gạch thừa khi thiếu tên nạn nhân, có class riêng
+    // để canh chữ đẹp (không dính viền như tooltip mặc định Leaflet).
+    const tenNan = sos.victim_name?.trim()
+    const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type] ?? sos.type} (${SOS_STATUS_LABEL[sos.status] ?? sos.status})`
+    marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
     marker.on('click', () => emit('select-sos', sos.id))
     marker.addTo(sosLayer)
   }
@@ -80,7 +85,7 @@ function buildTeamLayer() {
       fillColor: team.status === 'available' ? '#2563eb' : '#94a3b8',
       fillOpacity: 0.9
     })
-    marker.bindTooltip(`${team.name} (${team.status})`, { direction: 'top' })
+    marker.bindTooltip(`${team.name} (${team.status === 'available' ? 'sẵn sàng' : team.status === 'busy' ? 'đang bận' : 'ngoại tuyến'})`, { direction: 'top', className: 'rescue-tooltip' })
     marker.addTo(teamLayer)
   }
 }
