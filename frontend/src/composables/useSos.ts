@@ -75,6 +75,10 @@ export function useSos() {
           activeSos.value.status = detail.status
           activeSos.value.teamLat = detail.team_lat ?? null
           activeSos.value.teamLng = detail.team_lng ?? null
+          // Từng bị bỏ quên ở đây — chỉ gán qua socket 'sos:updated', nên nếu victim bỏ lỡ
+          // socket đó (F5 ngay sau lúc giao đội, mất kết nối...), "đã có đội" không bao giờ
+          // hiện dù poll này vẫn nhận đủ dữ liệu từ server.
+          if (detail.assigned_team_id) activeSos.value.assignedTeamId = detail.assigned_team_id
           if (TERMINAL_STATUSES.includes(detail.status)) dungTheoDoi()
         })
         .catch(() => {
@@ -181,7 +185,8 @@ export function useSos() {
         createdAt: detail.created_at,
         cancelDeadline: detail.cancel_deadline,
         teamLat: detail.team_lat ?? null,
-        teamLng: detail.team_lng ?? null
+        teamLng: detail.team_lng ?? null,
+        assignedTeamId: detail.assigned_team_id ?? undefined
       }
       batDauTheoDoi(detail.id)
     } catch {

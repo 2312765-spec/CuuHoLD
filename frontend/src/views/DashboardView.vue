@@ -105,6 +105,9 @@ const { isConnected, connect } = useSocket({
     if (team) {
       team.lat = data.lat
       team.lng = data.lng
+      // Gán cả khi undefined — đội vừa xong nhiệm vụ thì phải xoá ETA cũ khỏi tooltip.
+      team.distanceToVictim = data.distanceToVictim
+      team.estimatedArrival = data.estimatedArrival
     }
   }
 })

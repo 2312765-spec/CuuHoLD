@@ -7,6 +7,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ActiveSos } from '@/composables/useSos'
 import { SOS_TYPE_LABEL, SOS_STATUS_LABEL } from '@/constants/sosLabels'
+import { khoangCachMet, etaPhut, dinhDangKhoangCach } from '@/utils/geo'
 
 const props = defineProps<{
   activeSos: ActiveSos
@@ -39,6 +40,14 @@ const demNguocHuy = computed(() => {
   const giay = tongGiay % 60
   return `${phut}:${giay.toString().padStart(2, '0')}`
 })
+
+// Vị trí đội lấy từ poll 20s (useSos.ts), nên con số này trễ tối đa ~20s + chu kỳ GPS 30s của đội.
+const khoangCachDoi = computed(() => {
+  const { assignedTeamId, teamLat, teamLng, lat, lng } = props.activeSos
+  if (!assignedTeamId || teamLat == null || teamLng == null) return null
+  const met = khoangCachMet({ lat: teamLat, lng: teamLng }, { lat, lng })
+  return { text: dinhDangKhoangCach(met), eta: etaPhut(met) }
+})
 </script>
 
 <template>
@@ -68,6 +77,10 @@ const demNguocHuy = computed(() => {
       <span class="sos-tracker-team-icon">🚑</span>
       <span>{{ activeSos.teamDangDiChuyen ? 'Đội cứu hộ đang di chuyển tới bạn' : 'Đã có đội cứu hộ được phân công' }}</span>
     </div>
+    <p v-if="dangHoatDong && khoangCachDoi" class="sos-tracker-note">
+      Cách bạn <b>~{{ khoangCachDoi.text }}</b> · ETA <b>~{{ khoangCachDoi.eta }} phút</b>
+      <br />(đường chim bay, ước tính 40 km/h)
+    </p>
 
     <div class="sos-tracker-actions">
       <button v-if="dangHoatDong" class="btn btn-ghost" :disabled="dangHuy" @click="emit('huy')">

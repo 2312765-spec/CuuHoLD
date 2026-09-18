@@ -3,7 +3,7 @@
 // (sửa 1 nơi quên 2 nơi còn lại). MapView.vue và SosTrackerPanel.vue dùng chung file này;
 // RescuerView/DashboardView có thể chuyển sang dùng sau, chưa đổi trong lần sửa này.
 
-import type { SosType, SosStatus } from '@/types'
+import type { SosType, SosStatus, RescueTeamStatus } from '@/types'
 
 export const SOS_TYPE_LABEL: Record<SosType, string> = {
   flood: 'Lũ lụt',
@@ -26,4 +26,11 @@ export const SOS_STATUS_LABEL: Record<SosStatus, string> = {
   resolved: 'Hoàn tất',
   cancelled: 'Đã huỷ',
   false_alarm: 'Báo giả'
+}
+
+// Trạng thái đội cứu hộ — RescueMap.vue (marker tooltip, cả DashboardView lẫn RescuerView).
+export const RESCUE_TEAM_STATUS_LABEL: Record<RescueTeamStatus, string> = {
+  available: 'Sẵn sàng',
+  busy: 'Đang bận',
+  offline: 'Ngoại tuyến'
 }

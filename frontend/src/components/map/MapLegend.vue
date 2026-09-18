@@ -11,6 +11,11 @@
 //    tự suy từ toạ độ GPS bằng ST_Contains trên dữ liệu gốc chưa giản lược.
 //    Cùng nguyên tắc với cảnh báo "vị trí ước tính" ở CLAUDE.md Mục 15.6: thà
 //    báo trước còn hơn để người dùng tự suy diễn sai giữa lúc cần tin vào bản đồ.
+// 3. "Ranh giới vẫn hiện mà nền bản đồ lại trắng khi mất mạng" — ranh giới là lớp
+//    VECTOR (tải cùng app, luôn có), còn nền bản đồ (ảnh đường phố/địa hình) là
+//    lớp RASTER chỉ cache sẵn offline cho toàn tỉnh ở mức xem tổng quan (zoom xa);
+//    zoom sâu vào một khu vực cụ thể cần có mạng ít nhất 1 lần để tải ảnh vùng đó
+//    (xem CLAUDE.md Mục 15.7/15.12, src/constants/tileProvider.ts). Không phải lỗi.
 </script>
 
 <template>
@@ -21,6 +26,10 @@
     <p class="legend-note">
       Ranh giới xã/phường chỉ mang tính minh hoạ và tự ẩn khi phóng to.
       Xã chính thức của mỗi yêu cầu được xác định theo toạ độ GPS.
+    </p>
+    <p class="legend-note">
+      Nền bản đồ toàn tỉnh vẫn xem được khi mất mạng. Xem chi tiết một khu vực
+      (phóng to sâu) cần có mạng ở lần đầu để tải ảnh vùng đó.
     </p>
   </div>
 </template>

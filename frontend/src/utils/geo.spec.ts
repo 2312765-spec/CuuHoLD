@@ -3,7 +3,7 @@
 // không thấy 2 con số ETA khác nhau cho cùng một quãng đường.
 
 import { describe, it, expect } from 'vitest'
-import { khoangCachMet, etaPhut } from './geo'
+import { khoangCachMet, etaPhut, dinhDangKhoangCach } from './geo'
 
 describe('khoangCachMet', () => {
   it('trả 0 khi 2 điểm trùng nhau', () => {
@@ -32,5 +32,17 @@ describe('etaPhut', () => {
 
   it('không bao giờ hiện 0 phút', () => {
     expect(etaPhut(0)).toBe(1)
+  })
+})
+
+describe('dinhDangKhoangCach', () => {
+  it('dưới 1 km → mét, làm tròn', () => {
+    expect(dinhDangKhoangCach(111.4)).toBe('111 m')
+    expect(dinhDangKhoangCach(999.4)).toBe('999 m')
+  })
+
+  it('từ 1 km trở lên → km, 1 chữ số thập phân', () => {
+    expect(dinhDangKhoangCach(1000)).toBe('1.0 km')
+    expect(dinhDangKhoangCach(1626)).toBe('1.6 km')
   })
 })
