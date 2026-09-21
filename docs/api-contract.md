@@ -41,8 +41,8 @@ không được giả định `error.response.data.success === false`.
 | Status | Khi nào |
 |---|---|
 | `400 Bad Request` | DTO validate fail, hoặc business rule fail (VD: sai transition trạng thái SOS) |
-| `401 Unauthorized` | Thiếu/sai `Authorization: Bearer <token>`, sai phone/password, tài khoản bị khoá |
-| `403 Forbidden` | Đúng JWT nhưng sai role, hoặc không sở hữu resource (VD: rescuer cập nhật SOS không phải đội mình) |
+| `401 Unauthorized` | Thiếu/sai `Authorization: Bearer <token>`, sai phone/password (kể cả khi số điện thoại không tồn tại) |
+| `403 Forbidden` | Đúng JWT nhưng sai role, không sở hữu resource (VD: rescuer cập nhật SOS không phải đội mình), **hoặc đăng nhập đúng mật khẩu nhưng tài khoản bị khoá** (`isActive=false`) |
 | `404 Not Found` | Không tìm thấy SOS / đội cứu hộ theo `id` |
 | `409 Conflict` | `phone` đã tồn tại khi đăng ký |
 
@@ -63,6 +63,22 @@ gửi đúng field `lat`/`lng` như spec dưới**.
 (3/giờ), `POST /api/sos` (5/giờ), mọi route khác baseline 100/phút. Bucket theo `user.id`
 khi có Bearer token hợp lệ, fallback IP cho route công khai. Xem CLAUDE.md Mục 15.1.
 (Dòng này từng ghi "CHƯA implement" — đã lỗi thời so với code, sửa lại 2026-09-06.)
+
+### GET /api/health
+Public, **không rate limit** (`@SkipThrottle()`). Thêm 2026-09-18 cho Render.com/UptimeRobot.
+
+```json
+{ "success": true, "message": "OK", "data": { "status": "ok", "uptime": 1234, "database": "up" } }
+```
+
+`uptime` = số giây process đã chạy. `database` = `"up"`/`"down"` (thử `SELECT 1`).
+
+> ⚠️ **DB hỏng vẫn trả `200`**, chỉ đổi `database` thành `"down"` — cố ý. Render dùng health
+> check để quyết định restart, mà restart app không sửa được sự cố Supabase; trả lỗi ở đây
+> chỉ tạo vòng restart vô ích. Ai giám sát thì đọc field `database`, đừng chỉ nhìn status code.
+>
+> ⚠️ **Đừng gỡ `@SkipThrottle()`**: baseline 100 req/phút áp lên mọi route, Render ping health
+> rất dày lúc deploy → chạm ngưỡng → `429` → Render đọc là "không khoẻ" → restart lặp vô hạn.
 
 ---
 
@@ -111,8 +127,19 @@ Public. `@HttpCode(200)` — trả **200**, không phải 201.
 **Body**: `{ "phone": "0901234567", "password": "matkhau123" }`
 
 **200 OK**: shape `data` giống hệt `/register` (`user`, `accessToken`, `refreshToken`, `expiresIn`).
-Lỗi: `401` nếu sai phone/password **hoặc** tài khoản bị khoá (`isActive=false`) — cùng
-message, không phân biệt để tránh lộ thông tin tài khoản tồn tại.
+Lỗi:
+- `401` — sai phone/password. Số không tồn tại và sai mật khẩu dùng **chung một message**
+  (`"Sai thông tin đăng nhập"`), cố ý không phân biệt để không lộ tài khoản nào tồn tại.
+- `403` — đúng mật khẩu nhưng tài khoản bị khoá (`isActive=false`), message
+  `"Tài khoản đã bị khóa"` (SRS 3.1.2, đổi từ `401` ngày 2026-09-18).
+
+> **Vì sao chấp nhận để `403` lộ ra "số này có tài khoản đang bị khoá":** dòng này trước đây
+> ghi là cả 2 case đều trả `401` "cùng message... tránh lộ thông tin tài khoản tồn tại" —
+> thực tế code chưa bao giờ đúng như vậy (2 message đã khác nhau từ đầu), và quan trọng hơn:
+> `POST /api/auth/register` vẫn trả `409` cho mọi số đã đăng ký, tức ai cũng dò được sự tồn
+> tại của một số mà không cần mật khẩu. Giữ `401` ở login chỉ là khoá cửa sổ trong khi cửa
+> chính đang mở. Nếu sau này thật sự cần chống account enumeration, phải xử lý **đồng bộ cả
+> register lẫn login** (và forgot-password nếu có) — không vá lẻ ở đây.
 
 ### GET /api/auth/me 🔒
 **200 OK**
@@ -121,9 +148,26 @@ message, không phân biệt để tránh lộ thông tin tài khoản tồn t�
 ```
 (không có `passwordHash`)
 
-> ⚠️ `POST /api/auth/refresh` có trong CLAUDE.md Mục 7 nhưng **chưa implement** — không có
-> route này trong `auth.controller.ts`. Khi `accessToken` hết hạn (24h), phải bắt user
-> đăng nhập lại; đừng code luồng silent-refresh.
+### POST /api/auth/refresh
+Public. `@HttpCode(200)`. Rate limit 20/15 phút. **Có từ 2026-09-18** (trước đó không tồn tại).
+
+**Body**: `{ "refreshToken": "<token nhận từ /login hoặc /register>" }`
+
+**200 OK**: `data` = `{ "accessToken": "...", "expiresIn": 86400 }`
+
+Lỗi: `401` nếu token sai/hết hạn hoặc user không còn tồn tại; `403` nếu tài khoản bị khoá
+(`isActive=false`) — cùng lý do với `/login`, không cho tài khoản đã khoá tự gia hạn token.
+
+**KHÔNG cấp `refreshToken` mới** (không rotation): chưa có bảng lưu refresh token nên rotation
+cũng không phát hiện được tái sử dụng. Hệ quả phải biết: **refreshToken bị lộ dùng được đủ
+7 ngày, không có đường thu hồi** — muốn thu hồi phải thêm bảng `refresh_tokens` + migration.
+
+> ⚠️ **Frontend CỐ Ý chưa gọi route này — vẫn đừng code luồng silent-refresh.** Lý do không
+> phải vì route thiếu (giờ đã có), mà vì phiên đăng nhập lưu ở `sessionStorage` nên bị xoá
+> khi đóng tab, trong khi `accessToken` sống 24h → luồng refresh chỉ có cơ hội chạy khi một
+> tab mở liên tục hơn 24 tiếng, gần như không xảy ra. Muốn refresh có giá trị thật thì phải
+> chuyển `refreshToken` sang cookie `httpOnly` trước (xem CLAUDE.md Mục 15.4), rồi mới làm
+> interceptor. Hiện `accessToken` hết hạn → bắt user đăng nhập lại như cũ.
 
 ---
 
@@ -430,7 +474,8 @@ không tự định nghĩa lại tên event hay field (xem checklist tích hợp
 
 ## 6. Chưa implement / khác với CLAUDE.md
 
-- `POST /api/auth/refresh` — không có route.
+- ~~`POST /api/auth/refresh` — không có route.~~ **Đã thêm 2026-09-18** (chỉ backend; frontend
+  cố ý chưa dùng — xem ghi chú ở Mục 1).
 - `GET /api/ranhgioi` (ranh giới xã/phường qua API) — không tồn tại và **sẽ không được thêm**;
   dùng file tĩnh `public/data/lamdong-wards.geojson` ở frontend (theo CLAUDE.md Mục 5).
 - `GET /api/gis/sos-heatmap` — có route, có SQL, nhưng **không có nơi nào ở frontend gọi**

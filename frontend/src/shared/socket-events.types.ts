@@ -72,6 +72,9 @@ export interface TeamLocationPayload {
   lng: number;
   wardCode: string;
   updatedAt: string;
+  // Chỉ có khi đội đang có SOS active (assigned/in_progress/arrived).
+  distanceToVictim?: number; // mét, đường chim bay
+  estimatedArrival?: number; // phút kể từ bây giờ, giả định 40 km/h
 }
 
 export interface SystemNotificationPayload {

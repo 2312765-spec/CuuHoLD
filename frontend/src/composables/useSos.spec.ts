@@ -199,7 +199,13 @@ describe('useSos', () => {
 
     await sos.khoiPhucSosDangHoatDong()
 
-    expect(sos.activeSos.value).toMatchObject({ teamLat: 11.95, teamLng: 108.45 })
+    // assignedTeamId từng bị bỏ quên ở đây — chỉ gán qua socket 'sos:updated', nên F5 đúng
+    // lúc miss socket khiến victim mất luôn dấu hiệu "đã có đội" (badge 🚑 lẫn ETA mới thêm).
+    expect(sos.activeSos.value).toMatchObject({
+      teamLat: 11.95,
+      teamLng: 108.45,
+      assignedTeamId: 'team-1'
+    })
   })
 
   it('mỗi lượt poll cập nhật toạ độ đội — đội di chuyển thì marker đi theo', async () => {
@@ -219,7 +225,9 @@ describe('useSos', () => {
       expect(sos.activeSos.value).toMatchObject({
         status: 'assigned',
         teamLat: 11.93,
-        teamLng: 108.43
+        teamLng: 108.43,
+        // Cùng lý do với test khoiPhucSosDangHoatDong() ở trên — poll cũng từng quên gán.
+        assignedTeamId: 'team-1'
       })
     } finally {
       vi.useRealTimers()

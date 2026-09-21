@@ -25,3 +25,9 @@ export function khoangCachMet(a: ToaDo, b: ToaDo): number {
 export function etaPhut(met: number): number {
   return Math.max(1, Math.round((met / 1000 / TOC_DO_GIA_DINH_KMH) * 60))
 }
+
+export function dinhDangKhoangCach(met: number): string {
+  // So sánh sau khi làm tròn — tránh hiện "1000 m" với 999.6 m.
+  if (Math.round(met) < 1000) return `${Math.round(met)} m`
+  return `${(met / 1000).toFixed(1)} km`
+}

@@ -22,7 +22,9 @@
 // 203.113.131.1). Người dùng Viettel để DNS mặc định mất nền bản đồ ở mọi zoom tải qua mạng.
 //
 // Nguồn đang dùng: style HOT (Humanitarian OSM Team) do OSM France host — cùng dữ liệu OSM,
-// không cần key, có CORS `*`, DNS Viettel không chặn, có tile tới z20. Vẫn là máy chủ TÌNH
+// không cần key, có CORS `*`, DNS Viettel không chặn. ⚠️ Tile zoom sâu CHỈ có ở vùng
+// nhiều dữ liệu (trung tâm Đà Lạt tới z18) — vùng thưa trả 404 từ z16/z17 (đo 2026-09-18);
+// utils/tileLayer.ts tự lùi về tile cha nên không mất nền. Vẫn là máy chủ TÌNH
 // NGUYỆN, không SLA — lời giải cho đồ án, chưa phải cho triển khai thật (CLAUDE.md Mục 15.7
 // việc #4). Chỉ subdomain a/b/c phục vụ tile — host trần tile.openstreetmap.fr/hot/ trả 404.
 //

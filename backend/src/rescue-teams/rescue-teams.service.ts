@@ -112,6 +112,30 @@ export class RescueTeamsService {
       [lng, lat, teamId],
     );
 
+    // Khoảng cách + ETA từ vị trí MỚI tới SOS đang active của đội (SRS Phụ lục A, F-RT-01).
+    // Cùng công thức ETA 40 km/h với GisService.findNearestTeams().
+    const activeSos = await this.dataSource.query<
+      { distance_meters: string | number; eta_minutes: string | number }[]
+    >(
+      `
+      SELECT
+        ROUND(ST_Distance(
+          location::geography,
+          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+        )::numeric) AS distance_meters,
+        ROUND(ST_Distance(
+          location::geography,
+          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+        ) / 1000 / 40 * 60) AS eta_minutes
+      FROM sos_requests
+      WHERE assigned_team_id = $3
+        AND status IN ('assigned', 'in_progress', 'arrived')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+      [lng, lat, teamId],
+    );
+
     const payload: TeamLocationPayload = {
       teamId,
       lat,
@@ -119,6 +143,11 @@ export class RescueTeamsService {
       wardCode: team.ward_code,
       updatedAt: rows[0].updated_at.toISOString(),
     };
+    if (activeSos[0]) {
+      // ROUND(numeric) về từ driver pg dưới dạng chuỗi — ép về number.
+      payload.distanceToVictim = Number(activeSos[0].distance_meters);
+      payload.estimatedArrival = Number(activeSos[0].eta_minutes);
+    }
     this.sosGateway.emitTeamLocationUpdated(team.ward_code, payload);
 
     return {

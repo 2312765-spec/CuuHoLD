@@ -28,6 +28,13 @@ import type { SosUpdatedPayload } from '@/shared/socket-events.types'
 const authStore = useAuthStore()
 // Nút SOS chỉ dành cho người dân (victim). Rescuer/commander không gửi SOS.
 const laVictim = computed(() => authStore.role === 'victim')
+// GET /api/rescue-teams (RolesGuard) chỉ cho rescuer/commander — victim gọi vào LUÔN nhận
+// 403 "Không có quyền truy cập" (roles.guard.ts). Trước đây điều kiện gọi chỉ kiểm
+// isLoggedIn (chặn đúng ca 401 "chưa đăng nhập") mà quên mất route còn giới hạn theo role,
+// nên mọi victim đăng nhập vào /map đều thấy toast lỗi này dù không có gì thật sự sai.
+const coTheXemDoiCuuHo = computed(
+  () => authStore.role === 'rescuer' || authStore.role === 'commander'
+)
 
 // ---------- Modal đăng nhập/đăng ký (chồng lên map) ----------
 const isAuthOpen = ref(false)
@@ -211,7 +218,7 @@ const { isConnected, connect } = useSocket({
     if (laSosCuaMinh) {
       toastStore.showToast(`Yêu cầu của bạn chuyển sang trạng thái: ${SOS_STATUS_LABEL[data.status]}`)
     } else {
-      toastStore.showToast(`Yêu cầu ${data.sosId.slice(0, 8)} chuyển trạng thái: ${data.status}`)
+      toastStore.showToast(`Yêu cầu ${data.sosId.slice(0, 8)} chuyển trạng thái: ${SOS_STATUS_LABEL[data.status]}`)
     }
   },
   onTeamLocation: (data) => {
@@ -274,10 +281,10 @@ let huyLangNgheHangDoi: (() => void) | null = null
 onMounted(async () => {
   await initMap('map', activeLayer.value)
   await khoiTaoTheoRole()
-  // Danh sách đội cứu hộ (GET /api/rescue-teams) là route CẦN đăng nhập (JWT). Trang bản đồ
-  // cho xem tự do không cần đăng nhập — nên chỉ tải khi ĐÃ đăng nhập, tránh gọi API lúc chưa
-  // có token khiến backend trả 401 "Unauthorized" (hiện toast lỗi cho người chỉ muốn xem map).
-  if (authStore.isLoggedIn) mapDataStore.taiDiemCuuTroTuServer()
+  // Danh sách đội cứu hộ (GET /api/rescue-teams) CẦN đăng nhập (JWT) VÀ role rescuer/commander
+  // (RolesGuard) — chỉ tải khi đủ cả hai, tránh gọi API vô ích luôn nhận 401 (khách) hoặc 403
+  // (victim đã đăng nhập) rồi hiện toast lỗi cho người chỉ muốn xem map.
+  if (coTheXemDoiCuuHo.value) mapDataStore.taiDiemCuuTroTuServer()
   // Khi có mạng trở lại: báo cáo minh hoạ trong hàng đợi được "gửi" theo đúng luồng
   // themMarkerBaoCao() có sẵn (tái dùng, không viết logic vẽ marker riêng lần 2); SOS thật
   // trong hàng đợi được gửi qua guiSos() thật, kết quả đổ ngược lại thẻ theo dõi hiện tại.
@@ -299,9 +306,10 @@ watch(
   () => {
     if (!daKhoiTaoLanDau) return
     void khoiTaoTheoRole()
-    // Đăng nhập giữa chừng (đang ở /map) → giờ mới có token, tải danh sách đội cứu hộ.
-    // Đăng xuất → isLoggedIn false, không gọi (tránh 401 như đã sửa ở onMounted).
-    if (authStore.isLoggedIn) mapDataStore.taiDiemCuuTroTuServer()
+    // Đăng nhập giữa chừng (đang ở /map) bằng tài khoản rescuer/commander → giờ mới có token
+    // + đúng role, tải danh sách đội cứu hộ. Đăng xuất, hoặc đăng nhập bằng victim → không
+    // gọi (tránh 401/403 như đã sửa ở onMounted).
+    if (coTheXemDoiCuuHo.value) mapDataStore.taiDiemCuuTroTuServer()
   }
 )
 
