@@ -35,4 +35,8 @@
   line-height: 1.45;
   color: rgba(42, 42, 36, 0.55);
 }
+:root[data-theme="dark"] .legend-note {
+  color: rgba(236, 231, 217, 0.6);      /* chữ sáng mờ, hợp nền tối */
+  border-top-color: rgba(236, 231, 217, 0.14);  /* đường kẻ cũng theo tông sáng */
+}
 </style>
