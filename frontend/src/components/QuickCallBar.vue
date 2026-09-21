@@ -11,7 +11,7 @@ import { useRoute } from 'vue-router'
 // nổi vào đó dễ đè lên đúng thứ người dùng cần bấm lúc khẩn cấp.
 
 const HOTLINES = [
-  { so: '112', nhan: 'Ứng cứu khẩn cấp' },
+  { so: '0917523580', nhan: 'Ứng cứu khẩn cấp' },
   { so: '113', nhan: 'Công an' },
   { so: '114', nhan: 'Cứu nạn – cứu hộ, PCCC' },
   { so: '115', nhan: 'Cấp cứu y tế' }

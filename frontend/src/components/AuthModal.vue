@@ -133,7 +133,7 @@ function guiForm() {
 }
 .auth-overlay.open{ display:flex; }
 .auth-modal{
-  position:relative; width:100%; max-width:390px; background:#fff; border-radius:18px;
+  position:relative; width:100%; max-width:390px; background:#fff; border-radius:18px; color-scheme:light;
   padding:32px 28px; box-shadow:0 24px 60px rgba(0,0,0,0.3);
 }
 .auth-close{
@@ -152,8 +152,14 @@ function guiForm() {
 .auth-sub{ font-size:13px; color:rgba(42,42,36,0.6); margin-bottom:22px; }
 .auth-modal label{ display:block; font-size:13px; color:var(--ink); margin-bottom:16px; }
 .auth-modal input{
-  display:block; width:100%; margin-top:6px; padding:11px 13px;
-  border:1px solid var(--line); border-radius:9px; font-family:'Inter',sans-serif; font-size:14px;
+  display:block; width:100%; margin-top:6px; padding:12px 14px;
+  background:#faf8f2; color:#2a2a24;
+  border:1px solid var(--line); border-radius:10px; font-family:'Inter',sans-serif; font-size:15px;
+  transition:border-color .15s ease, box-shadow .15s ease; color-scheme:light;
+}
+.auth-modal input::placeholder{ color:rgba(42,42,36,0.42); }
+.auth-modal input:focus{
+  outline:none; border-color:var(--pine-deep); box-shadow:0 0 0 3px rgba(31,61,46,0.13);
 }
 .auth-submit{ width:100%; justify-content:center; margin-top:6px; }
 .auth-submit:disabled{ opacity:0.6; cursor:not-allowed; }

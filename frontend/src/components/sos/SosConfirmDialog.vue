@@ -109,16 +109,23 @@ onUnmounted(() => clearInterval(timer))
 }
 .sos-dialog-overlay.open{ display:flex; }
 .sos-dialog-card{
-  background:var(--fog); border-radius:16px; padding:26px; width:100%; max-width:400px;
+  background:var(--fog); border-radius:16px; padding:26px; width:100%; max-width:400px; color-scheme:light;
   box-shadow:0 24px 60px rgba(0,0,0,0.3);
 }
 .sos-dialog-card h3{ font-family:'Fraunces',serif; font-size:19px; color:var(--pine-deep); margin-bottom:6px; }
 .sos-dialog-sub{ font-size:13px; color:rgba(42,42,36,0.65); margin-bottom:18px; }
 .sos-dialog-card label{ display:block; font-size:13px; color:var(--ink); margin-bottom:14px; }
 .sos-dialog-card select, .sos-dialog-card textarea{
-  display:block; width:100%; margin-top:6px; padding:10px 12px;
-  border:1px solid var(--line); border-radius:8px; font-family:'Inter',sans-serif; font-size:14px; background:#fff;
+  display:block; width:100%; margin-top:6px; padding:11px 13px;
+  background:#fff; color:#2a2a24; color-scheme:light;
+  border:1px solid var(--line); border-radius:9px; font-family:'Inter',sans-serif; font-size:14px;
+  transition:border-color .15s ease, box-shadow .15s ease;
 }
+.sos-dialog-card select:focus, .sos-dialog-card textarea:focus{
+  outline:none; border-color:var(--pine-deep); box-shadow:0 0 0 3px rgba(31,61,46,0.13);
+}
+.sos-dialog-card textarea{ resize:vertical; min-height:64px; }
+.sos-dialog-card option{ color:#2a2a24; background:#fff; }
 .sos-dialog-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:4px; }
 .sos-confirm-btn{ background:var(--clay); color:var(--fog); }
 .sos-confirm-btn:hover{ background:var(--clay-soft); }

@@ -15,6 +15,8 @@ import { timDoiGanNhat } from '@/services/gisService'
 import { fetchRescueTeams } from '@/services/rescueTeamsService'
 import type { SosListItem, NearestTeam, RescueTeam, SosType, SosStatus } from '@/types'
 import type { SosNewPayload, SosUpdatedPayload, TeamLocationPayload } from '@/shared/socket-events.types'
+import { useSosDashboard } from '@/composables/useSosDashboard'
+import { useSosStats } from '@/composables/useSosStats'
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
@@ -56,6 +58,14 @@ const sosList = ref<SosListItem[]>([])
 const loadingSos = ref(false)
 const teams = ref<RescueTeam[]>([])
 const selectedSosId = ref<string | null>(null)
+
+// F-MAP-02 lọc/tìm kiếm + F-DASH-02 xuất CSV — thao tác trên danh sách SOS đang có.
+const { locLoai, locTrangThai, tuKhoa, danhSachLoc, dangLoc, xoaLoc, xuatCsv } =
+  useSosDashboard(sosList, SOS_TYPE_LABEL, SOS_STATUS_LABEL)
+const loaiOptions = Object.entries(SOS_TYPE_LABEL) as [SosType, string][]
+const trangThaiOptions = Object.entries(SOS_STATUS_LABEL) as [SosStatus, string][]
+// F-DASH-01 thống kê real-time (đếm theo trạng thái + loại) từ danh sách SOS.
+const { tong, theoTrangThai, theoLoai } = useSosStats(sosList, SOS_TYPE_LABEL, SOS_STATUS_LABEL)
 
 async function taiDanhSachSos() {
   loadingSos.value = true
@@ -199,14 +209,48 @@ async function confirmAssign(team: NearestTeam) {
       </div>
 
       <aside class="dashboard-panel">
+        <section v-if="tong > 0" class="dash-stats" aria-label="Thống kê SOS">
+          <div class="stat-cards">
+            <div class="stat-card stat-total">
+              <span class="stat-num">{{ tong }}</span><span class="stat-lbl">Tổng SOS</span>
+            </div>
+            <div v-for="t in theoTrangThai" :key="t.key" class="stat-card" :class="`sc-${t.key}`">
+              <span class="stat-num">{{ t.count }}</span><span class="stat-lbl">{{ t.label }}</span>
+            </div>
+          </div>
+          <div v-if="theoLoai.length" class="stat-bars">
+            <div class="stat-bars-title">SOS theo loại</div>
+            <div v-for="l in theoLoai" :key="l.key" class="stat-bar-row">
+              <span class="stat-bar-lbl">{{ l.label }}</span>
+              <span class="stat-bar-track"><span class="stat-bar-fill" :style="{ width: l.percent + '%' }" /></span>
+              <span class="stat-bar-val">{{ l.count }}</span>
+            </div>
+          </div>
+        </section>
         <div class="panel-head">
-          <h2>Yêu cầu SOS ({{ sosList.length }})</h2>
+          <h2>Yêu cầu SOS ({{ danhSachLoc.length }}<span v-if="dangLoc">/{{ sosList.length }}</span>)</h2>
+          <button class="dash-export" type="button" :disabled="danhSachLoc.length === 0" @click="xuatCsv">⤓ Xuất CSV</button>
+        </div>
+        <div class="dash-filters">
+          <input v-model="tuKhoa" class="dash-search" type="search" placeholder="Tìm theo tên hoặc SĐT..." aria-label="Tìm SOS" />
+          <div class="dash-selects">
+            <select v-model="locLoai" aria-label="Lọc theo loại">
+              <option value="all">Mọi loại</option>
+              <option v-for="[k, label] in loaiOptions" :key="k" :value="k">{{ label }}</option>
+            </select>
+            <select v-model="locTrangThai" aria-label="Lọc theo trạng thái">
+              <option value="all">Mọi trạng thái</option>
+              <option v-for="[k, label] in trangThaiOptions" :key="k" :value="k">{{ label }}</option>
+            </select>
+            <button v-if="dangLoc" class="dash-clear" type="button" @click="xoaLoc">Xoá lọc</button>
+          </div>
         </div>
         <div v-if="loadingSos" class="panel-empty">Đang tải...</div>
         <div v-else-if="sosList.length === 0" class="panel-empty">Chưa có yêu cầu SOS nào.</div>
+        <div v-else-if="danhSachLoc.length === 0" class="panel-empty">Không có SOS khớp bộ lọc.</div>
         <ul v-else class="sos-list">
           <li
-            v-for="sos in sosList"
+            v-for="sos in danhSachLoc"
             :key="sos.id"
             class="sos-item"
             :class="[`status-${sos.status}`, { active: sos.id === selectedSosId }]"
@@ -470,6 +514,45 @@ async function confirmAssign(team: NearestTeam) {
   color: rgba(42, 42, 36, 0.55);
   margin-top: 2px;
 }
+
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dash-export { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.dash-export:hover:not(:disabled) { border-color: var(--ink); }
+.dash-export:disabled { opacity: 0.45; cursor: not-allowed; }
+.dash-filters { display: flex; flex-direction: column; gap: 8px; padding: 0 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.dash-search { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); }
+.dash-selects { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.dash-selects select { flex: 1; min-width: 120px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); cursor: pointer; }
+.dash-clear { border: none; background: none; color: var(--clay); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.dash-clear:hover { text-decoration: underline; }
+
+.dash-stats { padding: 14px 4px 12px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.stat-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--fog); border: 1px solid var(--line); }
+.stat-num { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; line-height: 1; color: var(--pine-deep); }
+.stat-lbl { font-size: 11px; color: rgba(42,42,36,0.6); }
+.stat-total { background: var(--pine-deep); border-color: var(--pine-deep); }
+.stat-total .stat-num { color: var(--fog); }
+.stat-total .stat-lbl { color: rgba(245,241,230,0.7); }
+.sc-pending .stat-num { color: var(--clay); }
+.sc-in_progress .stat-num { color: #d99a35; }
+.sc-resolved .stat-num { color: #2f7d4f; }
+.stat-bars-title { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+.stat-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.stat-bar-lbl { flex: 0 0 84px; font-size: 12px; color: rgba(42,42,36,0.7); }
+.stat-bar-track { flex: 1; height: 8px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.stat-bar-fill { display: block; height: 100%; border-radius: 5px; background: var(--clay); transition: width 0.3s ease; }
+.stat-bar-val { flex: 0 0 24px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink); }
+
+:root[data-theme="dark"] .stat-card { background: rgba(255,255,255,0.04); border-color: rgba(236,231,217,0.14); }
+:root[data-theme="dark"] .stat-num { color: #ece7d9; }
+:root[data-theme="dark"] .stat-lbl,
+:root[data-theme="dark"] .stat-bar-lbl { color: rgba(236,231,217,0.7); }
+:root[data-theme="dark"] .stat-total { background: rgba(127,174,140,0.16); border-color: rgba(127,174,140,0.3); }
+:root[data-theme="dark"] .stat-total .stat-num { color: #f3efe3; }
+:root[data-theme="dark"] .stat-total .stat-lbl { color: rgba(236,231,217,0.75); }
+:root[data-theme="dark"] .stat-bars-title,
+:root[data-theme="dark"] .stat-bar-val { color: #ece7d9; }
 
 @media (max-width: 900px) {
   .dashboard-body {
