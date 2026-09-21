@@ -26,7 +26,7 @@ const { cta } = useCtaTheoRole()
           <path d="M2 22L11 8L16 16L20 10L28 22" stroke="#a8462b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
           <circle cx="20" cy="10" r="2" fill="#1f3d2e"/>
         </svg>
-        Bản Đồ Cứu Trợ Lâm Đồng
+        <span class="brand-text">Bản Đồ Cứu Trợ Lâm Đồng</span>
       </div>
       <nav class="nav-links" :class="{ open: isMenuOpen }">
         <a href="#gioi-thieu">Giới thiệu</a>

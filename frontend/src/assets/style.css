@@ -385,3 +385,33 @@ option{ color:#2a2a24; background:#fff; }
 @media (min-width:1024px){
   .brand{ white-space:nowrap; flex-shrink:0; }
 }
+
+/* Header trên MOBILE (<1024px): tránh dồn chật làm brand vỡ mỗi chữ một dòng.
+   Giữ logo, ẩn chữ dài; ẩn cụm nút giao diện (dark mode vẫn theo hệ thống); thu gọn CTA. */
+@media (max-width: 1023px){
+  .nav{ gap:10px; }
+  .brand-text{ display:none; }
+  .nav-cta .btn{ padding:9px 14px; font-size:13px; }
+  .nav-right{ gap:8px; }
+}
+
+/* Bảng chú thích bản đồ trên MOBILE: thu gọn còn 3 dòng màu, ẩn đoạn giải thích dài cho
+   đỡ chiếm màn hình. Dùng :root để thắng độ ưu tiên map-style.css mà không cần sửa file đó.
+   PC (>=1024px) giữ nguyên đầy đủ. */
+@media (max-width: 1023px){
+  :root .map-legend-panel{
+    left:10px; bottom:54px; padding:8px 11px; font-size:11px;
+    max-width:56vw; border-radius:9px;
+  }
+  :root .map-legend-panel .legend-note,
+  :root .map-legend-panel p{ display:none; }
+  :root .map-legend-panel .legend-row{ margin:3px 0; gap:7px; }
+}
+
+/* Điện thoại: tab bar cao 54px (đặt trong MapTopBar) → kéo thanh thống kê lên sát, hết khe
+   hở lộ bản đồ giữa tab bar và thanh thống kê. */
+@media (max-width: 720px){
+  :root .map-stats{ top:54px; }
+  /* Nút SOS ngang hàng đáy với bảng chú thích (cùng bottom:54px), một trái một phải. */
+  :root .sos-fab{ bottom:54px; right:16px; }
+}

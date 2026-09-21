@@ -86,4 +86,12 @@ const tuongPhanCao = computed(() => contrast.value === 'high')
   font-size: 10px;
   vertical-align: super;
 }
+
+
+/* Mobile: header chật → chỉ giữ nút sáng/tối, ẩn A+ (cỡ chữ) và ◐ (tương phản).
+   Đặt trong scoped để thắng độ ưu tiên; PC (>=1024px) giữ đủ 3 nút. */
+@media (max-width: 1023px) {
+  .a11y-toggles .tt-font,
+  .a11y-toggles .tt-btn:last-child { display: none; }
+}
 </style>

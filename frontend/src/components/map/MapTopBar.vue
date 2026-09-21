@@ -49,3 +49,24 @@ function isActive(key: MapLayerKey): boolean {
     </div>
   </header>
 </template>
+
+<style scoped>
+/* Ép thanh trên về MỘT hàng gọn, không rớt dòng (đè map-style.css qua scoped). Nhờ vậy
+   chiều cao ổn định ~60px, không đè lên .map-stats (top:60px). Tab dài thì cuộn ngang. */
+.map-top{ flex-wrap:nowrap; gap:12px; overflow:hidden; }
+.map-back{ flex-shrink:0; }
+.map-back .brand{ white-space:nowrap; }
+.layer-tabs{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; }
+.layer-tabs::-webkit-scrollbar{ display:none; }
+.layer-tabs a{ white-space:nowrap; flex-shrink:0; }
+.map-top-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+
+/* Mobile: ẩn bớt phần dài (tên trang, tên user) để mọi thứ đủ chỗ trên một hàng. */
+@media (max-width: 720px){
+  .map-top{ gap:10px; padding:0 14px; height:54px; }
+  .map-back .brand{ display:none; }
+  .map-user{ display:none; }
+  .layer-tabs a{ padding:6px 12px; font-size:12px; }
+  .map-top-right .sos-btn{ padding:7px 12px; font-size:12px; }
+}
+</style>
