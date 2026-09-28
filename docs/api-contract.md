@@ -261,33 +261,6 @@ cần biết trước `id`, đúng cái bị mất lúc reload).
 **200 OK — không có SOS nào đang hoạt động**: `{ "success": true, "data": null, "message": "Không có SOS nào đang hoạt động" }`
 (xem ngoại lệ `data:null` ở Mục 0).
 
-### GET /api/sos/mine/history
-Role: `victim`. **F-UI-02** — lịch sử SOS của **chính người gọi**, mọi trạng thái (kể cả đã huỷ/
-hoàn tất — khác `mine/active`), mới nhất trước.
-
-Query (đều tuỳ chọn): `page` (số nguyên ≥ 1, mặc định 1), `limit` (1–50, mặc định 10). Sai → `400`.
-
-Response `200`:
-```json
-{
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "id": "uuid", "type": "flood", "status": "resolved", "description": "...",
-        "image_url": "/api/sos/<id>/image", "location_estimated": false,
-        "created_at": "...", "resolved_at": "...", "lat": 11.94, "lng": 108.44,
-        "team_name": "Đội cứu hộ Xuân Hương 2"
-      }
-    ],
-    "total": 7, "page": 1, "limit": 10
-  },
-  "message": "OK"
-}
-```
-Cố ý **không** trả tên/SĐT (chính người gọi) và **không** trả toạ độ hiện tại của đội (SOS đã
-xong thì đội đang làm việc khác). Timeline từng SOS: `GET /api/sos/:id`.
-
 ### POST /api/sos/:id/image
 Role: `victim` (chủ SOS). **F-SOS-06 — gửi SAU khi `POST /api/sos` thành công**, để ảnh chậm/lỗi
 không bao giờ làm chậm hay làm hỏng tín hiệu cứu hộ (CLAUDE.md Mục 15.14).

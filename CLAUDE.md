@@ -873,18 +873,8 @@ Dữ liệu demo tái hiện đúng: SOS ở xã `24778`, đội "Đội cứu h
 
 **Kiểm chứng:** BE 68 unit test (thêm `sos-images.service.spec.ts` 9 test viết trước — đỏ vì chưa có service → xanh; `create-sos.dto.spec.ts` 5 test) + `test/sos-image.e2e-spec.ts` 5 test **HTTP thật qua supertest** (multer đọc đúng field, 2 MB → 413 không chạm service, id rác → 400, header ảnh `private`) — service/guard giả lập, không cần DB. `npx eslint "{src,apps,libs,test}/**/*.ts"` (đúng lệnh CI) + build sạch. FE 62 test (thêm 6), lint + build sạch. **Chưa chạy với DB/Supabase thật** — cần: chạy `gis/10`, gửi SOS kèm ảnh chụp bằng điện thoại, mở bằng tài khoản commander + leader đội được giao xem ảnh, và thử tài khoản victim khác mở `GET /api/sos/<id>/image` phải bị `403`.
 
-### 15.15 F-UI-02 lịch sử SOS cá nhân (2026-09-28)
-
-Victim trước đây chỉ thấy **SOS đang hoạt động** (`GET /api/sos/mine/active`); SOS đã xong/huỷ biến mất khỏi app, không xem lại được đội nào đã tới, bao giờ xong.
-
-- **BE:** `GET /api/sos/mine/history?page=&limit=` (role `victim`, `SosService.findMyHistory()`), chỉ `WHERE s.victim_id = $1` → không thể xem SOS người khác. Mọi trạng thái, mới nhất trước, `LIMIT/OFFSET` + `COUNT(*)` để phân trang. `SosHistoryQueryDto` chặn `page < 1` (OFFSET âm → Postgres ném 500) và `limit > 50`. Route đặt trước `@Get(':id')`. Cố ý không trả tên/SĐT (chính người gọi) và toạ độ hiện tại của đội.
-- **FE:** trang `/lich-su` (`LichSuSosView.vue`, route chỉ `victim`) — mỗi SOS 1 thẻ (loại, trạng thái, giờ gửi/kết thúc, đội phụ trách, cảnh báo "vị trí ước tính", mô tả), "Tải thêm" theo trang; "Xem chi tiết" mới tải timeline qua `GET /api/sos/:id`, tái dùng `SosTimeline` + `AnhHienTruong` (15.14). Nút "Lịch sử SOS" trên `MapTopBar` cho victim — cùng chỗ với "Nhiệm vụ của tôi"/"Bảng điều phối" của 2 role kia; trên màn hẹp vẫn vừa vì tên user đã ẩn sẵn.
-
-**Kiểm chứng:** test viết trước, đỏ → xanh. BE: `sos.service.spec.ts` +3, `sos-history-query.dto.spec.ts` 3, `test/sos-history.e2e-spec.ts` 3 test HTTP (route không bị `:id` nuốt, query đổi sang số, query sai → 400 không chạm service) — tổng 74 unit + 8 HTTP, lint (lệnh CI) + build sạch. FE: `LichSuSosView.spec.ts` 5 + `sosService.spec.ts` +1 — tổng 68, lint + build sạch. **Chưa thử với DB thật.** Không cần migration.
-
 ---
 
-*Phiên bản: 2.13.0 — Cập nhật: 2026-09-28 (thêm Mục 15.15 — F-UI-02 lịch sử SOS cá nhân: GET /api/sos/mine/history + trang /lich-su)*
 *Phiên bản: 2.12.0 — Cập nhật: 2026-09-28 (thêm Mục 15.14 — F-SOS-06 làm lại theo SRS: SOS trước ảnh sau, bảng sos_images + POST/GET /api/sos/:id/image kiểm quyền, siết imageUrl @IsUrl; commander xem được mô tả + ảnh)*
 *Phiên bản: 2.11.0 — Cập nhật: 2026-09-28 (thêm Mục 15.13 — khôi phục marker RescueMap + 2 bản sửa bị chép đè sau merge; F-MAP-03 heatmap, F-MAP-05 gom cụm, F-SOS-07 báo hộ; nút Huỷ vô hình ở dark mode; nợ CAO: ảnh F-SOS-06 dạng data-URI vượt VARCHAR(500))*
 *Phiên bản: 2.10.0 — Cập nhật: 2026-09-13 (thêm Mục 15.12 — GPS SOS lệch do thiếu enableHighAccuracy; tile z7 trỏ vào thư mục offline không tồn tại; Viettel chặn DNS openstreetmap.org → thử openstreetmap.de (404 ở z18) → chốt openstreetmap.fr/hot)*
