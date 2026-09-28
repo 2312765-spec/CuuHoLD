@@ -243,7 +243,7 @@ async function confirmAssign(team: NearestTeam) {
         <span class="realtime-status" :class="{ connected: isConnected }">
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
-        <span class="dashboard-user">{{ authStore.user?.name }}</span>
+        <RouterLink to="/ho-so" class="dashboard-user" title="Hồ sơ của tôi">{{ authStore.user?.name }}</RouterLink>
         <button class="btn btn-ghost" @click="authStore.logout()">Đăng xuất</button>
         <RouterLink to="/map" class="dashboard-close" aria-label="Đóng bảng điều phối">✕</RouterLink>
       </div>
@@ -448,6 +448,17 @@ async function confirmAssign(team: NearestTeam) {
   font-size: 13px;
   color: var(--pine-deep);
   font-weight: 500;
+}
+/* F-UI-01: tên là lối vào trang hồ sơ. */
+.dashboard-user {
+  text-decoration: none;
+}
+.dashboard-user:hover {
+  text-decoration: underline;
+}
+.dashboard-user:focus-visible {
+  outline: 3px solid var(--pine-deep);
+  outline-offset: 2px;
 }
 /* Class name riêng (không phải .socket-status) để tránh kế thừa style pill nổi
    (position: fixed, background trắng, box-shadow...) từ map-style.css — file đó định

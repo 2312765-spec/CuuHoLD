@@ -89,5 +89,11 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data.user
   }
 
-  return { accessToken, refreshToken, user, isLoggedIn, role, login, fetchMe, logout, setAuth }
+  // F-UI-01: backend trả user mới sau PATCH /users/me — thay tại chỗ, token giữ nguyên.
+  // watch ở trên tự ghi xuống sessionStorage nên F5 vẫn thấy tên mới.
+  function capNhatUser(moi: User) {
+    user.value = moi
+  }
+
+  return { accessToken, refreshToken, user, isLoggedIn, role, login, fetchMe, logout, setAuth, capNhatUser }
 })

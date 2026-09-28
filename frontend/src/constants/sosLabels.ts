@@ -3,7 +3,7 @@
 // (sửa 1 nơi quên 2 nơi còn lại). MapView.vue và SosTrackerPanel.vue dùng chung file này;
 // RescuerView/DashboardView có thể chuyển sang dùng sau, chưa đổi trong lần sửa này.
 
-import type { SosType, SosStatus, RescueTeamStatus } from '@/types'
+import type { SosType, SosStatus, RescueTeamStatus, UserRole } from '@/types'
 
 export const SOS_TYPE_LABEL: Record<SosType, string> = {
   flood: 'Lũ lụt',
@@ -33,4 +33,11 @@ export const RESCUE_TEAM_STATUS_LABEL: Record<RescueTeamStatus, string> = {
   available: 'Sẵn sàng',
   busy: 'Đang bận',
   offline: 'Ngoại tuyến'
+}
+
+// Nhãn vai trò hiển thị cho người dùng (F-UI-01 trang hồ sơ).
+export const USER_ROLE_LABEL: Record<UserRole, string> = {
+  victim: 'Người dân',
+  rescuer: 'Đội cứu hộ',
+  commander: 'Điều phối viên'
 }

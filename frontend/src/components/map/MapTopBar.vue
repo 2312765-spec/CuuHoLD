@@ -43,7 +43,10 @@ function isActive(key: MapLayerKey): boolean {
         <RouterLink v-if="authStore.role === 'rescuer'" to="/rescuer" class="btn btn-ghost sos-btn">Nhiệm vụ của tôi</RouterLink>
         <RouterLink v-else-if="authStore.role === 'commander'" to="/dashboard" class="btn btn-ghost sos-btn">Bảng điều phối</RouterLink>
         <RouterLink v-else-if="authStore.role === 'victim'" to="/lich-su" class="btn btn-ghost sos-btn">Lịch sử SOS</RouterLink>
-        <span class="map-user">{{ authStore.user?.name }}</span>
+        <!-- F-UI-01: tên = lối vào trang hồ sơ. Màn hẹp ẩn tên (map-style.css) nên có thêm
+             nút biểu tượng nhỏ thay thế, chỉ hiện ở màn hẹp. -->
+        <RouterLink to="/ho-so" class="map-user" title="Hồ sơ của tôi">{{ authStore.user?.name }}</RouterLink>
+        <RouterLink to="/ho-so" class="map-ho-so-icon" aria-label="Hồ sơ của tôi">👤</RouterLink>
         <button class="btn btn-ghost sos-btn" @click="authStore.logout()">Đăng xuất</button>
       </template>
       <button v-else class="btn btn-ghost sos-btn" @click="$emit('openAuth')">Đăng nhập</button>
@@ -61,6 +64,17 @@ function isActive(key: MapLayerKey): boolean {
 .layer-tabs::-webkit-scrollbar{ display:none; }
 .layer-tabs a{ white-space:nowrap; flex-shrink:0; }
 .map-top-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.map-user{ text-decoration:none; }
+.map-user:hover{ text-decoration:underline; }
+/* Nút hồ sơ dạng biểu tượng: chỉ hiện ở màn hẹp — cùng mốc 1024px map-style.css dùng để ẩn tên. */
+.map-ho-so-icon{
+  display:none; place-items:center; width:36px; height:36px; flex-shrink:0;
+  border-radius:50%; border:1px solid var(--line); background:#ffffff; text-decoration:none; font-size:16px;
+}
+.map-ho-so-icon:focus-visible, .map-user:focus-visible{ outline:3px solid var(--pine-deep); outline-offset:2px; }
+@media (max-width: 1023px){
+  .map-ho-so-icon{ display:grid; }
+}
 
 /* Mobile: ẩn bớt phần dài (tên trang, tên user) để mọi thứ đủ chỗ trên một hàng. */
 @media (max-width: 720px){

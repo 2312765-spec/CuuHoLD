@@ -264,7 +264,7 @@ onUnmounted(() => {
         <span class="realtime-status" :class="{ connected: isConnected }">
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
-        <span class="rescuer-user">{{ authStore.user?.name }}</span>
+        <RouterLink to="/ho-so" class="rescuer-user" title="Hồ sơ của tôi">{{ authStore.user?.name }}</RouterLink>
         <button class="btn btn-ghost" @click="authStore.logout()">Đăng xuất</button>
       </div>
     </header>
@@ -376,6 +376,17 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--pine-deep);
   font-weight: 500;
+}
+/* F-UI-01: tên là lối vào trang hồ sơ. */
+.rescuer-user {
+  text-decoration: none;
+}
+.rescuer-user:hover {
+  text-decoration: underline;
+}
+.rescuer-user:focus-visible {
+  outline: 3px solid var(--pine-deep);
+  outline-offset: 2px;
 }
 /* Class name riêng (không phải .socket-status) để tránh kế thừa style pill nổi
    (position: fixed, background trắng, box-shadow...) từ map-style.css — file đó định
