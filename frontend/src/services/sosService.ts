@@ -11,7 +11,8 @@ import type {
   CreateSosResult,
   CancelSosResult,
   AssignSosResult,
-  UpdateSosStatusResult
+  UpdateSosStatusResult,
+  TrangLichSuSos
 } from '@/types'
 
 // POST /api/sos (role victim). KHÔNG gửi wardCode — backend tự suy từ lat/lng.
@@ -56,6 +57,13 @@ export async function taiAnhSos(id: string): Promise<Blob> {
 export async function layDanhSachSos(status?: string): Promise<SosListItem[]> {
   const { data } = await http.get(CONFIG.endpoints.sos, { params: status ? { status } : {} })
   return data.data as SosListItem[]
+}
+
+// GET /api/sos/mine/history (role victim) — F-UI-02, lịch sử SOS của chính mình, mọi trạng
+// thái, mới nhất trước. Timeline từng SOS xem qua xemChiTietSos() như cũ.
+export async function layLichSuSosCuaToi(page = 1, limit = 10): Promise<TrangLichSuSos> {
+  const { data } = await http.get(`${CONFIG.endpoints.sos}/mine/history`, { params: { page, limit } })
+  return data.data as TrangLichSuSos
 }
 
 // GET /api/sos/:id — chi tiết, kèm timeline (service tự kiểm quyền theo role).

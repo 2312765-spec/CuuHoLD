@@ -126,6 +126,27 @@ interface SosTimelineRow {
   created_at: Date;
 }
 
+export interface SosHistoryRow {
+  id: string;
+  type: SosType;
+  status: SosStatus;
+  description: string | null;
+  image_url: string | null;
+  location_estimated: boolean;
+  created_at: Date;
+  resolved_at: Date | null;
+  lat: number;
+  lng: number;
+  team_name: string | null;
+}
+
+export interface SosHistoryPage {
+  items: SosHistoryRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface SosDetailResult extends SosDetailRow {
   timeline: SosTimelineRow[];
 }
@@ -455,6 +476,36 @@ export class SosService {
     const sos = rows[0];
     if (!sos) return null;
     return this.attachTimeline(sos);
+  }
+
+  // F-UI-02 — lịch sử SOS của chính victim đang gọi, MỌI trạng thái (khác findMyActive chỉ lấy
+  // SOS chưa kết thúc), mới nhất trước, có phân trang. Chỉ lấy cột cần cho danh sách: không
+  // kèm tên/SĐT (chính người gọi) và KHÔNG kèm toạ độ hiện tại của đội cứu hộ (với SOS đã kết
+  // thúc, đội đó đang làm nhiệm vụ khác — lộ vị trí đội cho người ngoài là thừa). Timeline từng
+  // SOS xem qua GET /api/sos/:id như cũ, không nhồi vào danh sách.
+  async findMyHistory(
+    victim: User,
+    page: number,
+    limit: number,
+  ): Promise<SosHistoryPage> {
+    const items = await this.dataSource.query<SosHistoryRow[]>(
+      `SELECT s.id, s.type, s.status, s.description, s.image_url, s.location_estimated,
+              s.created_at, s.resolved_at,
+              ST_Y(s.location::geometry) AS lat,
+              ST_X(s.location::geometry) AS lng,
+              rt.name AS team_name
+       FROM sos_requests s
+       LEFT JOIN rescue_teams rt ON rt.id = s.assigned_team_id
+       WHERE s.victim_id = $1
+       ORDER BY s.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [victim.id, limit, (page - 1) * limit],
+    );
+    const dem = await this.dataSource.query<{ total: number }[]>(
+      'SELECT COUNT(*)::int AS total FROM sos_requests WHERE victim_id = $1',
+      [victim.id],
+    );
+    return { items, total: dem[0]?.total ?? 0, page, limit };
   }
 
   private async attachTimeline(sos: SosDetailRow): Promise<SosDetailResult> {

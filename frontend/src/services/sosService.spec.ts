@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('./http', () => ({ http: { post: vi.fn(), get: vi.fn() } }))
 
 import { http } from './http'
-import { dinhKemAnhSos, taiAnhSos } from './sosService'
+import { dinhKemAnhSos, taiAnhSos, layLichSuSosCuaToi } from './sosService'
 
 const post = vi.mocked(http.post)
 const get = vi.mocked(http.get)
@@ -39,5 +39,16 @@ describe('sosService — ảnh hiện trường', () => {
     expect(await taiAnhSos('abc')).toBe(blob)
     expect(get.mock.calls[0][0]).toBe('/sos/abc/image')
     expect(get.mock.calls[0][1]?.responseType).toBe('blob')
+  })
+})
+
+describe('sosService — lịch sử SOS (F-UI-02)', () => {
+  it('gọi GET /sos/mine/history với page/limit và trả nguyên trang dữ liệu', async () => {
+    const trang = { items: [], total: 0, page: 2, limit: 10 }
+    get.mockResolvedValueOnce({ data: { data: trang } })
+
+    expect(await layLichSuSosCuaToi(2, 10)).toEqual(trang)
+    expect(get.mock.calls[0][0]).toBe('/sos/mine/history')
+    expect(get.mock.calls[0][1]?.params).toEqual({ page: 2, limit: 10 })
   })
 })

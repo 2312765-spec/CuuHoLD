@@ -10,6 +10,13 @@ const router = createRouter({
     // /map xem được không cần đăng nhập — chỉ hành động gửi SOS mới cần login (nhắc qua modal).
     { path: '/map', name: 'map', component: () => import('@/views/MapView.vue') },
     // Khu vực rescuer/commander vẫn bắt buộc đăng nhập đúng vai trò.
+    // F-UI-02 — lịch sử SOS cá nhân, chỉ victim (người gửi SOS).
+    {
+      path: '/lich-su',
+      name: 'lich-su',
+      component: () => import('@/views/LichSuSosView.vue'),
+      meta: { requiresAuth: true, roles: ['victim'] as UserRole[] }
+    },
     {
       path: '/rescuer',
       name: 'rescuer',

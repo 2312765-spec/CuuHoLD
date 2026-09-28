@@ -69,6 +69,28 @@ export interface SosListItem {
   victim_phone: string
 }
 
+// ---- Lịch sử SOS cá nhân: khớp GET /api/sos/mine/history (F-UI-02, snake_case) ----
+export interface SosLichSuItem {
+  id: string
+  type: SosType
+  status: SosStatus
+  description: string | null
+  image_url: string | null
+  location_estimated: boolean
+  created_at: string
+  resolved_at: string | null
+  lat: number
+  lng: number
+  team_name: string | null
+}
+
+export interface TrangLichSuSos {
+  items: SosLichSuItem[]
+  total: number
+  page: number
+  limit: number
+}
+
 // ---- Rescue team: khớp response GET /api/rescue-teams (snake_case, lat/lng có thể null) ----
 export interface RescueTeam {
   id: string

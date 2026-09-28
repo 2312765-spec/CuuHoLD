@@ -38,9 +38,11 @@ import type {
   SosDetailResult,
   AssignSosResult,
   UpdateSosStatusResult,
+  SosHistoryPage,
 } from './sos.service';
 import { CreateSosDto } from './dto/create-sos.dto';
 import { CancelSosDto } from './dto/cancel-sos.dto';
+import { SosHistoryQueryDto } from './dto/sos-history-query.dto';
 import { AssignSosDto } from './dto/assign-sos.dto';
 import { UpdateSosStatusDto } from './dto/update-sos-status.dto';
 import type { User } from '../users/user.entity';
@@ -115,6 +117,24 @@ export class SosController {
       data,
       message: data ? 'OK' : 'Không có SOS nào đang hoạt động',
     };
+  }
+
+  // F-UI-02 — lịch sử SOS cá nhân. Đặt cạnh mine/active, trước ':id' (cùng lý do ở trên).
+  @Get('mine/history')
+  @Roles('victim')
+  @ApiOperation({
+    summary: 'Lịch sử SOS của victim hiện tại (mọi trạng thái, mới nhất trước)',
+  })
+  async findMyHistory(
+    @Query() query: SosHistoryQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<SosHistoryPage>> {
+    const data = await this.sosService.findMyHistory(
+      req.user,
+      query.page ?? 1,
+      query.limit ?? 10,
+    );
+    return { success: true, data, message: 'OK' };
   }
 
   @Patch(':id/cancel')
