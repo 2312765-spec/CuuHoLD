@@ -73,6 +73,10 @@ export function useSos() {
         .then((detail) => {
           if (activeSos.value?.id !== id) return
           activeSos.value.status = detail.status
+          // Từng bị bỏ quên ở đây — chỉ gán qua socket 'sos:updated', nên nếu victim bỏ lỡ
+          // socket đó (F5 ngay sau lúc giao đội, mất kết nối...), "đã có đội" không bao giờ
+          // hiện dù poll này vẫn nhận đủ dữ liệu từ server.
+          if (detail.assigned_team_id) activeSos.value.assignedTeamId = detail.assigned_team_id
           activeSos.value.teamLat = detail.team_lat ?? null
           activeSos.value.teamLng = detail.team_lng ?? null
           if (TERMINAL_STATUSES.includes(detail.status)) dungTheoDoi()
@@ -182,7 +186,8 @@ export function useSos() {
         createdAt: detail.created_at,
         cancelDeadline: detail.cancel_deadline,
         teamLat: detail.team_lat ?? null,
-        teamLng: detail.team_lng ?? null
+        teamLng: detail.team_lng ?? null,
+        assignedTeamId: detail.assigned_team_id ?? undefined
       }
       batDauTheoDoi(detail.id)
     } catch {

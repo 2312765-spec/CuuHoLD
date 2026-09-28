@@ -3,17 +3,18 @@
 // Trái: RescueMap (marker SOS màu theo status + marker đội cứu hộ). Phải: danh sách SOS,
 // click vào 1 SOS mở modal phân công đội gần nhất (GisService.timDoiGanNhat).
 
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import '@/assets/map-style.css'
 import RescueMap from '@/components/map/RescueMap.vue'
+import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { useSocket } from '@/composables/useSocket'
 import { CONFIG } from '@/config'
-import { layDanhSachSos, phanCongDoi } from '@/services/sosService'
-import { timDoiGanNhat } from '@/services/gisService'
+import { layDanhSachSos, phanCongDoi, xemChiTietSos } from '@/services/sosService'
+import { timDoiGanNhat, layHeatmapSos } from '@/services/gisService'
 import { fetchRescueTeams } from '@/services/rescueTeamsService'
-import type { SosListItem, NearestTeam, RescueTeam, SosType, SosStatus } from '@/types'
+import type { SosListItem, SosRequest, NearestTeam, RescueTeam, SosType, SosStatus } from '@/types'
 import type { SosNewPayload, SosUpdatedPayload, TeamLocationPayload } from '@/shared/socket-events.types'
 import { useSosDashboard } from '@/composables/useSosDashboard'
 import { useSosStats } from '@/composables/useSosStats'
@@ -67,6 +68,39 @@ const trangThaiOptions = Object.entries(SOS_STATUS_LABEL) as [SosStatus, string]
 // F-DASH-01 thống kê real-time (đếm theo trạng thái + loại) từ danh sách SOS.
 const { tong, theoTrangThai, theoLoai } = useSosStats(sosList, SOS_TYPE_LABEL, SOS_STATUS_LABEL)
 
+// ---------- F-MAP-03: chế độ bản đồ nhiệt (mật độ SOS theo khoảng thời gian) ----------
+// diemNhiet: null = đang xem điểm SOS (gom cụm, F-MAP-05); mảng = đang xem bản đồ nhiệt.
+const cheDoBanDo = ref<'diem' | 'nhiet'>('diem')
+const soNgayNhiet = ref(7)
+const diemNhiet = ref<[number, number, number][] | null>(null)
+const dangTaiNhiet = ref(false)
+const KHOANG_NHIET = [
+  { soNgay: 1, nhan: '24 giờ' },
+  { soNgay: 7, nhan: '7 ngày' },
+  { soNgay: 30, nhan: '30 ngày' }
+]
+
+async function taiBanDoNhiet() {
+  dangTaiNhiet.value = true
+  try {
+    const den = new Date()
+    const tu = new Date(den.getTime() - soNgayNhiet.value * 24 * 60 * 60 * 1000)
+    const diem = await layHeatmapSos(tu, den)
+    // Người dùng có thể đã chuyển về chế độ điểm trong lúc chờ — không ghi đè.
+    if (cheDoBanDo.value === 'nhiet') diemNhiet.value = diem
+  } catch {
+    // Interceptor http.ts đã hiện toast lỗi — quay về chế độ điểm để bản đồ không trống.
+    cheDoBanDo.value = 'diem'
+  } finally {
+    dangTaiNhiet.value = false
+  }
+}
+
+watch([cheDoBanDo, soNgayNhiet], ([cheDo]) => {
+  if (cheDo === 'nhiet') void taiBanDoNhiet()
+  else diemNhiet.value = null
+})
+
 async function taiDanhSachSos() {
   loadingSos.value = true
   try {
@@ -104,6 +138,8 @@ const { isConnected, connect } = useSocket({
       victim_phone: data.victimPhone
     }
     sosList.value = [item, ...sosList.value]
+    // Đang xem bản đồ nhiệt: thêm điểm mới tại chỗ, không gọi lại API cho mỗi SOS.
+    if (diemNhiet.value) diemNhiet.value = [...diemNhiet.value, [item.lat, item.lng, 1]]
     toastStore.showToast(`SOS mới: ${item.victim_name} — ${SOS_TYPE_LABEL[item.type]}`)
   },
   onSosUpdated: (data: SosUpdatedPayload) => {
@@ -131,6 +167,9 @@ onMounted(() => {
 // ---------- Modal phân công đội ----------
 const modalOpen = ref(false)
 const modalSos = ref<SosListItem | null>(null)
+// Chi tiết SOS đang mở — GET /api/sos (danh sách) không trả mô tả/ảnh, nên trước đây commander
+// phân công đội mà không đọc được mô tả nạn nhân gửi lẫn ảnh hiện trường (F-SOS-06).
+const modalChiTiet = ref<SosRequest | null>(null)
 const modalTeams = ref<NearestTeam[]>([])
 const modalLoading = ref(false)
 const assigningTeamId = ref<string | null>(null)
@@ -138,9 +177,18 @@ const assigningTeamId = ref<string | null>(null)
 async function openAssignModal(sos: SosListItem) {
   selectedSosId.value = sos.id
   modalSos.value = sos
+  modalChiTiet.value = null
   modalTeams.value = []
   modalOpen.value = true
   modalLoading.value = true
+  // Không chờ: danh sách đội gần nhất là việc chính của modal, mô tả/ảnh tải song song.
+  xemChiTietSos(sos.id)
+    .then((chiTiet) => {
+      if (modalSos.value?.id === sos.id) modalChiTiet.value = chiTiet
+    })
+    .catch(() => {
+      // http.ts đã hiện toast; modal vẫn phân công được bình thường.
+    })
   try {
     modalTeams.value = await timDoiGanNhat(sos.lat, sos.lng)
   } finally {
@@ -163,6 +211,7 @@ function onTileError(loi: boolean) {
 function closeModal() {
   modalOpen.value = false
   modalSos.value = null
+  modalChiTiet.value = null
   modalTeams.value = []
   selectedSosId.value = null
 }
@@ -202,13 +251,46 @@ async function confirmAssign(team: NearestTeam) {
 
     <div class="dashboard-body">
       <div class="dashboard-map">
+        <!-- Bản đồ hiện đúng danh sách ĐÃ LỌC (F-MAP-02) để khớp với cột bên phải. -->
         <RescueMap
-          :sos-list="sosList"
+          :sos-list="danhSachLoc"
           :teams="teams"
           :selected-sos-id="selectedSosId"
+          :gom-cum="true"
+          :heatmap="diemNhiet"
           @select-sos="onSelectSosFromMap"
           @tile-error="onTileError"
         />
+        <div class="map-che-do">
+          <div class="map-che-do__nhom" role="radiogroup" aria-label="Cách hiển thị SOS trên bản đồ">
+            <button
+              type="button"
+              role="radio"
+              :aria-checked="cheDoBanDo === 'diem'"
+              :class="{ 'is-active': cheDoBanDo === 'diem' }"
+              @click="cheDoBanDo = 'diem'"
+            >Điểm SOS</button>
+            <button
+              type="button"
+              role="radio"
+              :aria-checked="cheDoBanDo === 'nhiet'"
+              :class="{ 'is-active': cheDoBanDo === 'nhiet' }"
+              @click="cheDoBanDo = 'nhiet'"
+            >Mật độ</button>
+          </div>
+          <template v-if="cheDoBanDo === 'nhiet'">
+            <select v-model.number="soNgayNhiet" aria-label="Khoảng thời gian bản đồ nhiệt">
+              <option v-for="k in KHOANG_NHIET" :key="k.soNgay" :value="k.soNgay">{{ k.nhan }}</option>
+            </select>
+            <p v-if="dangTaiNhiet" class="map-che-do__ghi-chu" aria-live="polite">Đang tải…</p>
+            <p v-else-if="diemNhiet && diemNhiet.length === 0" class="map-che-do__ghi-chu">
+              Không có SOS nào trong khoảng này.
+            </p>
+            <div v-else class="map-che-do__thang" aria-hidden="true">
+              <span>Thưa</span><span class="map-che-do__mau"></span><span>Dày</span>
+            </div>
+          </template>
+        </div>
       </div>
 
       <aside class="dashboard-panel">
@@ -285,6 +367,8 @@ async function confirmAssign(team: NearestTeam) {
           ⚠️ Vị trí ước tính — nạn nhân không lấy được GPS chính xác lúc gửi. Đội gần nhất bên
           dưới được tính theo toạ độ này, có thể không sát vị trí thật.
         </p>
+        <p v-if="modalChiTiet?.description" class="modal-mo-ta">{{ modalChiTiet.description }}</p>
+        <AnhHienTruong v-if="modalChiTiet?.image_url" :sos-id="modalChiTiet.id" />
 
         <div v-if="modalLoading" class="panel-empty">Đang tìm đội gần nhất...</div>
         <div v-else-if="modalTeams.length === 0" class="panel-empty">
@@ -395,6 +479,72 @@ async function confirmAssign(team: NearestTeam) {
   flex: 0 0 60%;
   max-width: 60%;
   height: 100%;
+  position: relative;
+}
+/* Bảng chọn chế độ bản đồ (F-MAP-03/05) — góc trên phải, trên các pane Leaflet (z 400+). */
+.map-che-do {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 800;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--fog, #f6f1e7);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+  color: var(--ink, #2a2a24);
+}
+.map-che-do__nhom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--line, #d8d0bd);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.map-che-do__nhom button {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.map-che-do__nhom button.is-active {
+  background: var(--pine-deep, #1f3d2e);
+  color: #ffffff;
+  font-weight: 600;
+}
+.map-che-do select {
+  min-height: 34px;
+  border: 1px solid var(--line, #d8d0bd);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2a2a24;
+  font: inherit;
+}
+.map-che-do button:focus-visible,
+.map-che-do select:focus-visible {
+  outline: 3px solid var(--pine-deep, #1f3d2e);
+  outline-offset: 2px;
+}
+.map-che-do__ghi-chu {
+  margin: 0;
+  font-size: 12px;
+}
+.map-che-do__thang {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.map-che-do__mau {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #2c7bb6, #abd9e9, #fee090, #fdae61, #d7191c);
 }
 .dashboard-panel {
   flex: 0 0 40%;
@@ -575,5 +725,14 @@ async function confirmAssign(team: NearestTeam) {
     border-left: none;
     border-top: 1px solid var(--line);
   }
+}
+/* Mô tả nạn nhân gửi kèm SOS (F-SOS-06) — giữ xuống dòng như người gửi gõ. */
+.modal-mo-ta {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(42, 42, 36, 0.05);
+  font-size: 13px;
+  white-space: pre-wrap;
 }
 </style>

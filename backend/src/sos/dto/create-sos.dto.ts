@@ -4,6 +4,8 @@ import {
   IsString,
   IsOptional,
   IsBoolean,
+  IsUrl,
+  MaxLength,
   Min,
   Max,
 } from 'class-validator';
@@ -33,8 +35,13 @@ export class CreateSosDto {
   @IsOptional()
   description?: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
+  // SRS Chương 5: image_url VARCHAR(500); api-contract: đường dẫn https. Ảnh chụp từ app
+  // KHÔNG đi qua field này nữa — gửi riêng bằng POST /api/sos/:id/image sau khi tạo SOS
+  // (CLAUDE.md Mục 15.14). Siết @IsUrl chặn luôn data-URI/base64 (từng làm POST /api/sos
+  // vượt giới hạn body → mất tín hiệu SOS) và chuỗi 'javascript:...' (15.6 P2).
+  @ApiProperty({ required: false, example: 'https://example.com/anh.jpg' })
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(500)
   @IsOptional()
   imageUrl?: string;
 

@@ -17,3 +17,18 @@ export async function timDoiGanNhat(
   })
   return data.data as NearestTeam[]
 }
+
+// GET /api/gis/sos-heatmap — SOS trong khoảng [from, to], mỗi dòng 1 toạ độ + số lần báo.
+// Trả về dạng [lat, lng, trọng số] để đưa thẳng vào leaflet.heat (F-MAP-03).
+interface DongHeatmap {
+  lat: number
+  lng: number
+  ward_code: string | null
+  incident_count: number
+}
+export async function layHeatmapSos(from: Date, to: Date): Promise<[number, number, number][]> {
+  const { data } = await http.get(CONFIG.endpoints.gisSosHeatmap, {
+    params: { from: from.toISOString(), to: to.toISOString() }
+  })
+  return (data.data as DongHeatmap[]).map((d) => [Number(d.lat), Number(d.lng), d.incident_count])
+}

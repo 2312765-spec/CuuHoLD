@@ -27,6 +27,31 @@ export async function guiSos(payload: {
   return data.data as CreateSosResult
 }
 
+// POST /api/sos/:id/image (role victim) — F-SOS-06, gửi SAU khi SOS đã tạo xong (CLAUDE.md
+// Mục 15.14): ảnh chậm/lỗi không được làm chậm hay làm hỏng tín hiệu cứu hộ.
+// - Content-Type phải ghi rõ multipart: http.ts đặt mặc định application/json, và axios 1.x
+//   gặp FormData + header JSON sẽ TỰ ĐỔI FormData thành JSON → file bị mất.
+// - Timeout riêng 30s: mặc định 8s quá ngắn để tải vài trăm KB qua 3G vùng núi.
+export async function dinhKemAnhSos(id: string, anh: Blob): Promise<{ imageUrl: string }> {
+  const form = new FormData()
+  form.append('image', anh, 'hien-truong.jpg')
+  const { data } = await http.post(`${CONFIG.endpoints.sos}/${id}/image`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000
+  })
+  return data.data as { imageUrl: string }
+}
+
+// GET /api/sos/:id/image — trả Blob (không dùng thẳng <img src>: thẻ img không gửi được
+// Bearer token, mà ảnh nạn nhân bắt buộc kiểm quyền).
+export async function taiAnhSos(id: string): Promise<Blob> {
+  const { data } = await http.get(`${CONFIG.endpoints.sos}/${id}/image`, {
+    responseType: 'blob',
+    timeout: 30000
+  })
+  return data as Blob
+}
+
 // GET /api/sos (role rescuer/commander) — danh sách tối đa 50, mới nhất trước.
 export async function layDanhSachSos(status?: string): Promise<SosListItem[]> {
   const { data } = await http.get(CONFIG.endpoints.sos, { params: status ? { status } : {} })

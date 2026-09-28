@@ -344,6 +344,8 @@ export function useLeafletMap() {
     themMarkerBaoCao,
     capNhatMarkerSosCuaMinh,
     capNhatMarkerDoiCuuHo,
+    // F-SOS-07: khung bao ranh giới tỉnh — dùng chặn ghim báo hộ nằm ngoài tỉnh.
+    layKhungTinh: (): L.LatLngBounds | null => boundaryLayer?.getBounds() ?? null,
     destroyMap
   }
 }

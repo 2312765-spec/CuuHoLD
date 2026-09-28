@@ -183,7 +183,8 @@ Role: `victim`.
   "lng": 108.4419,            // bắt buộc, -180..180
   "type": "flood",            // bắt buộc, enum: flood|landslide|accident|medical|fire|lost|drowning|agricultural|adventure|other
   "description": "...",       // optional
-  "imageUrl": "https://...",  // optional
+  "imageUrl": "https://...",  // optional — CHỈ nhận URL https ≤ 500 ký tự (SRS: VARCHAR(500)).
+                               // Ảnh chụp từ app KHÔNG gửi ở đây — dùng POST /api/sos/:id/image.
   "locationEstimated": false  // optional, default false — true nếu toạ độ chỉ là ước tính
                                // (GPS thất bại/bị từ chối quyền ở client), xem CLAUDE.md Mục 15 (fix P0 an toàn)
 }
@@ -259,6 +260,29 @@ cần biết trước `id`, đúng cái bị mất lúc reload).
 **200 OK — có SOS đang hoạt động**: shape giống hệt `GET /api/sos/:id`.
 **200 OK — không có SOS nào đang hoạt động**: `{ "success": true, "data": null, "message": "Không có SOS nào đang hoạt động" }`
 (xem ngoại lệ `data:null` ở Mục 0).
+
+### POST /api/sos/:id/image
+Role: `victim` (chủ SOS). **F-SOS-06 — gửi SAU khi `POST /api/sos` thành công**, để ảnh chậm/lỗi
+không bao giờ làm chậm hay làm hỏng tín hiệu cứu hộ (CLAUDE.md Mục 15.14).
+
+`multipart/form-data`, 1 field `image`: JPEG/PNG/WebP, tối đa **2 MB**. Loại ảnh được nhận diện
+theo nội dung file (magic bytes), không theo mimetype/đuôi file client khai. Mỗi SOS 1 ảnh —
+gửi lại thì thay ảnh cũ. Rate limit 10 lần/giờ/user.
+
+Response `201`:
+```json
+{ "success": true, "data": { "imageUrl": "/api/sos/<id>/image" }, "message": "Đã đính kèm ảnh hiện trường" }
+```
+Lỗi: `400` (thiếu file, không phải ảnh, id không phải UUID, SOS đã kết thúc) · `403` (SOS của
+người khác) · `404` (không có SOS) · `413` (ảnh > 2 MB). Sau khi thành công, `image_url` của SOS
+= `/api/sos/<id>/image`.
+
+### GET /api/sos/:id/image
+Trả **file ảnh** (không bọc `{ success, data }`), `Content-Type` đúng loại ảnh,
+`Cache-Control: private`. Quyền xem **y hệt** `GET /api/sos/:id` (victim chủ SOS; rescuer cùng
+xã hoặc leader đội được giao; commander). `404` nếu SOS không có ảnh.
+⚠️ Frontend phải tải bằng axios (`responseType: 'blob'`, có Bearer token) rồi hiện bằng object
+URL — `<img src="/api/sos/...">` trực tiếp sẽ bị `401` vì thẻ img không gửi được token.
 
 ### GET /api/sos/:id
 JWT bắt buộc, không giới hạn role trong decorator — nhưng service tự kiểm tra quyền:

@@ -8,14 +8,29 @@ import {
   Query,
   UseGuards,
   Req,
+  Res,
+  ParseUUIDPipe,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  StreamableFile,
 } from '@nestjs/common';
-import type { Request } from 'express';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request, Response } from 'express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { Throttle, hours } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SosService } from './sos.service';
+import { SosImagesService, SOS_IMAGE_MAX_BYTES } from './sos-images.service';
+import type { UploadedImage } from './sos-images.service';
 import type {
   CreateSosResult,
   SosListRow,
@@ -51,7 +66,10 @@ interface ApiResponse<T> {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('sos')
 export class SosController {
-  constructor(private readonly sosService: SosService) {}
+  constructor(
+    private readonly sosService: SosService,
+    private readonly sosImages: SosImagesService,
+  ) {}
 
   @Post()
   @Roles('victim')
@@ -112,6 +130,54 @@ export class SosController {
       ? 'Đã hủy SOS. Cảnh báo: tài khoản đã huỷ trễ nhiều lần và bị đánh dấu.'
       : 'Đã hủy SOS';
     return { success: true, data, message };
+  }
+
+  // F-SOS-06 — ảnh gửi SAU khi SOS đã tạo (POST /api/sos không nhận ảnh), để tải ảnh chậm/
+  // lỗi không bao giờ làm chậm hay làm hỏng tín hiệu cứu hộ. Xem CLAUDE.md Mục 15.14.
+  @Post(':id/image')
+  @Roles('victim')
+  @Throttle({ default: { limit: 10, ttl: hours(1) } })
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: SOS_IMAGE_MAX_BYTES, files: 1 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { image: { type: 'string', format: 'binary' } },
+      required: ['image'],
+    },
+  })
+  @ApiOperation({ summary: 'Đính kèm ảnh hiện trường vào SOS của mình' })
+  async attachImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedImage | undefined,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ApiResponse<{ imageUrl: string }>> {
+    if (!file) throw new BadRequestException('Thiếu file ảnh (field "image")');
+    const data = await this.sosImages.attach(id, file, req.user);
+    return { success: true, data, message: 'Đã đính kèm ảnh hiện trường' };
+  }
+
+  @Get(':id/image')
+  @ApiOperation({
+    summary: 'Xem ảnh hiện trường (cùng quyền với chi tiết SOS)',
+  })
+  async readImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const anh = await this.sosImages.read(id, req.user);
+    // private: ảnh nạn nhân là dữ liệu cá nhân — không cho proxy/CDN dùng chung lưu lại.
+    res.set('Cache-Control', 'private, max-age=3600');
+    return new StreamableFile(anh.data, {
+      type: anh.mimeType,
+      length: anh.data.length,
+      disposition: 'inline',
+    });
   }
 
   @Get(':id')

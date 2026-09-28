@@ -17,6 +17,7 @@ import SosTimeline from '@/components/sos/SosTimeline.vue'
 import { fetchRescueTeams, capNhatViTriDoi } from '@/services/rescueTeamsService'
 import { khoangCachMet, etaPhut } from '@/utils/geo'
 import RescueMap from '@/components/map/RescueMap.vue'
+import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
 import type { SosRequest, SosType, SosStatus, RescueTeam } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
 
@@ -320,6 +321,7 @@ onUnmounted(() => {
             <div v-if="quangDuong(sos)" class="sos-meta">{{ quangDuong(sos) }}</div>
             <div class="sos-meta">Gửi lúc {{ formatTime(sos.created_at) }}</div>
             <p v-if="sos.description" class="sos-desc">{{ sos.description }}</p>
+            <AnhHienTruong v-if="sos.image_url" :sos-id="sos.id" />
 
             <button
               v-if="NEXT_ACTION[sos.status]"
