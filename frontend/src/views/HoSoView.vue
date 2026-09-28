@@ -2,11 +2,12 @@
 // F-UI-01 — hồ sơ cá nhân + đổi mật khẩu, mọi role (CLAUDE.md Mục 15.16). API theo đặc tả
 // F-UI-01-dac-ta-API-cho-B.md: chỉ sửa được TÊN. SĐT (tên đăng nhập, nhận SMS) và xã/phường
 // (với rescuer quyết định được xem SOS xã nào) chỉ hiển thị để xem.
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { capNhatHoSo, doiMatKhau } from '@/services/auth.service'
 import { USER_ROLE_LABEL } from '@/constants/sosLabels'
+import { useThongBaoDay } from '@/composables/useThongBaoDay'
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
@@ -15,6 +16,19 @@ const toastStore = useToastStore()
 const trangChinh = computed(() =>
   authStore.role === 'rescuer' ? '/rescuer' : authStore.role === 'commander' ? '/dashboard' : '/map'
 )
+
+// ---------- F-PWA-05: thông báo đẩy trên thiết bị này ----------
+const thongBao = useThongBaoDay()
+// Mỗi role nhận loại thông báo khác nhau (đặc tả gửi B, Mục 5) — nói rõ để người dùng biết
+// bật lên thì được gì.
+const moTaThongBao = computed(() => {
+  if (authStore.role === 'rescuer') return 'Báo ngay khi đội của bạn được giao nhiệm vụ mới.'
+  if (authStore.role === 'commander') return 'Báo ngay khi có SOS mới chưa có đội nhận.'
+  return 'Báo khi yêu cầu SOS của bạn được phân công đội, đội tới nơi, hoặc hoàn tất.'
+})
+onMounted(() => {
+  void thongBao.kiemTra()
+})
 
 // ---------- Tên ----------
 const ten = ref(authStore.user?.name ?? '')
@@ -131,6 +145,50 @@ async function doiMk() {
         </form>
       </section>
 
+      <section class="ho-so-the" aria-labelledby="tb-title" data-test="thong-bao">
+        <h2 id="tb-title">Thông báo đẩy</h2>
+        <p class="ho-so-mo-ta">{{ moTaThongBao }} Chỉ áp dụng cho thiết bị đang dùng.</p>
+
+        <p v-if="thongBao.trangThai.value === 'dang-kiem-tra'" class="ho-so-ghi-chu">Đang kiểm tra...</p>
+        <p v-else-if="thongBao.trangThai.value === 'khong-ho-tro'" class="ho-so-ghi-chu">
+          Trình duyệt này không hỗ trợ thông báo đẩy (hoặc trang không mở bằng https://).
+        </p>
+        <p v-else-if="thongBao.trangThai.value === 'can-cai-app'" class="ho-so-ghi-chu">
+          Trên iPhone/iPad, hãy thêm ứng dụng ra Màn hình chính (nút Chia sẻ → "Thêm vào MH chính"),
+          mở ứng dụng từ đó rồi bật thông báo tại đây.
+        </p>
+        <p v-else-if="thongBao.trangThai.value === 'bi-chan'" class="ho-so-ghi-chu">
+          Bạn đã chặn thông báo cho trang này. Mở cài đặt trình duyệt → Quyền trang web → Thông báo
+          để cho phép lại.
+        </p>
+        <template v-else>
+          <p class="ho-so-trang-thai-tb" aria-live="polite">
+            Trạng thái: <strong>{{ thongBao.trangThai.value === 'bat' ? 'Đang bật' : 'Đang tắt' }}</strong>
+          </p>
+          <p v-if="thongBao.loi.value" class="ho-so-loi" role="alert">{{ thongBao.loi.value }}</p>
+          <button
+            v-if="thongBao.trangThai.value === 'tat'"
+            type="button"
+            class="btn btn-primary"
+            data-test="bat-thong-bao"
+            :disabled="thongBao.dangXuLy.value"
+            @click="thongBao.bat()"
+          >
+            {{ thongBao.dangXuLy.value ? 'Đang bật...' : 'Bật thông báo' }}
+          </button>
+          <button
+            v-else
+            type="button"
+            class="btn btn-ghost"
+            data-test="tat-thong-bao"
+            :disabled="thongBao.dangXuLy.value"
+            @click="thongBao.tat()"
+          >
+            {{ thongBao.dangXuLy.value ? 'Đang tắt...' : 'Tắt thông báo' }}
+          </button>
+        </template>
+      </section>
+
       <section class="ho-so-the" aria-labelledby="mk-title">
         <h2 id="mk-title">Đổi mật khẩu</h2>
         <form class="ho-so-form" data-test="form-mat-khau" novalidate @submit.prevent="doiMk">
@@ -244,6 +302,23 @@ async function doiMk() {
   margin: 10px 0 16px;
   font-size: 12px;
   color: rgba(42, 42, 36, 0.6);
+}
+.ho-so-mo-ta {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.ho-so-trang-thai-tb {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+/* Trang luôn nền sáng — nút viền giữ chữ tối kể cả khi bật dark mode (xem 15.13 mục 5). */
+.ho-so-the .btn-ghost {
+  color: #2a2a24;
+  border: 1.5px solid rgba(42, 42, 36, 0.4);
+}
+.ho-so-the > .btn:focus-visible {
+  outline: 3px solid var(--pine-deep);
+  outline-offset: 2px;
 }
 .ho-so-form {
   display: grid;

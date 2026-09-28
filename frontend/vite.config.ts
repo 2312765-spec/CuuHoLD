@@ -54,6 +54,11 @@ export default defineConfig({
         // z8–10 thay vì z8–14 trong src/constants/tileProvider.ts.
         globPatterns: ['**/*.{js,wasm,css,html}', 'tiles/**/*.png'],
 
+        // F-PWA-05: nạp thêm public/push-sw.js (xử lý sự kiện 'push' + 'notificationclick')
+        // vào service worker Workbox sinh ra — không phải chuyển sang injectManifest, phần
+        // precache/offline ở trên giữ nguyên. Xem CLAUDE.md Mục 15.17.
+        importScripts: ['/push-sw.js'],
+
         // Chiến lược cache riêng cho từng loại dữ liệu — xem giải thích trong hội thoại:
         // tile bản đồ & dữ liệu ranh giới không nên xử lý giống nhau.
         runtimeCaching: [

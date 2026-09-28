@@ -12,6 +12,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { User } from '@/types/auth'
 import { login as apiLogin, getMe as apiGetMe } from '@/services/auth.service'
+import { huyThongBaoDayTrenMay } from '@/composables/useThongBaoDay'
 
 const STORAGE_KEY = 'rescue-gis-auth'
 
@@ -77,6 +78,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    // F-PWA-05: huỷ đăng ký thông báo đẩy TRÊN MÁY (không gọi API — logout() cũng chạy lúc
+    // token đã hết hạn/401). Không huỷ thì người đăng nhập kế tiếp trên cùng máy nhận thông
+    // báo SOS của tài khoản này. Không await: đăng xuất phải xong ngay, bước này best-effort.
+    void huyThongBaoDayTrenMay()
     accessToken.value = null
     refreshToken.value = null
     user.value = null

@@ -116,3 +116,18 @@ describe('HoSoView — đổi mật khẩu', () => {
     expect((w.find('input[name="new-password"]').element as HTMLInputElement).value).toBe('moi456789')
   })
 })
+
+describe('HoSoView — thông báo đẩy (F-PWA-05)', () => {
+  it('trình duyệt không hỗ trợ (jsdom không có Push API) thì báo rõ, không hiện nút bật', async () => {
+    const w = gan()
+    await flushPromises()
+    const phan = w.find('[data-test="thong-bao"]')
+    expect(phan.text()).toContain('không hỗ trợ thông báo đẩy')
+    expect(phan.find('[data-test="bat-thong-bao"]').exists()).toBe(false)
+  })
+
+  it('mô tả đúng loại thông báo theo vai trò', () => {
+    const w = gan()
+    expect(w.find('[data-test="thong-bao"]').text()).toContain('đội của bạn được giao nhiệm vụ mới')
+  })
+})
