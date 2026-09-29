@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import InstallPromptBar from '@/components/InstallPromptBar.vue'
 import ConnectionStatusBar from '@/components/ConnectionStatusBar.vue'
 import QuickCallBar from '@/components/QuickCallBar.vue'
+import NotificationListener from '@/components/NotificationListener.vue'
 // App.vue chỉ đóng vai trò khung chứa route — toàn bộ nội dung thật nằm trong
 // src/views/HomeView.vue (trang chủ) và src/views/MapView.vue (trang bản đồ).
 //
@@ -54,4 +55,6 @@ watch(
     <!-- Cùng lý do đặt ngoài <RouterView> như InstallPromptBar: không bị huỷ/tạo lại khi chuyển trang. -->
   <ConnectionStatusBar />
   <QuickCallBar />
+  <!-- Ghi lịch sử thông báo ở mọi trang (chuông chỉ hiển thị) — xem NotificationListener.vue. -->
+  <NotificationListener />
 </template>

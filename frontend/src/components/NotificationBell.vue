@@ -1,67 +1,19 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useNotificationStore } from '@/stores/notifications'
-import { useSocket } from '@/composables/useSocket'
-import { CONFIG } from '@/config'
-import type { SosType } from '@/types'
-import type {
-  SosNewPayload, SosUpdatedPayload, SystemNotificationPayload
-} from '@/shared/socket-events.types'
 
 // Trung tâm thông báo (F-UI-03). Chuông + badge số chưa đọc ở header, danh sách thả xuống.
-// Tự MỞ MỘT KẾT NỐI SOCKET RIÊNG (chỉ khi đã đăng nhập) để nhận sự kiện real-time ở mọi
-// trang — kể cả khi không ở Dashboard/Rescuer. useSocket đã tự chặn nối khi chưa có token.
+// CHỈ hiển thị: việc nghe socket và ghi lịch sử nằm ở NotificationListener.vue (mount ở App.vue,
+// chạy ở mọi trang); lịch sử lưu theo tài khoản trong stores/notifications.ts.
 
 const authStore = useAuthStore()
 const { isLoggedIn } = storeToRefs(authStore)
 const store = useNotificationStore()
 const { danhSach, soChuaDoc } = storeToRefs(store)
 const router = useRouter()
-
-const NHAN_LOAI: Record<SosType, string> = {
-  flood: 'Lũ lụt', landslide: 'Sạt lở', accident: 'Tai nạn', medical: 'Y tế',
-  fire: 'Hoả hoạn', lost: 'Lạc đường', drowning: 'Đuối nước',
-  agricultural: 'Nông nghiệp', adventure: 'Mạo hiểm', other: 'Khác'
-}
-const NHAN_TRANG_THAI: Record<string, string> = {
-  pending: 'Chờ xử lý', assigned: 'Đã phân công', in_progress: 'Đang thực hiện',
-  arrived: 'Đã đến nơi', resolved: 'Hoàn tất', cancelled: 'Đã huỷ', false_alarm: 'Báo giả'
-}
-
-const { connect, disconnect } = useSocket({
-  onSosNew: (d: SosNewPayload) => {
-    store.them({
-      loai: 'sos-moi',
-      tieuDe: `SOS mới · ${NHAN_LOAI[d.type] ?? d.type}`,
-      moTa: `${d.victimName ?? 'Nạn nhân'} — xã/phường ${d.wardCode ?? '—'}`,
-      sosId: d.sosId
-    })
-  },
-  onSosUpdated: (d: SosUpdatedPayload) => {
-    store.them({
-      loai: 'sos-capnhat',
-      tieuDe: 'Cập nhật trạng thái SOS',
-      moTa: NHAN_TRANG_THAI[d.status] ?? d.status,
-      sosId: d.sosId
-    })
-  },
-  onSystemNotification: (d: SystemNotificationPayload) => {
-    const tieuDe =
-      d.level === 'critical' ? 'Cảnh báo khẩn' : d.level === 'warning' ? 'Cảnh báo' : 'Thông báo hệ thống'
-    store.them({ loai: 'he-thong', tieuDe, moTa: d.message })
-  }
-})
-
-// Nối/ngắt theo trạng thái đăng nhập — đăng nhập giữa chừng hay đăng xuất đều cập nhật đúng.
-function dongBoKetNoi() {
-  if (isLoggedIn.value) connect(CONFIG.socketUrl)
-  else disconnect()
-}
-onMounted(dongBoKetNoi)
-watch(isLoggedIn, dongBoKetNoi)
 
 // ---- UI đóng/mở ----
 const moRong = ref(false)
@@ -85,6 +37,7 @@ function thoiGianNgan(iso: string): string {
   return new Date(iso).toLocaleDateString('vi-VN')
 }
 
+// Thông báo cũ (lưu trước khi có trường icon) rơi về biểu tượng theo loại.
 const ICON: Record<string, string> = { 'sos-moi': '🆘', 'sos-capnhat': '🔄', 'he-thong': '📢' }
 
 // Đóng khi bấm ra ngoài.
@@ -124,7 +77,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
             :class="{ unread: !tb.daDoc }"
             @click="chonThongBao(tb.sosId)"
           >
-            <span class="noti-ico" aria-hidden="true">{{ ICON[tb.loai] }}</span>
+            <span class="noti-ico" aria-hidden="true">{{ tb.icon ?? ICON[tb.loai] }}</span>
             <div class="noti-body">
               <div class="noti-title">{{ tb.tieuDe }}</div>
               <div v-if="tb.moTa" class="noti-desc">{{ tb.moTa }}</div>

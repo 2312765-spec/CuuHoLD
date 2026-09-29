@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import type { UserRole } from '@/shared/socket-events.types'
+import { xuLyLoiTaiTrang } from './taiLaiKhiLoiTaiTrang'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -54,5 +55,8 @@ router.beforeEach((to) => {
   }
   return true
 })
+
+// Tải file JS của trang thất bại → tự tải lại toàn trang tới đúng địa chỉ (xem file dưới).
+router.onError((loi, to) => xuLyLoiTaiTrang(loi, to.fullPath))
 
 export default router

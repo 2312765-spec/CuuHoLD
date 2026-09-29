@@ -3,7 +3,7 @@
 // Trái: RescueMap (marker SOS màu theo status + marker đội cứu hộ). Phải: danh sách SOS,
 // click vào 1 SOS mở modal phân công đội gần nhất (GisService.timDoiGanNhat).
 
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import '@/assets/map-style.css'
 import RescueMap from '@/components/map/RescueMap.vue'
 import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
@@ -173,6 +173,11 @@ const modalChiTiet = ref<SosRequest | null>(null)
 const modalTeams = ref<NearestTeam[]>([])
 const modalLoading = ref(false)
 const assigningTeamId = ref<string | null>(null)
+// Chỉ SOS đang CHỜ mới phân công được (backend assign() từ chối trạng thái khác, và
+// timDoiGanNhat chỉ trả đội đang RẢNH). SOS đã có đội / đã kết thúc → modal chỉ xem chi tiết.
+// Trước đây SOS nào cũng mở "Phân công đội" rồi tìm đội: đội được giao đang bận nên luôn ra
+// "Không có đội nào sẵn sàng" ngay cạnh nhãn "Đã phân công" — rất dễ hiểu nhầm.
+const coTheGiaoDoi = computed(() => modalSos.value?.status === 'pending')
 
 async function openAssignModal(sos: SosListItem) {
   selectedSosId.value = sos.id
@@ -189,6 +194,10 @@ async function openAssignModal(sos: SosListItem) {
     .catch(() => {
       // http.ts đã hiện toast; modal vẫn phân công được bình thường.
     })
+  if (sos.status !== 'pending') {
+    modalLoading.value = false
+    return
+  }
   try {
     modalTeams.value = await timDoiGanNhat(sos.lat, sos.lng)
   } finally {
@@ -357,7 +366,7 @@ async function confirmAssign(team: NearestTeam) {
     <div v-if="modalOpen" class="modal-overlay open" @click.self="closeModal">
       <div class="modal-card">
         <div class="modal-head">
-          <h3>Phân công đội cứu hộ</h3>
+          <h3>{{ coTheGiaoDoi ? 'Phân công đội cứu hộ' : 'Chi tiết yêu cầu SOS' }}</h3>
           <button class="modal-close" @click="closeModal">✕</button>
         </div>
         <p v-if="modalSos" class="modal-sub">
@@ -370,11 +379,22 @@ async function confirmAssign(team: NearestTeam) {
         <p v-if="modalChiTiet?.description" class="modal-mo-ta">{{ modalChiTiet.description }}</p>
         <AnhHienTruong v-if="modalChiTiet?.image_url" :sos-id="modalChiTiet.id" />
 
-        <div v-if="modalLoading" class="panel-empty">Đang tìm đội gần nhất...</div>
-        <div v-else-if="modalTeams.length === 0" class="panel-empty">
-          Không có đội nào sẵn sàng gần khu vực này.
-        </div>
-        <ul v-else class="team-list">
+        <dl v-if="modalSos && !coTheGiaoDoi" class="modal-tinh-trang">
+          <div>
+            <dt>Trạng thái</dt>
+            <dd>{{ SOS_STATUS_LABEL[modalSos.status] }}</dd>
+          </div>
+          <div v-if="modalSos.status !== 'cancelled' && modalSos.status !== 'false_alarm'">
+            <dt>Đội phụ trách</dt>
+            <dd>{{ modalChiTiet ? (modalChiTiet.team_name ?? '—') : 'Đang tải...' }}</dd>
+          </div>
+        </dl>
+        <template v-else>
+          <div v-if="modalLoading" class="panel-empty">Đang tìm đội gần nhất...</div>
+          <div v-else-if="modalTeams.length === 0" class="panel-empty">
+            Không có đội nào đang rảnh gần khu vực này (đội đang làm nhiệm vụ không được tính).
+          </div>
+          <ul v-else class="team-list">
           <li v-for="team in modalTeams" :key="team.id" class="team-item">
             <div>
               <b>{{ team.name }}</b>
@@ -390,7 +410,8 @@ async function confirmAssign(team: NearestTeam) {
               {{ assigningTeamId === team.id ? 'Đang phân công...' : 'Phân công' }}
             </button>
           </li>
-        </ul>
+          </ul>
+        </template>
       </div>
     </div>
 
@@ -738,6 +759,24 @@ async function confirmAssign(team: NearestTeam) {
   }
 }
 /* Mô tả nạn nhân gửi kèm SOS (F-SOS-06) — giữ xuống dòng như người gửi gõ. */
+.modal-tinh-trang {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+.modal-tinh-trang div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.modal-tinh-trang dt {
+  color: rgba(42, 42, 36, 0.65);
+}
+.modal-tinh-trang dd {
+  margin: 0;
+  font-weight: 600;
+}
 .modal-mo-ta {
   margin: 8px 0 0;
   padding: 8px 10px;

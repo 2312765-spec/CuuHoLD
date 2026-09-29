@@ -2,6 +2,7 @@ import axios from 'axios'
 import { CONFIG } from '@/config'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth.store'
+import { thongBaoLoiThanThien } from './thongBaoLoi'
 
 export const http = axios.create({
   baseURL: CONFIG.apiBaseUrl,
@@ -15,19 +16,6 @@ http.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
-
-// Backend chưa có global exception filter (xem docs/api-contract.md, mục "Response lỗi") —
-// lỗi trả nguyên format mặc định NestJS { statusCode, message, error }, với message có thể
-// là string ĐƠN hoặc MẢNG string (ValidationPipe báo nhiều lỗi validate DTO cùng lúc).
-function trichThongBaoLoi(data: unknown): string | null {
-  if (!data || typeof data !== 'object' || !('message' in data)) return null
-  const { message } = (data as { message: unknown })
-  if (typeof message === 'string') return message
-  if (Array.isArray(message) && message.every((m) => typeof m === 'string')) {
-    return (message[0] as string | undefined) ?? null
-  }
-  return null
-}
 
 http.interceptors.response.use(
   (response) => response,
@@ -56,7 +44,8 @@ http.interceptors.response.use(
     } else {
       // 400/401 (sai mật khẩu)/403/404/409 — lỗi nghiệp vụ. Trước đây các nơi gọi API chỉ
       // `catch {}` rỗng, tin nhầm là interceptor này đã hiện toast — thực ra chưa từng có.
-      toastStore.showToast(trichThongBaoLoi(error.response.data) || 'Yêu cầu không hợp lệ.')
+      // Câu tiếng Việt dễ hiểu thay cho thông báo kỹ thuật (xem services/thongBaoLoi.ts).
+      toastStore.showToast(thongBaoLoiThanThien(error.response.status, error.response.data))
     }
 
     return Promise.reject(error)

@@ -19,7 +19,7 @@ const { cta } = useCtaTheoRole()
 </script>
 
 <template>
-  <header>
+  <header class="site-header">
     <div class="nav">
       <div class="brand">
         <svg class="mark" viewBox="0 0 30 30" fill="none">

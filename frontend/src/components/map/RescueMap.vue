@@ -152,6 +152,7 @@ function buildSosLayer() {
 }
 
 // F-MAP-03: chế độ bản đồ nhiệt thay cho marker SOS (không vẽ chồng cả hai — rối mắt).
+const NGUONG_DO_TOI_THIEU = 5
 function apDungCheDoHienThi() {
   if (!map || !sosLayer) return
   const dangXemNhiet = props.heatmap != null
@@ -167,7 +168,10 @@ function apDungCheDoHienThi() {
       })
     }
     const diem = props.heatmap ?? []
-    const max = diem.reduce((m, p) => Math.max(m, p[2]), 1)
+    // Ngưỡng tối thiểu 5: chỉ nơi có từ ~5 SOS dồn lại mới lên màu ĐỎ. Trước đây max = trọng số
+    // lớn nhất (thường là 1 khi ít dữ liệu) → một SOS lẻ cũng hiện thành đốm đỏ rực như "điểm
+    // nóng", dễ khiến commander hiểu nhầm là vùng có nhiều sự cố.
+    const max = diem.reduce((m, p) => Math.max(m, p[2]), NGUONG_DO_TOI_THIEU)
     heatLayer.setOptions({ max })
     heatLayer.setLatLngs(diem)
     if (!map.hasLayer(heatLayer)) heatLayer.addTo(map)

@@ -149,6 +149,9 @@
   .coverage .wrap{display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:center;}
   .coverage-figures{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
   .cov-card{border-left:2px solid var(--clay); padding-left:16px;}
+  /* Trước đây màu này viết cứng trong style="" của HomeView — dark mode không ghi đè được, chữ
+     tối nằm trên nền tối gần như biến mất. Đưa ra class để các khối theme bên dưới áp được. */
+  .coverage-mo-ta{color:rgba(42,42,36,0.68); max-width:440px;}
   .cov-card b{font-family:'Fraunces',serif; font-size:32px; display:block; color:var(--pine-deep);}
   .cov-card span{font-size:13px; color:rgba(42,42,36,0.6);}
 
@@ -264,13 +267,23 @@ section{ padding:56px 0; }
 :root[data-theme="dark"] .feat-card p,
 :root[data-theme="dark"] .feat2-card p,
 :root[data-theme="dark"] .cov-card span,
+:root[data-theme="dark"] .coverage-mo-ta,
 :root[data-theme="dark"] footer .fine{ color:rgba(236,231,217,0.68); }
 
 /* Nút viền (.btn-ghost) đang chữ + viền tối → sáng để đọc được trên hero tối */
 :root[data-theme="dark"] .btn-ghost{ color:#ece7d9; border-color:rgba(236,231,217,0.28); }
 
 /* Header kính mờ (đang nền sáng rgba fog) → nền tối */
-:root[data-theme="dark"] header{ background:rgba(15,26,21,0.88); }
+:root[data-theme="dark"] header.site-header{ background:rgba(15,26,21,0.88); }
+/* ⚠️ Chỉ header trang chủ (AppHeader). Trước đây selector là `header` trơn → tô tối luôn header
+   của Dashboard/Rescuer/Lịch sử/Hồ sơ (vốn nền sáng, chữ tối) → chữ + nút quay lại chìm mất.
+   Thanh bản đồ (.map-top) có rule dark riêng bên dưới. */
+
+/* 4 trang làm việc CỐ Ý luôn nền sáng (--fog, color-scheme light) kể cả khi bật dark mode —
+   các rule dark toàn cục ở trên (h1–h3 sáng, .btn-ghost chữ sáng) viết cho trang chủ nền tối, áp
+   vào đây là chữ sáng trên nền sáng (VD "SOS theo loại" ở Dashboard gần như biến mất). */
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page) :is(h1, h2, h3){ color:var(--pine-deep); }
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
 
 /* Hero: gradient sáng → gradient tối (đây là chỗ khiến chữ trước đây chìm) */
 :root[data-theme="dark"] .hero{ background:linear-gradient(180deg,#14231b 0%,#0f1a15 100%); }
@@ -344,6 +357,7 @@ section{ padding:56px 0; }
 :root[data-contrast="high"] .feat-card p,
 :root[data-contrast="high"] .feat2-card p,
 :root[data-contrast="high"] .cov-card span,
+:root[data-contrast="high"] .coverage-mo-ta,
 :root[data-contrast="high"] footer .fine{ color:var(--ink) !important; }
 :root[data-contrast="high"] .hero-map-link{ opacity:1; }
 :root[data-contrast="high"] .btn-ghost{ border-color:var(--ink); }
@@ -356,6 +370,7 @@ section{ padding:56px 0; }
 :root[data-theme="dark"][data-contrast="high"] .feat2-card p,
 :root[data-theme="dark"][data-contrast="high"] .step p,
 :root[data-theme="dark"][data-contrast="high"] .cov-card span,
+:root[data-theme="dark"][data-contrast="high"] .coverage-mo-ta,
 :root[data-theme="dark"][data-contrast="high"] footer .fine,
 :root[data-theme="dark"][data-contrast="high"] .layer-tabs a{ color:#f7f3e8 !important; }
 
