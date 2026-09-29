@@ -197,8 +197,10 @@
   position:fixed; right:24px; bottom:24px; z-index:950;
 }
 
-/* Nút zoom Leaflet đặt góc phải TRÊN (position:'topright' trong useLeafletMap.ts).
-   Đẩy xuống dưới thanh MapStats (~96px từ đỉnh) để không bị thanh trên che. */
+/* Nút zoom Leaflet (+ / −) đặt góc phải TRÊN (position:'topright' trong useLeafletMap.ts).
+   ⚠️ GIỮ nút này: SRS mục 3.3 liệt kê "Zoom in/out" là tính năng bản đồ bắt buộc, và nó là cách
+   phóng to/thu nhỏ duy nhất cho người dùng bàn phím / chuột không có con lăn.
+   Đẩy xuống dưới thanh MapStats (desktop: thanh kết thúc ~96px từ đỉnh) để không bị che. */
 .leaflet-top.leaflet-right .leaflet-control-zoom{
   margin-top:106px; margin-right:16px;
 }
@@ -233,9 +235,21 @@
 .offline-badge--sos .dot{ background:var(--clay); }
 
 /* Nút SOS chiếm góc dưới phải (24px + 120px cao) → đẩy cả 3 huy hiệu lên trên nó. */
-.co-nut-sos .socket-status{ bottom:164px; }
-.co-nut-sos .offline-badge{ bottom:204px; }
-.co-nut-sos .offline-badge--sos{ bottom:244px; }
+/* Cụm .sos-fab giờ gồm nút SOS (120px) + nút "Báo hộ người khác" (40px, cách 10px) phía trên
+   (F-SOS-07) → cao tới 24 + 120 + 10 + 40 = 194px từ đáy. Số cũ (164px, chỉ tính nút SOS) làm huy
+   hiệu "Cập nhật thời gian thực" đè lên nút Báo hộ. */
+.co-nut-sos .socket-status{ bottom:204px; }
+.co-nut-sos .offline-badge{ bottom:244px; }
+.co-nut-sos .offline-badge--sos{ bottom:284px; }
+@media (max-width:1023px){
+  /* Màn hẹp: .sos-fab ở bottom:54px (style.css), nút SOS 92px → cụm cao tới 54+92+10+40 = 196px. */
+  .co-nut-sos .socket-status{ bottom:206px; }
+  .co-nut-sos .offline-badge{ bottom:246px; }
+  .co-nut-sos .offline-badge--sos{ bottom:286px; }
+  /* Màn hẹp: thanh trên xuống dòng → MapStats nằm 96–132px. Để margin 106px của desktop thì nút
+     zoom đè lên thanh thống kê. */
+  .leaflet-top.leaflet-right .leaflet-control-zoom{ margin-top:142px; }
+}
 /* Tooltip marker trên RescueMap (commander/rescuer) — canh chữ đẹp, không dính viền
    như tooltip mặc định Leaflet. Không scoped vì Leaflet render tooltip ngoài component. */
 .rescue-tooltip {

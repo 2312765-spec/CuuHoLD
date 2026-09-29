@@ -66,7 +66,17 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
       <div v-if="moRong" class="noti-panel" role="menu">
         <div class="noti-head">
           <span>Thông báo</span>
-          <button v-if="danhSach.length" class="noti-clear" type="button" @click="store.xoaTatCa()">Xoá hết</button>
+          <span class="noti-head-nut">
+            <button v-if="danhSach.length" class="noti-clear" type="button" @click="store.xoaTatCa()">Xoá hết</button>
+            <!-- Mở ra thì phải có nút tắt — trước đây chỉ đóng được bằng cách bấm ra ngoài. -->
+            <button
+              class="noti-dong"
+              type="button"
+              data-test="dong-thong-bao"
+              aria-label="Đóng bảng thông báo"
+              @click="dong"
+            >✕</button>
+          </span>
         </div>
         <div v-if="danhSach.length === 0" class="noti-empty">Chưa có thông báo nào.</div>
         <ul v-else class="noti-list">
@@ -91,6 +101,21 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
 </template>
 
 <style scoped>
+.noti-head-nut { display: inline-flex; align-items: center; gap: 6px; }
+.noti-dong {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.noti-dong:hover { background: rgba(42, 42, 36, 0.08); }
+.noti-dong:focus-visible { outline: 3px solid var(--pine-deep); outline-offset: 2px; }
 .noti { position: relative; display: inline-flex; }
 .noti-btn {
   position: relative;
@@ -118,7 +143,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
   background: var(--clay);
   color: #fff;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 17px;
   text-align: center;
 }

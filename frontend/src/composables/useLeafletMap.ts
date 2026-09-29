@@ -201,6 +201,8 @@ export function useLeafletMap() {
     // bottomleft chứ không phải bottomright: góc dưới PHẢI nay dành cho nút SOS (hành động
     // Nút zoom đặt góc phải TRÊN — tránh legend (góc trái dưới) và chỉ báo real-time
     // (góc phải dưới). Đây là góc trống duy nhất không vướng thành phần nào.
+    // Nút zoom +/− — GIỮ: SRS mục 3.3 yêu cầu "Zoom in/out"; là cách phóng to duy nhất khi dùng
+    // bàn phím hoặc chuột không có con lăn. Vị trí chỉnh trong map-style.css (.leaflet-control-zoom).
     L.control.zoom({ position: 'topright' }).addTo(map)
 
     // 'load' bắn ĐÚNG MỘT LẦN khi mọi tile trong khung nhìn hiện tại đã xong (thành công

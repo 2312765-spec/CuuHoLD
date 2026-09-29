@@ -108,7 +108,7 @@ const moRong = ref(false)
 .qc-so {
   font-family: 'JetBrains Mono', monospace;
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--amber);
   min-width: 46px;
 }

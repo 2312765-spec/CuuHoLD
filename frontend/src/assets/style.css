@@ -54,7 +54,7 @@
   .nav-links a:hover{opacity:1;}
   .nav-user{font-size:14px; color:var(--pine-deep); font-weight:500; white-space:nowrap;}
   .nav-cta{display:flex; gap:10px;}
-  .menu-btn{display:none; background:none; border:none; cursor:pointer;}
+  .menu-btn{display:none; background:none; border:none; cursor:pointer; color:var(--ink); min-width:40px; min-height:40px;}
 
   /* hero */
   .hero{
@@ -279,11 +279,22 @@ section{ padding:56px 0; }
    của Dashboard/Rescuer/Lịch sử/Hồ sơ (vốn nền sáng, chữ tối) → chữ + nút quay lại chìm mất.
    Thanh bản đồ (.map-top) có rule dark riêng bên dưới. */
 
-/* 4 trang làm việc CỐ Ý luôn nền sáng (--fog, color-scheme light) kể cả khi bật dark mode —
-   các rule dark toàn cục ở trên (h1–h3 sáng, .btn-ghost chữ sáng) viết cho trang chủ nền tối, áp
-   vào đây là chữ sáng trên nền sáng (VD "SOS theo loại" ở Dashboard gần như biến mất). */
-:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page) :is(h1, h2, h3){ color:var(--pine-deep); }
-:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
+/* Các trang + hộp CỐ Ý luôn nền sáng (--fog/trắng, color-scheme light) kể cả khi bật dark mode.
+   Các rule dark toàn cục ở trên (h1–h3 sáng, .btn-ghost chữ sáng) viết cho nền TỐI của trang chủ;
+   áp vào những chỗ này là chữ sáng trên nền sáng → biến mất. Đã gặp thật: "SOS theo loại" ở
+   Dashboard, tiêu đề hộp xác nhận SOS, "Quay lại" ở hướng dẫn lần đầu, "Huỷ SOS"/"Đóng" ở bảng
+   theo dõi SOS, các nút lý do huỷ. Thêm hộp nền sáng MỚI thì thêm class của nó vào 2 danh sách. */
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) :is(h1, h2, h3){ color:var(--pine-deep); }
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
+
+/* Nút menu (hamburger/✕) + cụm nút giao diện (ThemeToggle) nằm trên header TỐI của trang chủ:
+   trước đây chữ/nét màu --ink cố định → gần như vô hình. */
+:root[data-theme="dark"] .menu-btn{ color:#ece7d9; }
+:root[data-theme="dark"] .tt-btn{ color:#ece7d9; border-color:rgba(236,231,217,0.28); }
+:root[data-theme="dark"] .tt-btn:hover{ border-color:#ece7d9; }
+:root[data-theme="dark"] .tt-btn.active{ background:#2f5741; color:#f3efe3; border-color:#2f5741; }
 
 /* Hero: gradient sáng → gradient tối (đây là chỗ khiến chữ trước đây chìm) */
 :root[data-theme="dark"] .hero{ background:linear-gradient(180deg,#14231b 0%,#0f1a15 100%); }

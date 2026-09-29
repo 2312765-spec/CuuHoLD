@@ -259,6 +259,7 @@ onMounted(() => {
   // preferCanvas: marker đội + đường đi (circleMarker/polyline) vẽ trên 1 canvas thay vì
   // mỗi cái 1 phần tử SVG — nhẹ hơn rõ trên điện thoại yếu. Marker SOS là divIcon (DOM) vì
   // markercluster cần L.Marker, nhưng gom cụm đã giữ số phần tử DOM ở mức nhỏ.
+  // zoomControl: nút +/− — GIỮ (SRS mục 3.3 "Zoom in/out").
   map = L.map(mapContainer.value, { zoomControl: true, preferCanvas: true }).setView([11.9465, 108.4419], 9)
   // Cấu hình tile (URL, attribution, crossOrigin, ưu tiên bộ offline z8–10) nằm trong
   // utils/tileLayer.ts — dùng chung với useLeafletMap.ts, xem giải thích đầy đủ ở đó.
@@ -357,7 +358,7 @@ watch(
   border: 3px solid #ffffff;
   box-sizing: border-box;
   color: #ffffff;
-  font: 700 13px/1 'Inter', sans-serif;
+  font: 600 13px/1 'Inter', sans-serif;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
@@ -373,7 +374,7 @@ watch(
   color: #ffffff;
   border: 2px solid #ffffff;
   box-sizing: border-box;
-  font: 700 11px/16px 'Inter', sans-serif;
+  font: 600 11px/16px 'Inter', sans-serif;
   text-align: center;
 }
 /* Cụm còn SOS chưa ai nhận: vòng lan toả để commander chú ý. */

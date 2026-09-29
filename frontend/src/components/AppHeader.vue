@@ -16,6 +16,10 @@ const isMenuOpen = ref(false)
 defineEmits<{ openAuth: [] }>()
 const authStore = useAuthStore()
 const { cta } = useCtaTheoRole()
+
+function dongMenuKhiChonMuc(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('a')) isMenuOpen.value = false
+}
 </script>
 
 <template>
@@ -28,7 +32,8 @@ const { cta } = useCtaTheoRole()
         </svg>
         <span class="brand-text">Bản Đồ Cứu Trợ Lâm Đồng</span>
       </div>
-      <nav class="nav-links" :class="{ open: isMenuOpen }">
+      <!-- Chọn 1 mục (link neo #...) thì đóng menu, không để menu cứ mở che nội dung. -->
+      <nav id="menu-chinh" class="nav-links" :class="{ open: isMenuOpen }" @click="dongMenuKhiChonMuc">
         <a href="#gioi-thieu">Giới thiệu</a>
         <a href="#ban-do">Bản đồ</a>
         <a href="#quy-trinh">Quy trình</a>
@@ -36,7 +41,7 @@ const { cta } = useCtaTheoRole()
         <!-- Đặt trong .nav-links (không phải .nav-cta) vì .nav-cta .btn-ghost bị ẩn hẳn
              trên mobile (style.css dòng ~161) — để đây thì vẫn hiện trong menu hamburger. -->
         <template v-if="authStore.isLoggedIn">
-          <span class="nav-user">{{ authStore.user?.name }}</span>
+          <RouterLink to="/ho-so" class="nav-user" title="Hồ sơ của tôi">{{ authStore.user?.name }}</RouterLink>
           <a href="#" @click.prevent="authStore.logout()">Đăng xuất</a>
         </template>
       </nav>
@@ -47,8 +52,18 @@ const { cta } = useCtaTheoRole()
       </div>
       <NotificationBell />
       <ThemeToggle />
-      <button class="menu-btn" aria-label="Mở menu" @click="isMenuOpen = !isMenuOpen">
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 6H19M3 11H19M3 16H19" stroke="#2a2a24" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <!-- stroke="currentColor" (trước đây #2a2a24 viết cứng → gần như vô hình trên header tối
+           của dark mode); màu theo .menu-btn trong style.css. Mở ra thì hiện ✕ để đóng. -->
+      <button
+        class="menu-btn"
+        type="button"
+        aria-controls="menu-chinh"
+        :aria-expanded="isMenuOpen"
+        :aria-label="isMenuOpen ? 'Đóng menu' : 'Mở menu'"
+        @click="isMenuOpen = !isMenuOpen"
+      >
+        <svg v-if="!isMenuOpen" width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M3 6H19M3 11H19M3 16H19" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <svg v-else width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5L17 17M17 5L5 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
       </div>
     </div>
