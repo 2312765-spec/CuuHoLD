@@ -92,6 +92,8 @@
   box-sizing:border-box;
 }
 .marker-pin svg{ width:15px; height:15px; transform:rotate(45deg); }
+/* Biểu tượng loại SOS (F-MAP-01): xoay ngược 45° như svg để đứng thẳng trong ghim. */
+.marker-pin__bieu-tuong{ transform:rotate(45deg); font-size:14px; line-height:1; }
 
 /* vòng nhấp nháy cảnh báo cho báo cáo mức Khẩn cấp — hiệu ứng CSS này KHÔNG làm được
    với circleMarker cũ vì circleMarker không phải phần tử HTML thật. */

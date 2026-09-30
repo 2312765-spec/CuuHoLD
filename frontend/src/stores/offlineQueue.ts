@@ -12,12 +12,44 @@ import {
   xoaKhoiHangDoi,
   themSosVaoHangDoi as luuSosVaoDb,
   layToanBoHangDoiSos,
-  xoaKhoiHangDoiSos as xoaSosKhoiDb
+  xoaKhoiHangDoiSos as xoaSosKhoiDb,
+  luuPhienDongBo,
+  xoaPhienDongBo
 } from '@/utils/offlineQueue'
+import { CONFIG } from '@/config'
 import { useMapDataStore } from './mapData'
 import { useToastStore } from './toast'
 import { useAuthStore } from './auth.store'
 import { guiSos } from '@/services/sosService'
+// SRS F-PWA-02 Background Sync — phải khớp public/sos-sync-sw.js.
+const TAG_SYNC = 'gui-sos-hang-doi'
+const TEN_KHOA = 'gui-hang-doi-sos'
+
+// Trang và service worker cùng gửi hàng đợi SOS khi có mạng lại → lấy CÙNG một khoá Web Locks
+// và đọc lại hàng đợi BÊN TRONG khoá: mục phía kia vừa gửi + xoá thì phía này không thấy nữa.
+// Không có khoá thì cả hai cùng gửi 1 SOS — backend trả 409 cho lần 2, mục đó kẹt lại trong
+// hàng đợi mãi mãi kèm thông báo lỗi. Trình duyệt không có Web Locks → chạy thẳng (như cũ).
+function voiKhoa<T>(viec: () => Promise<T>): Promise<T> {
+  const locks = (navigator as Navigator & { locks?: LockManager }).locks
+  // Kiểu lib.dom của request() suy ra Promise<Promise<T>> khi callback trả Promise — runtime
+  // trả đúng Promise<T> (giá trị đã được chờ), nên ép kiểu ở đây.
+  return locks ? (locks.request(TEN_KHOA, viec) as unknown as Promise<T>) : viec()
+}
+
+// Đăng ký sync KHÔNG chờ trong luồng lưu SOS: navigator.serviceWorker.ready không bao giờ xong
+// nếu trang chưa có service worker (VD dev chưa đăng ký) — chờ ở đó là treo luôn việc lưu SOS.
+function dangKyGuiNen(): void {
+  if (!('serviceWorker' in navigator)) return
+  navigator.serviceWorker.ready
+    .then((reg) => {
+      const sync = (reg as ServiceWorkerRegistration & { sync?: { register(tag: string): Promise<void> } }).sync
+      return sync?.register(TAG_SYNC)
+    })
+    .catch(() => {
+      // Không hỗ trợ / bị chặn → trang tự gửi khi mở lại app như trước.
+    })
+}
+
 export const useOfflineQueueStore = defineStore('offlineQueue', () => {
   const soLuongChoGui = ref(0)
   const soLuongSosChoGui = ref(0)
@@ -116,6 +148,23 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     }
     await luuSosVaoDb({ ...sos, victimId })
     await capNhatSoLuong()
+    // F-PWA-02: cho service worker tự gửi khi có mạng, kể cả lúc app đã đóng. Token nằm ở
+    // sessionStorage mà service worker không đọc được → chép bản sao vào IndexedDB, CHỈ tồn tại
+    // tới khi hàng đợi của người này trống (quetHangDoiSos/sos-sync-sw.js xoá) hoặc đăng xuất.
+    const token = useAuthStore().accessToken
+    if (token) {
+      try {
+        await luuPhienDongBo({
+          victimId,
+          accessToken: token,
+          apiBaseUrl: new URL(CONFIG.apiBaseUrl, window.location.origin).href,
+          luuLuc: new Date().toISOString()
+        })
+        dangKyGuiNen()
+      } catch {
+        // Không lưu được phiên → vẫn còn đường trang tự gửi khi mở lại app.
+      }
+    }
   }
 
   // Victim đổi ý huỷ ngay lúc SOS còn đang nằm chờ mạng (chưa từng tới server) — chỉ cần
@@ -147,7 +196,7 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     if (dangQuetHangDoiSos) return
     dangQuetHangDoiSos = true
     try {
-      await quetHangDoiSos(onGuiThanhCong)
+      await voiKhoa(() => quetHangDoiSos(onGuiThanhCong))
     } finally {
       dangQuetHangDoiSos = false
     }
@@ -163,7 +212,10 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     const victimId = useAuthStore().user?.id
     if (!victimId) return
     const list = (await layToanBoHangDoiSos()).filter((s) => s.victimId === victimId)
-    if (list.length === 0) return
+    if (list.length === 0) {
+      await xoaPhienDongBoAnToan(victimId)
+      return
+    }
 
     const toastStore = useToastStore()
     let soLuongThanhCong = 0
@@ -188,6 +240,29 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
       toastStore.showToast(`Đã tự động gửi ${soLuongThanhCong} yêu cầu SOS đã lưu lúc mất mạng.`)
     }
     await capNhatSoLuong()
+    // Hết SOS chờ gửi → token không còn lý do nằm trong IndexedDB.
+    const conLai = (await layToanBoHangDoiSos()).filter((s) => s.victimId === victimId)
+    if (conLai.length === 0) await xoaPhienDongBoAnToan(victimId)
+  }
+
+  async function xoaPhienDongBoAnToan(victimId: string): Promise<void> {
+    try {
+      await xoaPhienDongBo(victimId)
+    } catch {
+      // IndexedDB lỗi/không có — không ảnh hưởng việc gửi SOS.
+    }
+  }
+
+  // Service worker (sos-sync-sw.js) gửi xong SOS lúc trang đang mở → cập nhật giao diện đúng như
+  // khi trang tự gửi. Chỉ nhận mục của CHÍNH người đang đăng nhập.
+  let onSosGuiThanhCongHienTai: ((ketQua: CreateSosResult, goc: QueuedSos) => void) | null = null
+  function nhanTinServiceWorker(e: MessageEvent): void {
+    const d = e.data as { type?: string; goc?: QueuedSos; ketQua?: CreateSosResult | null } | null
+    if (d?.type !== 'sos-da-gui' || !d.goc || !d.ketQua) return
+    if (d.goc.victimId !== useAuthStore().user?.id) return
+    onSosGuiThanhCongHienTai?.(d.ketQua, d.goc)
+    void capNhatSoLuong()
+    useToastStore().showToast('Đã tự động gửi yêu cầu SOS đã lưu lúc mất mạng.')
   }
 
   // Gỡ listener đang đăng ký (nếu có). Tách riêng để dùng được cho cả 2 việc: dọn khi
@@ -200,6 +275,9 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     if (handlerOffline) {
       window.removeEventListener('offline', handlerOffline)
       handlerOffline = null
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.removeEventListener('message', nhanTinServiceWorker)
     }
   }
 
@@ -233,6 +311,10 @@ export const useOfflineQueueStore = defineStore('offlineQueue', () => {
     // lý hàng đợi đã tự return sớm nếu rỗng nên gọi thừa lúc không có gì để gửi cũng vô hại.
     if (navigator.onLine) guiLaiHangDoiNeuCoMang()
 
+    onSosGuiThanhCongHienTai = onSosGuiThanhCong ?? null
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', nhanTinServiceWorker)
+    }
     handlerOnline = guiLaiHangDoiNeuCoMang
     handlerOffline = () => {
       dangOffline.value = true

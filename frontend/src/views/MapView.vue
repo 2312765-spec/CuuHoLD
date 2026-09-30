@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { useSos } from '@/composables/useSos'
 import { dinhKemAnhSos } from '@/services/sosService'
 import { useGhimViTri } from '@/composables/useGhimViTri'
+import { useVetGpsStore } from '@/stores/vetGps.store'
 import { SOS_STATUS_LABEL } from '@/constants/sosLabels'
 import type { SosType } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
@@ -103,6 +104,7 @@ async function xacNhanHuySos(reason: 'mistake' | 'resolved_myself' | 'other') {
 }
 
 // ---------- Luồng gửi SOS thật (nối SosButton → useSos) ----------
+const vetGps = useVetGpsStore()
 const isSosDialogOpen = ref(false)
 function moSosDialog() {
   isSosDialogOpen.value = true
@@ -162,7 +164,20 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string; anh?
         : 'Trình duyệt chặn định vị vì trang không mở bằng https:// — đã gửi kèm cảnh báo vị trí ước tính. Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm.'
     )
   }
-  await guiSosVoiViTri(viTri, payload)
+  // SOS của CHÍNH MÌNH → gửi kèm vết GPS gần nhất (F-PWA-04) nếu có. Báo hộ (ở trên) thì không:
+  // vết là đường đi của người báo, không phải của người gặp nạn.
+  await guiSosVoiViTri(viTri, { ...payload, description: await ghepVetGpsVaoMoTa(payload.description) })
+}
+
+// Đọc IndexedDB rất nhanh, nhưng vẫn không được để lỗi ở đây chặn SOS — lỗi thì gửi mô tả gốc.
+async function ghepVetGpsVaoMoTa(moTa: string): Promise<string> {
+  try {
+    const vet = await vetGps.tomTatChoSos()
+    if (!vet) return moTa
+    return moTa ? `${moTa}\n${vet}` : vet
+  } catch {
+    return moTa
+  }
 }
 
 async function guiSosVoiViTri(
@@ -258,6 +273,7 @@ function apDungMarkerSos(): void {
       lat: active.lat,
       lng: active.lng,
       status: active.status,
+      type: active.type,
       label: SOS_STATUS_LABEL[active.status]
     }
   )

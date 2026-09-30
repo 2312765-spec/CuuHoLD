@@ -84,7 +84,9 @@ export default defineConfig({
         // F-PWA-05: nạp thêm public/push-sw.js (xử lý sự kiện 'push' + 'notificationclick')
         // vào service worker Workbox sinh ra — không phải chuyển sang injectManifest, phần
         // precache/offline ở trên giữ nguyên. Xem CLAUDE.md Mục 15.17.
-        importScripts: ['/push-sw.js'],
+        // F-PWA-02: public/sos-sync-sw.js — tự gửi SOS trong hàng đợi offline bằng Background
+        // Sync, kể cả khi app đã đóng (trình duyệt hỗ trợ: Chrome/Edge/Android).
+        importScripts: ['/push-sw.js', '/sos-sync-sw.js'],
 
         // Chiến lược cache riêng cho từng loại dữ liệu — xem giải thích trong hội thoại:
         // tile bản đồ & dữ liệu ranh giới không nên xử lý giống nhau.

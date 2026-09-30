@@ -704,14 +704,16 @@ async function confirmAssign(team: NearestTeam) {
 .dash-export { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 .dash-export:hover:not(:disabled) { border-color: var(--ink); }
 .dash-export:disabled { opacity: 0.45; cursor: not-allowed; }
-.dash-filters { display: flex; flex-direction: column; gap: 8px; padding: 0 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+/* Cùng lề 20px với .panel-head và .sos-item — trước đây padding 0 (bộ lọc) / 4px (thống kê) nên
+   ô tìm kiếm, 2 ô chọn và biểu đồ dính sát 2 mép khung, "Xoá lọc" như bị cắt ở mép phải. */
+.dash-filters { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .dash-search { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); }
 .dash-selects { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.dash-selects select { flex: 1; min-width: 120px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); cursor: pointer; }
+.dash-selects select { flex: 1; min-width: 120px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); cursor: pointer; }
 .dash-clear { border: none; background: none; color: var(--clay); font-size: 13px; cursor: pointer; white-space: nowrap; }
 .dash-clear:hover { text-decoration: underline; }
 
-.dash-stats { padding: 14px 4px 12px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.dash-stats { padding: 14px 20px 12px; border-bottom: 1px solid var(--line); }
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .stat-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--fog); border: 1px solid var(--line); }
 .stat-num { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; line-height: 1; color: var(--pine-deep); }

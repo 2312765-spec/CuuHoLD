@@ -145,6 +145,13 @@ const { isConnected, connect } = useSocket({
     if (existing) {
       if (!ACTIVE_STATUSES.includes(data.status)) {
         boSosKhoiDanhSach(data.sosId)
+        // Nạn nhân huỷ giữa chừng — trước đây nhiệm vụ biến mất im lặng, đội có thể tưởng lỗi
+        // app mà vẫn chạy tới. Nói rõ để đội dừng lại (backend cancel() emit từ 2026-09-29).
+        if (data.status === 'cancelled') {
+          toastStore.showToast(
+            `Nạn nhân đã huỷ yêu cầu SOS (${SOS_TYPE_LABEL[existing.type]}). Đội có thể dừng di chuyển tới điểm này.`
+          )
+        }
       } else {
         existing.status = data.status
       }

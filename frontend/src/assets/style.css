@@ -289,12 +289,11 @@ section{ padding:56px 0; }
 :root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
   .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
 
-/* Nút menu (hamburger/✕) + cụm nút giao diện (ThemeToggle) nằm trên header TỐI của trang chủ:
+/* Nút menu (hamburger/✕) + nút ⚙ Cài đặt hiển thị (ThemeToggle) nằm trên header TỐI của trang chủ:
    trước đây chữ/nét màu --ink cố định → gần như vô hình. */
 :root[data-theme="dark"] .menu-btn{ color:#ece7d9; }
 :root[data-theme="dark"] .tt-btn{ color:#ece7d9; border-color:rgba(236,231,217,0.28); }
 :root[data-theme="dark"] .tt-btn:hover{ border-color:#ece7d9; }
-:root[data-theme="dark"] .tt-btn.active{ background:#2f5741; color:#f3efe3; border-color:#2f5741; }
 
 /* Hero: gradient sáng → gradient tối (đây là chỗ khiến chữ trước đây chìm) */
 :root[data-theme="dark"] .hero{ background:linear-gradient(180deg,#14231b 0%,#0f1a15 100%); }

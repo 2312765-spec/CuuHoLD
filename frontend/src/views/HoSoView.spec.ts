@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 // F-UI-01 — trang hồ sơ: sửa tên + đổi mật khẩu. Kiểm tra phía client chặn trước các lỗi hiển
 // nhiên (đỡ 1 vòng mạng trên 3G) nhưng backend vẫn là nơi quyết định cuối.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -129,5 +130,30 @@ describe('HoSoView — thông báo đẩy (F-PWA-05)', () => {
   it('mô tả đúng loại thông báo theo vai trò', () => {
     const w = gan()
     expect(w.find('[data-test="thong-bao"]').text()).toContain('đội của bạn được giao nhiệm vụ mới')
+  })
+})
+
+describe('HoSoView — ghi vết hành trình (SRS F-PWA-04)', () => {
+  it('mặc định tắt; bật thì lấy vị trí ngay và chuyển sang "Đang ghi"', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (ok: PositionCallback) =>
+          ok({ coords: { latitude: 11.94, longitude: 108.44, accuracy: 10 }, timestamp: Date.now() } as unknown as GeolocationPosition)
+      }
+    })
+    localStorage.clear()
+    const w = gan()
+    await flushPromises()
+    const phan = w.find('[data-test="vet-gps"]')
+    expect(phan.text()).toContain('Đang tắt')
+
+    await phan.find('[data-test="bat-tat-vet"]').trigger('click')
+    await flushPromises()
+    // IndexedDB (giả lập) chạy qua nhiều nhịp bất đồng bộ — chờ tới khi giao diện cập nhật.
+    await vi.waitFor(() => {
+      expect(w.find('[data-test="vet-gps"]').text()).toContain('Đang ghi')
+      expect(w.find('[data-test="vet-gps"]').text()).toContain('1 điểm')
+    })
   })
 })

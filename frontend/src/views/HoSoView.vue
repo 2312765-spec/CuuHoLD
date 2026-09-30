@@ -8,6 +8,7 @@ import { useToastStore } from '@/stores/toast'
 import { capNhatHoSo, doiMatKhau } from '@/services/auth.service'
 import { USER_ROLE_LABEL } from '@/constants/sosLabels'
 import { useThongBaoDay } from '@/composables/useThongBaoDay'
+import { useVetGpsStore } from '@/stores/vetGps.store'
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
@@ -29,6 +30,25 @@ const moTaThongBao = computed(() => {
 onMounted(() => {
   void thongBao.kiemTra()
 })
+
+// ---------- SRS F-PWA-04: ghi vết GPS ----------
+const vetGps = useVetGpsStore()
+const dangBatVet = ref(false)
+async function batTatVet() {
+  if (vetGps.dangBat) {
+    vetGps.tat()
+    return
+  }
+  dangBatVet.value = true
+  try {
+    await vetGps.bat()
+  } finally {
+    dangBatVet.value = false
+  }
+}
+function gioNgan(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—'
+}
 
 // ---------- Tên ----------
 const ten = ref(authStore.user?.name ?? '')
@@ -189,6 +209,44 @@ async function doiMk() {
         </template>
       </section>
 
+      <section class="ho-so-the" aria-labelledby="vet-title" data-test="vet-gps">
+        <h2 id="vet-title">Ghi vết hành trình</h2>
+        <p class="ho-so-mo-ta">
+          Tự lưu vị trí của bạn mỗi 2 phút ngay trên máy này, kể cả khi mất mạng. Hữu ích khi đi
+          rừng, leo núi: nếu gặp nạn và gửi SOS, 5 vị trí gần nhất được gửi kèm để đội cứu hộ biết
+          bạn đã đi qua đâu.
+        </p>
+        <p class="ho-so-ghi-chu">
+          Vết chỉ nằm trên máy, không gửi đi đâu nếu bạn không gửi SOS. Tự xoá sau 48 giờ. Trình
+          duyệt chỉ cho ghi khi ứng dụng đang mở — hãy để ứng dụng mở trong lúc di chuyển.
+        </p>
+        <p class="ho-so-trang-thai-tb" aria-live="polite">
+          Trạng thái: <strong>{{ vetGps.dangBat ? 'Đang ghi' : 'Đang tắt' }}</strong>
+          · {{ vetGps.soDiem }} điểm · điểm gần nhất: {{ gioNgan(vetGps.diemCuoiLuc) }}
+        </p>
+        <p v-if="vetGps.loi" class="ho-so-loi" role="alert">{{ vetGps.loi }}</p>
+        <div class="ho-so-nut-hang">
+          <button
+            type="button"
+            :class="vetGps.dangBat ? 'btn btn-ghost' : 'btn btn-primary'"
+            data-test="bat-tat-vet"
+            :disabled="dangBatVet"
+            @click="batTatVet"
+          >
+            {{ dangBatVet ? 'Đang lấy vị trí...' : vetGps.dangBat ? 'Tắt ghi vết' : 'Bật ghi vết' }}
+          </button>
+          <button
+            v-if="vetGps.soDiem > 0"
+            type="button"
+            class="btn btn-ghost"
+            data-test="xoa-vet"
+            @click="vetGps.xoaVet()"
+          >
+            Xoá vết đã lưu
+          </button>
+        </div>
+      </section>
+
       <section class="ho-so-the" aria-labelledby="mk-title">
         <h2 id="mk-title">Đổi mật khẩu</h2>
         <form class="ho-so-form" data-test="form-mat-khau" novalidate @submit.prevent="doiMk">
@@ -319,6 +377,11 @@ async function doiMk() {
 .ho-so-the > .btn:focus-visible {
   outline: 3px solid var(--pine-deep);
   outline-offset: 2px;
+}
+.ho-so-nut-hang {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .ho-so-form {
   display: grid;

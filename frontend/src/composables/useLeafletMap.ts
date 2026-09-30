@@ -5,7 +5,8 @@
 
 import { h, render, ref, shallowRef } from 'vue'
 import L from 'leaflet'
-import type { DiemCuuTro, BaoCaoSuCo, MapLayerKey, SosStatus } from '@/types'
+import type { DiemCuuTro, BaoCaoSuCo, MapLayerKey, SosStatus, SosType } from '@/types'
+import { SOS_TYPE_ICON } from '@/constants/sosLabels'
 import { useMapDataStore } from '@/stores/mapData'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth.store'
@@ -66,7 +67,7 @@ export function useLeafletMap() {
   // Marker cho ĐÚNG SOS mà victim đang xem đang theo dõi (useSos.ts) — luôn hiện trên mọi
   // lớp, không phụ thuộc tab layer nào, vì đây là thông tin quan trọng nhất với victim lúc này.
   function capNhatMarkerSosCuaMinh(
-    sos: { lat: number; lng: number; status: SosStatus; label: string } | null
+    sos: { lat: number; lng: number; status: SosStatus; type: SosType; label: string } | null
   ) {
     if (sosOwnMarker) {
       sosOwnMarker.remove()
@@ -74,7 +75,7 @@ export function useLeafletMap() {
     }
     if (!sos || !mapInstance.value) return
     sosOwnMarker = L.marker([sos.lat, sos.lng], {
-      icon: taoIconMarker(SOS_STATUS_COLOR[sos.status], 'khan-cap'),
+      icon: taoIconMarker(SOS_STATUS_COLOR[sos.status], 'khan-cap', SOS_TYPE_ICON[sos.type]),
       zIndexOffset: 1000
     })
       .bindPopup(`<div class="pin-popup"><b>SOS của bạn</b><span>${sos.label}</span></div>`)

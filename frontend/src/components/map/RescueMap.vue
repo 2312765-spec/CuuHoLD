@@ -8,10 +8,10 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import '@/utils/leafletPlugins'
-import type { SosListItem, RescueTeam, NearestTeam, SosStatus } from '@/types'
+import type { SosListItem, RescueTeam, NearestTeam, SosStatus, SosType } from '@/types'
 import { dinhDangKhoangCach, type ToaDo } from '@/utils/geo'
 import { taoLopTileNen } from '@/utils/tileLayer'
-import { SOS_TYPE_LABEL, SOS_STATUS_LABEL, RESCUE_TEAM_STATUS_LABEL } from '@/constants/sosLabels'
+import { SOS_TYPE_LABEL, SOS_TYPE_ICON, SOS_STATUS_LABEL, RESCUE_TEAM_STATUS_LABEL } from '@/constants/sosLabels'
 
 // Chỉ các field thật sự dùng để vẽ — nhận được cả SosListItem (GET /api/sos, commander)
 // lẫn SosRequest (GET /api/sos/:id, rescuer — ở đó victim_name là optional).
@@ -81,11 +81,13 @@ type MarkerSos = L.Marker & { sosId: string; sosStatus: SosStatus }
 
 // markercluster chỉ hỗ trợ L.Marker (nó gọi clusterHide/_setPos — CircleMarker không có, xòe
 // cụm sẽ lỗi), nên marker SOS dùng divIcon hình tròn thay cho circleMarker, giữ nguyên màu/cỡ.
-function taoIconSos(status: SosStatus, dangChon: boolean): L.DivIcon {
-  const d = dangChon ? 24 : 16
+// SRS F-MAP-01 "custom icon theo loại SOS": biểu tượng = LOẠI sự cố, màu viền = TRẠNG THÁI
+// (giữ quy ước màu cũ để commander không phải học lại).
+function taoIconSos(status: SosStatus, type: SosType, dangChon: boolean): L.DivIcon {
+  const d = dangChon ? 36 : 28
   return L.divIcon({
     className: 'sos-dot-icon',
-    html: `<span class="sos-dot${dangChon ? ' sos-dot--chon' : ''}" style="background:${STATUS_COLOR[status]}"></span>`,
+    html: `<span class="sos-dot${dangChon ? ' sos-dot--chon' : ''}" data-loai="${type}" style="border-color:${STATUS_COLOR[status]}"><span aria-hidden="true">${SOS_TYPE_ICON[type]}</span></span>`,
     iconSize: [d, d]
   })
 }
@@ -132,7 +134,7 @@ function buildSosLayer() {
   for (const sos of props.sosList) {
     const isSelected = sos.id === props.selectedSosId
     const marker = L.marker([sos.lat, sos.lng], {
-      icon: taoIconSos(sos.status, isSelected),
+      icon: taoIconSos(sos.status, sos.type, isSelected),
       zIndexOffset: isSelected ? 1000 : 0,
       keyboard: true
     }) as MarkerSos
@@ -335,16 +337,24 @@ watch(
   border: 0;
 }
 .sos-dot {
-  display: block;
+  display: grid;
+  place-items: center;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  /* Nền trắng để biểu tượng loại sự cố rõ trên mọi nền bản đồ; màu viền = trạng thái. */
+  background: #ffffff;
+  border: 3px solid;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1;
 }
 .sos-dot--chon {
-  border: 3px solid #142720;
+  border-width: 4px;
+  font-size: 18px;
+  /* Vòng ngoài tối để SOS đang chọn nổi bật (màu viền trong vẫn là trạng thái). */
+  box-shadow: 0 0 0 3px #142720, 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 .sos-cum {
   background: transparent;

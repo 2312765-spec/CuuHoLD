@@ -37,10 +37,10 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-function sos(id: string, status: SosListItem['status'], lat = 11.9465, lng = 108.4419): SosListItem {
+function sos(id: string, status: SosListItem['status'], lat = 11.9465, lng = 108.4419, type: SosListItem['type'] = 'flood'): SosListItem {
   return {
     id,
-    type: 'flood',
+    type,
     status,
     ward_code: '24781',
     created_at: '2026-09-28T08:00:00Z',
@@ -115,5 +115,22 @@ describe('RescueMap — bản đồ nhiệt (F-MAP-03)', () => {
     await w.setProps({ heatmap: null })
     expect(document.querySelectorAll('.sos-dot')).toHaveLength(1)
     expect(document.querySelector('.leaflet-heatmap-layer')).toBeNull()
+  })
+})
+
+describe('RescueMap — icon theo loại SOS (SRS F-MAP-01 "custom icon theo loại SOS")', () => {
+  it('mỗi loại sự cố có biểu tượng riêng; viền vẫn theo màu trạng thái', () => {
+    gan({
+      sosList: [
+        sos('a', 'pending', 11.9, 108.4, 'landslide'),
+        sos('b', 'resolved', 12.1, 108.7, 'fire')
+      ]
+    })
+    const dots = Array.from(document.querySelectorAll<HTMLElement>('.sos-dot'))
+    const theoLoai = Object.fromEntries(dots.map((d) => [d.dataset.loai, d]))
+    expect(theoLoai.landslide.textContent).toContain('⛰')
+    expect(theoLoai.fire.textContent).toContain('🔥')
+    // pending (đỏ) và resolved (xanh lá) → viền khác màu nhau
+    expect(theoLoai.landslide.style.borderColor).not.toBe(theoLoai.fire.style.borderColor)
   })
 })
