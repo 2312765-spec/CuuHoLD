@@ -228,24 +228,52 @@ function hienSosTrongCum(id: string): boolean {
   return true
 }
 
+// Cùng ý với markerSosTheoId: mỗi đội gửi GPS 30 giây/lần nên trước đây cứ mỗi lần là xoá sạch
+// + dựng lại MỌI marker đội. Giờ chỉ đội nào đổi chữ ký (vị trí, trạng thái, tên, khoảng cách/ETA)
+// mới bị dựng lại; marker circleMarker nhẹ nên gỡ/thêm từng cái, không cần theo lô như cụm SOS.
+const markerDoiTheoId = new Map<string, { marker: L.CircleMarker; chuKy: string }>()
+
+function chuKyDoi(team: RescueTeam | NearestTeam): string {
+  const khoangCach = 'distanceToVictim' in team ? team.distanceToVictim : null
+  const eta = 'estimatedArrival' in team ? team.estimatedArrival : null
+  return [team.name, team.status, team.lat, team.lng, khoangCach ?? '', eta ?? ''].join('|')
+}
+
+function taoMarkerDoi(team: RescueTeam | NearestTeam, lat: number, lng: number): L.CircleMarker {
+  const marker = L.circleMarker([lat, lng], {
+    radius: 7,
+    color: '#1e3a8a',
+    weight: 2,
+    fillColor: team.status === 'available' ? '#2563eb' : '#94a3b8',
+    fillOpacity: 0.9
+  })
+  let tooltip = `${team.name} (${RESCUE_TEAM_STATUS_LABEL[team.status]})`
+  if ('distanceToVictim' in team && team.distanceToVictim != null && team.estimatedArrival != null) {
+    tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
+  }
+  marker.bindTooltip(tooltip, { direction: 'top', className: 'rescue-tooltip' })
+  return marker
+}
+
 function buildTeamLayer() {
   if (!teamLayer) return
-  teamLayer.clearLayers()
+  const conTrongDs = new Set<string>()
   for (const team of props.teams) {
     if (team.lat == null || team.lng == null) continue
-    const marker = L.circleMarker([team.lat, team.lng], {
-      radius: 7,
-      color: '#1e3a8a',
-      weight: 2,
-      fillColor: team.status === 'available' ? '#2563eb' : '#94a3b8',
-      fillOpacity: 0.9
-    })
-    let tooltip = `${team.name} (${RESCUE_TEAM_STATUS_LABEL[team.status]})`
-    if ('distanceToVictim' in team && team.distanceToVictim != null && team.estimatedArrival != null) {
-      tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
-    }
-    marker.bindTooltip(tooltip, { direction: 'top', className: 'rescue-tooltip' })
+    conTrongDs.add(team.id)
+    const chuKy = chuKyDoi(team)
+    const cu = markerDoiTheoId.get(team.id)
+    if (cu?.chuKy === chuKy) continue
+    if (cu) teamLayer.removeLayer(cu.marker)
+    const marker = taoMarkerDoi(team, team.lat, team.lng)
     marker.addTo(teamLayer)
+    markerDoiTheoId.set(team.id, { marker, chuKy })
+  }
+  // Đội bị loại khỏi danh sách (hoặc mất toạ độ) thì gỡ marker, đừng để bóng ma trên bản đồ.
+  for (const [id, { marker }] of markerDoiTheoId) {
+    if (conTrongDs.has(id)) continue
+    teamLayer.removeLayer(marker)
+    markerDoiTheoId.delete(id)
   }
 }
 
@@ -329,6 +357,7 @@ onBeforeUnmount(() => {
   map = null
   sosLayer = null
   markerSosTheoId.clear()
+  markerDoiTheoId.clear()
   heatLayer = null
   teamLayer = null
   routeLayer = null

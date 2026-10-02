@@ -7,10 +7,11 @@
 // Chạy thật qua import 'leaflet.markercluster'/'leaflet.heat' (plugin đọc biến toàn cục L) —
 // nếu utils/leafletGlobal.ts nạp sai thứ tự, file test này hỏng ngay ở bước import.
 
-import { describe, it, expect, beforeAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
+import L from 'leaflet'
 import RescueMap from './RescueMap.vue'
-import type { SosListItem } from '@/types'
+import type { SosListItem, RescueTeam } from '@/types'
 
 // jsdom không có layout (clientWidth = 0) và không có canvas 2D — Leaflet cần kích thước
 // khung để tính vùng nhìn/gom cụm, còn renderer canvas (preferCanvas) + leaflet.heat cần
@@ -54,6 +55,7 @@ function sos(id: string, status: SosListItem['status'], lat = 11.9465, lng = 108
 
 function gan(props: {
   sosList: SosListItem[]
+  teams?: RescueTeam[]
   gomCum?: boolean
   heatmap?: [number, number, number][] | null
 }): VueWrapper {
@@ -205,5 +207,109 @@ describe('RescueMap — cập nhật marker theo id', () => {
     expect(cum?.classList.contains('sos-cum--gap')).toBe(true)
     expect(cum?.querySelector('.sos-cum__cho')?.textContent).toBe('1')
     expect(cum?.querySelector('.sos-cum__loi')?.textContent).toBe('3')
+  })
+})
+
+// Marker đội cứu hộ là circleMarker vẽ trên canvas (preferCanvas) — KHÔNG có node DOM để so
+// sánh như marker SOS. Nên bắt chính các marker mà component tạo ra (spy L.circleMarker, vẫn
+// chạy hàm thật) rồi hỏi marker nào còn gắn trên bản đồ (_map != null) và có tạo thêm không.
+// Mỗi đội gửi GPS 30 giây/lần: trước đây mỗi lần như vậy là xoá + dựng lại MỌI marker đội.
+describe('RescueMap — marker đội cứu hộ cập nhật theo id', () => {
+  const doi = (id: string, lat: number, lng: number, status: RescueTeam['status'] = 'available'): RescueTeam => ({
+    id, name: `Đội ${id}`, status, specialties: [], ward_code: '24781', lat, lng,
+    leader_id: 'u', leader_name: 'T', leader_phone: '0900000002'
+  })
+  const dsDoi = () => [doi('t1', 11.9, 108.4), doi('t2', 11.95, 108.45), doi('t3', 12.0, 108.5, 'busy')]
+  const khongToaDo = (id: string): RescueTeam => ({ ...doi(id, 0, 0), lat: null, lng: null })
+
+  let daTao: L.CircleMarker[] = []
+  const trenBanDo = (m: L.CircleMarker) => (m as unknown as { _map: unknown })._map != null
+  const markerTai = (lat: number, lng: number) =>
+    daTao.find((m) => m.getLatLng().lat === lat && m.getLatLng().lng === lng && trenBanDo(m))
+
+  function ganVoiSpy(teams: RescueTeam[]): VueWrapper {
+    vi.restoreAllMocks()
+    daTao = []
+    const goc = L.circleMarker.bind(L)
+    vi.spyOn(L, 'circleMarker').mockImplementation((...args: Parameters<typeof L.circleMarker>) => {
+      const m = goc(...args)
+      daTao.push(m)
+      return m
+    })
+    return gan({ sosList: [], teams })
+  }
+  afterEach(() => vi.restoreAllMocks())
+
+  it('vẽ mỗi đội đúng một marker, bỏ qua đội chưa có toạ độ', () => {
+    ganVoiSpy([...dsDoi(), khongToaDo('t4')])
+    expect(daTao.filter(trenBanDo)).toHaveLength(3)
+  })
+
+  it('1 đội đổi vị trí: chỉ tạo đúng 1 marker mới, marker cũ của đội đó bị gỡ, các đội khác giữ nguyên marker', async () => {
+    const w = ganVoiSpy(dsDoi())
+    const t2 = markerTai(11.95, 108.45)
+    const t1 = markerTai(11.9, 108.4)
+    const truoc = daTao.length
+
+    const moi = dsDoi()
+    moi[0] = doi('t1', 11.91, 108.41)
+    await w.setProps({ teams: moi })
+
+    expect(daTao.length - truoc).toBe(1)
+    expect(trenBanDo(t1!)).toBe(false)
+    expect(markerTai(11.91, 108.41)).toBeDefined()
+    expect(trenBanDo(t2!)).toBe(true)
+    expect(daTao.filter(trenBanDo)).toHaveLength(3)
+  })
+
+  it('danh sách mới cùng nội dung (object mới, như socket/refetch) → không tạo marker nào', async () => {
+    const w = ganVoiSpy(dsDoi())
+    const truoc = daTao.length
+    await w.setProps({ teams: dsDoi() })
+    expect(daTao.length).toBe(truoc)
+    expect(daTao.filter(trenBanDo)).toHaveLength(3)
+  })
+
+  it('đội đổi trạng thái (đổi màu) cũng được dựng lại, đúng 1 marker', async () => {
+    const w = ganVoiSpy(dsDoi())
+    const truoc = daTao.length
+    const moi = dsDoi()
+    moi[0] = doi('t1', 11.9, 108.4, 'busy')
+    await w.setProps({ teams: moi })
+    expect(daTao.length - truoc).toBe(1)
+    expect(daTao.filter(trenBanDo)).toHaveLength(3)
+  })
+
+  it('đội bị loại khỏi danh sách (hoặc mất toạ độ) → marker biến mất, không tạo gì thêm', async () => {
+    const w = ganVoiSpy(dsDoi())
+    const t3 = markerTai(12.0, 108.5)
+    const truoc = daTao.length
+
+    await w.setProps({ teams: dsDoi().filter((t) => t.id !== 't3') })
+    expect(trenBanDo(t3!)).toBe(false)
+    expect(daTao.filter(trenBanDo)).toHaveLength(2)
+
+    const t2 = markerTai(11.95, 108.45)
+    await w.setProps({ teams: [doi('t1', 11.9, 108.4), khongToaDo('t2')] })
+    expect(trenBanDo(t2!)).toBe(false)
+    expect(daTao.filter(trenBanDo)).toHaveLength(1)
+    expect(daTao.length).toBe(truoc)
+  })
+
+  it('đội thêm mới → chỉ thêm đúng marker đó', async () => {
+    const w = ganVoiSpy(dsDoi())
+    const truoc = daTao.length
+    await w.setProps({ teams: [...dsDoi(), doi('t9', 11.8, 108.3)] })
+    expect(daTao.length - truoc).toBe(1)
+    expect(daTao.filter(trenBanDo)).toHaveLength(4)
+  })
+
+  it('unmount rồi mount lại → bảng id được dọn, marker dựng lại đầy đủ (không bị coi là "không đổi")', () => {
+    ganVoiSpy(dsDoi())
+    wrapper?.unmount()
+    wrapper = null
+    document.body.innerHTML = ''
+    ganVoiSpy(dsDoi())
+    expect(daTao.filter(trenBanDo)).toHaveLength(3)
   })
 })
