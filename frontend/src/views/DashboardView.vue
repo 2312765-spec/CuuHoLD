@@ -482,7 +482,7 @@ async function confirmAssign(team: NearestTeam) {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--pine-deep);
   font-weight: 500;
 }
@@ -505,7 +505,7 @@ async function confirmAssign(team: NearestTeam) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
 }
 .realtime-status .dot {
@@ -541,7 +541,7 @@ async function confirmAssign(team: NearestTeam) {
   border-radius: 10px;
   background: var(--fog, #f6f1e7);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ink, #2a2a24);
 }
 .map-che-do__nhom {
@@ -580,13 +580,13 @@ async function confirmAssign(team: NearestTeam) {
 }
 .map-che-do__ghi-chu {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .map-che-do__thang {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .map-che-do__mau {
   flex: 1;
@@ -608,12 +608,12 @@ async function confirmAssign(team: NearestTeam) {
   border-bottom: 1px solid var(--line);
 }
 .panel-head h2 {
-  font-size: 15px;
+  font-size: 16px;
 }
 .panel-empty {
   padding: 24px 20px;
   color: rgba(42, 42, 36, 0.55);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .sos-list {
@@ -656,23 +656,23 @@ async function confirmAssign(team: NearestTeam) {
   margin-bottom: 6px;
 }
 .sos-badge {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--pine-deep);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .sos-status-badge {
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.6);
 }
 .sos-victim {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   margin-bottom: 2px;
 }
 .sos-location-warn {
-  font-size: 12px;
+  font-size: 13px;
   color: #b45309;
   background: #fef3c7;
   border-radius: 6px;
@@ -681,12 +681,12 @@ async function confirmAssign(team: NearestTeam) {
   display: inline-block;
 }
 .sos-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
 }
 
 .modal-sub {
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(42, 42, 36, 0.65);
   margin-bottom: 18px;
 }
@@ -707,45 +707,45 @@ async function confirmAssign(team: NearestTeam) {
 }
 .team-item b {
   display: block;
-  font-size: 14px;
+  font-size: 15px;
 }
 .team-meta {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
   margin-top: 2px;
 }
 
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.dash-export { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.dash-export { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 8px; padding: 6px 12px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 .dash-export:hover:not(:disabled) { border-color: var(--ink); }
 .dash-export:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Cùng lề 20px với .panel-head và .sos-item — trước đây padding 0 (bộ lọc) / 4px (thống kê) nên
    ô tìm kiếm, 2 ô chọn và biểu đồ dính sát 2 mép khung, "Xoá lọc" như bị cắt ở mép phải. */
 .dash-filters { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
-.dash-search { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); }
+.dash-search { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; font-family: inherit; background: var(--fog); color: var(--ink); }
 .dash-selects { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.dash-selects select { flex: 1; min-width: 120px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--fog); color: var(--ink); cursor: pointer; }
-.dash-clear { border: none; background: none; color: var(--clay); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.dash-selects select { flex: 1; min-width: 120px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; font-family: inherit; background: var(--fog); color: var(--ink); cursor: pointer; }
+.dash-clear { border: none; background: none; color: var(--clay); font-size: 14px; cursor: pointer; white-space: nowrap; }
 .dash-clear:hover { text-decoration: underline; }
 
 .dash-stats { padding: 14px 20px 12px; border-bottom: 1px solid var(--line); }
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .stat-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--fog); border: 1px solid var(--line); }
 .stat-num { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; line-height: 1; color: var(--pine-deep); }
-.stat-lbl { font-size: 11px; color: rgba(42,42,36,0.6); }
+.stat-lbl { font-size: 13px; color: rgba(42,42,36,0.6); }
 .stat-total { background: var(--pine-deep); border-color: var(--pine-deep); }
 .stat-total .stat-num { color: var(--fog); }
 .stat-total .stat-lbl { color: rgba(245,241,230,0.7); }
 .sc-pending .stat-num { color: var(--clay); }
 .sc-in_progress .stat-num { color: #d99a35; }
 .sc-resolved .stat-num { color: #2f7d4f; }
-.stat-bars-title { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+.stat-bars-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
 .stat-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.stat-bar-lbl { flex: 0 0 84px; font-size: 12px; color: rgba(42,42,36,0.7); }
+.stat-bar-lbl { flex: 0 0 84px; font-size: 13px; color: rgba(42,42,36,0.7); }
 .stat-bar-track { flex: 1; height: 8px; border-radius: 5px; background: var(--line); overflow: hidden; }
 .stat-bar-fill { display: block; height: 100%; border-radius: 5px; background: var(--clay); transition: width 0.3s ease; }
-.stat-bar-val { flex: 0 0 24px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink); }
+.stat-bar-val { flex: 0 0 24px; text-align: right; font-size: 13px; font-weight: 600; color: var(--ink); }
 
 :root[data-theme="dark"] .stat-card { background: rgba(255,255,255,0.04); border-color: rgba(236,231,217,0.14); }
 :root[data-theme="dark"] .stat-num { color: #ece7d9; }
@@ -800,7 +800,7 @@ async function confirmAssign(team: NearestTeam) {
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(42, 42, 36, 0.05);
-  font-size: 13px;
+  font-size: 14px;
   white-space: pre-wrap;
 }
 </style>

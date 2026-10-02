@@ -170,12 +170,12 @@ function guiForm() {
   font-family:'Inter',sans-serif; font-size:14px; font-weight:500; color:rgba(42,42,36,0.6); cursor:pointer; transition:all .15s;
 }
 .auth-tabs button.active{ background:#fff; color:var(--pine-deep); box-shadow:0 1px 3px rgba(0,0,0,0.08); }
-.auth-sub{ font-size:13px; color:rgba(42,42,36,0.6); margin-bottom:22px; }
-.auth-modal label{ display:block; font-size:13px; color:var(--ink); margin-bottom:16px; }
+.auth-sub{ font-size: 14px; color:rgba(42,42,36,0.6); margin-bottom:22px; }
+.auth-modal label{ display:block; font-size: 14px; color:var(--ink); margin-bottom:16px; }
 .auth-modal input{
   display:block; width:100%; margin-top:6px; padding:12px 14px;
   background:#faf8f2; color:#2a2a24;
-  border:1px solid var(--line); border-radius:10px; font-family:'Inter',sans-serif; font-size:15px;
+  border:1px solid var(--line); border-radius:10px; font-family:'Inter',sans-serif; font-size: 16px;
   transition:border-color .15s ease, box-shadow .15s ease; color-scheme:light;
 }
 /* Ô mật khẩu + nút Hiện/Ẩn nằm gọn bên phải trong ô. */

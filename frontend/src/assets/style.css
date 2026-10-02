@@ -354,7 +354,9 @@ section{ padding:56px 0; }
 :root[data-font="large"] .feat2-card p{ font-size:16px; }
 :root[data-font="large"] .step h3{ font-size:21px; }
 :root[data-font="large"] .step p{ font-size:16px; }
-:root[data-font="large"] .sos-victim,
+/* .sos-victim tách riêng: nó là tên nạn nhân (chữ chính, 15–16px ở chế độ thường) — để chung với
+   nhóm 14px thì BẬT cỡ chữ lớn lại làm tên nhỏ đi. Các nhóm còn lại ≥13px ở chế độ thường. */
+:root[data-font="large"] .sos-victim{ font-size:18px; }
 :root[data-font="large"] .sos-meta,
 :root[data-font="large"] .sos-badge,
 :root[data-font="large"] .sos-status-badge{ font-size:14px; }

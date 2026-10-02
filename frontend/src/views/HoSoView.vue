@@ -367,7 +367,7 @@ async function doiMk() {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 14px;
+  font-size: 15px;
 }
 .ho-so-dl dt {
   color: rgba(42, 42, 36, 0.65);
@@ -378,16 +378,16 @@ async function doiMk() {
 }
 .ho-so-ghi-chu {
   margin: 10px 0 16px;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.6);
 }
 .ho-so-mo-ta {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: 15px;
 }
 .ho-so-trang-thai-tb {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: 15px;
 }
 /* Trang luôn nền sáng — nút viền giữ chữ tối kể cả khi bật dark mode (xem 15.13 mục 5). */
 .ho-so-the .btn-ghost {
@@ -408,7 +408,7 @@ async function doiMk() {
   gap: 6px;
 }
 .ho-so-form label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   margin-top: 6px;
 }
@@ -434,7 +434,7 @@ async function doiMk() {
 }
 .ho-so-loi {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   color: #b91c1c;
 }
 .ho-so-form .btn {

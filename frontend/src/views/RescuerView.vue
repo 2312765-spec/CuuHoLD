@@ -396,7 +396,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--pine-deep);
   font-weight: 500;
 }
@@ -419,7 +419,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
 }
 .realtime-status .dot {
@@ -443,7 +443,7 @@ onUnmounted(() => {
   padding: 40px 20px;
   text-align: center;
   color: rgba(42, 42, 36, 0.55);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* position+z-index tạo stacking context riêng: các pane của Leaflet có z-index 400+, nếu
@@ -459,7 +459,7 @@ onUnmounted(() => {
 }
 .map-hint {
   margin: 8px 2px 14px;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
 }
 
@@ -496,23 +496,23 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 .sos-badge {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--pine-deep);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .sos-status-badge {
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.6);
 }
 .sos-victim {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   margin-bottom: 6px;
 }
 .sos-location-warn {
-  font-size: 12px;
+  font-size: 13px;
   color: #b45309;
   background: #fef3c7;
   border-radius: 6px;
@@ -520,7 +520,7 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 .sos-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
   margin-bottom: 2px;
 }
@@ -529,7 +529,7 @@ onUnmounted(() => {
 }
 .sos-desc {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(42, 42, 36, 0.75);
 }
 .sos-card .btn {
