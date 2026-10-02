@@ -271,6 +271,8 @@ onUnmounted(() => {
         <span class="realtime-status" :class="{ connected: isConnected }">
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
+        <RouterLink to="/" class="nav-thoat">Trang chủ</RouterLink>
+        <RouterLink to="/map" class="nav-thoat">Xem bản đồ</RouterLink>
         <RouterLink to="/ho-so" class="rescuer-user" title="Hồ sơ của tôi">{{ authStore.user?.name }}</RouterLink>
         <button class="btn btn-ghost" @click="authStore.logout()">Đăng xuất</button>
       </div>
@@ -374,12 +376,26 @@ onUnmounted(() => {
 .rescuer-top h1 {
   font-size: 18px;
 }
+/* wrap: thêm 2 liên kết có nhãn nên header dài hơn — màn hẹp xuống dòng thay vì tràn ngang. */
+.rescuer-top {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
 .rescuer-top-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 12px;
+}
+@media (max-width: 480px) {
+  .rescuer-top {
+    padding: 10px 12px;
+  }
 }
 .rescuer-user {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   font-size: 13px;
   color: var(--pine-deep);
   font-weight: 500;

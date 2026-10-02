@@ -440,3 +440,16 @@ option{ color:#2a2a24; background:#fff; }
   /* Nút SOS ngang hàng đáy với bảng chú thích (cùng bottom:54px), một trái một phải. */
   :root .sos-fab{ bottom:54px; right:16px; }
 }
+
+/* Liên kết "thoát ra" ở header các màn làm việc (Hồ sơ, Nhiệm vụ, Điều phối): có NHÃN chữ, cao
+   tối thiểu 44px để chạm được trên điện thoại. Chỉ dùng biến màu sẵn có — các trang này luôn
+   nền sáng nên --pine-deep/--line đúng cả khi bật dark mode và tương phản cao (--line đậm lên). */
+.nav-thoat{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:44px; min-width:44px; padding:0 14px;
+  border:1px solid var(--line); border-radius:999px;
+  color:var(--pine-deep); background:transparent;
+  font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap;
+}
+.nav-thoat:hover{ border-color:var(--pine-deep); }
+.nav-thoat:focus-visible{ outline:3px solid var(--pine-deep); outline-offset:2px; }

@@ -123,6 +123,11 @@ async function doiMk() {
     <header class="ho-so-top">
       <RouterLink :to="trangChinh" class="ho-so-back" aria-label="Quay lại">←</RouterLink>
       <h1>Hồ sơ của tôi</h1>
+      <!-- Rescuer/commander từng bị kẹt: ← chỉ về màn làm việc của họ, không có đường ra trang chủ. -->
+      <nav class="ho-so-top-lien-ket" aria-label="Chuyển trang">
+        <RouterLink to="/" class="nav-thoat">Trang chủ</RouterLink>
+        <RouterLink to="/map" class="nav-thoat">Bản đồ</RouterLink>
+      </nav>
     </header>
 
     <main v-if="authStore.user" class="ho-so-body">
@@ -284,6 +289,8 @@ async function doiMk() {
           </button>
         </form>
       </section>
+
+      <button type="button" class="btn btn-ghost ho-so-dang-xuat" @click="authStore.logout()">Đăng xuất</button>
     </main>
   </div>
 </template>
@@ -306,15 +313,28 @@ async function doiMk() {
   border-bottom: 1px solid var(--line);
   background: rgba(245, 241, 230, 0.96);
 }
+.ho-so-top {
+  flex-wrap: wrap;
+}
 .ho-so-top h1 {
   font-size: 18px;
   margin: 0;
+  flex: 1;
+}
+.ho-so-top-lien-ket {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ho-so-dang-xuat {
+  justify-self: start;
+  min-height: 44px;
 }
 .ho-so-back {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   color: var(--pine-deep);
   font-size: 20px;
