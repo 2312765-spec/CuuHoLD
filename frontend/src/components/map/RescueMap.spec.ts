@@ -134,3 +134,76 @@ describe('RescueMap — icon theo loại SOS (SRS F-MAP-01 "custom icon theo lo�
     expect(theoLoai.landslide.style.borderColor).not.toBe(theoLoai.fire.style.borderColor)
   })
 })
+
+// Cập nhật marker theo id: trước đây mỗi lần danh sách SOS đổi (socket bắn liên tục ở
+// Dashboard) là xoá SẠCH lớp marker rồi dựng lại từng cái + tính lại cụm — vừa tốn, vừa làm
+// cụm commander đang mở bị đóng lại. Giờ chỉ marker thật sự thay đổi mới bị đụng tới.
+// Nhận biết "có bị dựng lại không" bằng chính phần tử DOM: giữ nguyên node = không dựng lại.
+describe('RescueMap — cập nhật marker theo id', () => {
+  function nodeSos(loai: string): HTMLElement | null {
+    return document.querySelector(`[data-loai="${loai}"]`)?.closest<HTMLElement>('.leaflet-marker-icon') ?? null
+  }
+  const ds = () => [
+    sos('a', 'pending', 11.9, 108.4, 'flood'),
+    sos('b', 'assigned', 11.95, 108.45, 'fire'),
+    sos('c', 'resolved', 12.0, 108.5, 'landslide')
+  ]
+
+  it('đổi trạng thái 1 SOS: chỉ marker đó đổi viền, các marker khác giữ nguyên node', async () => {
+    const w = gan({ sosList: ds() })
+    const truocB = nodeSos('fire')
+    const truocC = nodeSos('landslide')
+    const vienCu = document.querySelector<HTMLElement>('[data-loai="flood"]')?.style.borderColor
+
+    const moi = ds()
+    moi[0] = sos('a', 'resolved', 11.9, 108.4, 'flood')
+    await w.setProps({ sosList: moi })
+
+    expect(document.querySelectorAll('.sos-dot')).toHaveLength(3)
+    expect(document.querySelector<HTMLElement>('[data-loai="flood"]')?.style.borderColor).not.toBe(vienCu)
+    expect(nodeSos('fire')).toBe(truocB)
+    expect(nodeSos('landslide')).toBe(truocC)
+  })
+
+  it('danh sách mới có cùng nội dung (object mới) thì không dựng lại marker nào', async () => {
+    const w = gan({ sosList: ds() })
+    const truoc = ['flood', 'fire', 'landslide'].map(nodeSos)
+    await w.setProps({ sosList: ds() })
+    expect(['flood', 'fire', 'landslide'].map(nodeSos)).toEqual(truoc)
+    truoc.forEach((n, i) => expect(['flood', 'fire', 'landslide'].map(nodeSos)[i]).toBe(n))
+  })
+
+  it('SOS bị loại khỏi danh sách thì marker biến mất, các marker còn lại giữ nguyên', async () => {
+    const w = gan({ sosList: ds() })
+    const truocB = nodeSos('fire')
+    await w.setProps({ sosList: ds().filter((s) => s.id !== 'a') })
+    expect(nodeSos('flood')).toBeNull()
+    expect(document.querySelectorAll('.sos-dot')).toHaveLength(2)
+    expect(nodeSos('fire')).toBe(truocB)
+  })
+
+  it('chọn SOS chỉ làm marker được chọn (và marker vừa bỏ chọn) đổi, không dựng lại cả lớp', async () => {
+    const w = gan({ sosList: ds(), selectedSosId: 'a' } as never)
+    const truocC = nodeSos('landslide')
+    expect(document.querySelector('[data-loai="flood"]')?.classList.contains('sos-dot--chon')).toBe(true)
+
+    await w.setProps({ selectedSosId: 'b' })
+    expect(document.querySelector('[data-loai="flood"]')?.classList.contains('sos-dot--chon')).toBe(false)
+    expect(document.querySelector('[data-loai="fire"]')?.classList.contains('sos-dot--chon')).toBe(true)
+    expect(nodeSos('landslide')).toBe(truocC)
+  })
+
+  it('trong cụm: đổi 1 SOS sang pending thì cụm cập nhật màu gấp + badge đếm', async () => {
+    const w = gan({
+      gomCum: true,
+      sosList: [sos('a', 'resolved'), sos('b', 'resolved'), sos('c', 'resolved')]
+    })
+    expect(document.querySelector('.sos-cum')?.classList.contains('sos-cum--gap')).toBe(false)
+
+    await w.setProps({ sosList: [sos('a', 'resolved'), sos('b', 'pending'), sos('c', 'resolved')] })
+    const cum = document.querySelector('.sos-cum')
+    expect(cum?.classList.contains('sos-cum--gap')).toBe(true)
+    expect(cum?.querySelector('.sos-cum__cho')?.textContent).toBe('1')
+    expect(cum?.querySelector('.sos-cum__loi')?.textContent).toBe('3')
+  })
+})

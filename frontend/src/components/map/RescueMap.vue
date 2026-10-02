@@ -127,30 +127,66 @@ function taoLopSos(): L.LayerGroup {
   })
 }
 
+// Bảng id → marker đang vẽ, kèm "chữ ký" những gì ảnh hưởng tới hình dạng marker. Có bảng này
+// mới biết marker nào thật sự đổi để chỉ đụng tới nó — trước đây mỗi lần danh sách SOS đổi
+// (socket bắn liên tục ở Dashboard) là xoá SẠCH rồi dựng lại cả lớp + tính lại cụm, làm cụm
+// commander đang mở bị đóng và tốn CPU tỉ lệ với TỔNG số SOS thay vì số SOS đổi.
+const markerSosTheoId = new Map<string, { marker: MarkerSos; chuKy: string }>()
+
+function chuKySos(sos: SosTrenBanDo, dangChon: boolean): string {
+  return [sos.status, sos.type, sos.lat, sos.lng, sos.victim_name?.trim() ?? '', dangChon ? 1 : 0].join('|')
+}
+
+function taoMarkerSos(sos: SosTrenBanDo, isSelected: boolean): MarkerSos {
+  const marker = L.marker([sos.lat, sos.lng], {
+    icon: taoIconSos(sos.status, sos.type, isSelected),
+    zIndexOffset: isSelected ? 1000 : 0,
+    keyboard: true
+  }) as MarkerSos
+  marker.sosId = sos.id
+  marker.sosStatus = sos.status
+  // Tooltip dùng nhãn tiếng Việt, bỏ dấu gạch thừa khi thiếu tên nạn nhân, có class riêng
+  // để canh chữ đẹp (không dính viền như tooltip mặc định Leaflet).
+  const tenNan = sos.victim_name?.trim()
+  const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`
+  marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
+  marker.on('click', () => emit('select-sos', sos.id))
+  return marker
+}
+
+// Marker đổi trạng thái/loại/vị trí/đang-chọn thì THAY bằng marker mới (gỡ cũ + thêm mới) thay vì
+// sửa tại chỗ: cụm (markercluster) chỉ tính lại màu/badge khi marker rời/vào cụm, nên cách này
+// giữ icon cụm luôn đúng mà không phải gọi API refresh riêng của plugin.
 function buildSosLayer() {
   if (!sosLayer) return
-  sosLayer.clearLayers()
-  const markers: L.Layer[] = []
+  const conTrongDs = new Set<string>()
+  const canGo: L.Layer[] = []
+  const canThem: L.Layer[] = []
   for (const sos of props.sosList) {
-    const isSelected = sos.id === props.selectedSosId
-    const marker = L.marker([sos.lat, sos.lng], {
-      icon: taoIconSos(sos.status, sos.type, isSelected),
-      zIndexOffset: isSelected ? 1000 : 0,
-      keyboard: true
-    }) as MarkerSos
-    marker.sosId = sos.id
-    marker.sosStatus = sos.status
-    // Tooltip dùng nhãn tiếng Việt, bỏ dấu gạch thừa khi thiếu tên nạn nhân, có class riêng
-    // để canh chữ đẹp (không dính viền như tooltip mặc định Leaflet).
-    const tenNan = sos.victim_name?.trim()
-    const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`
-    marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
-    marker.on('click', () => emit('select-sos', sos.id))
-    markers.push(marker)
+    conTrongDs.add(sos.id)
+    const dangChon = sos.id === props.selectedSosId
+    const chuKy = chuKySos(sos, dangChon)
+    const cu = markerSosTheoId.get(sos.id)
+    if (cu?.chuKy === chuKy) continue
+    if (cu) canGo.push(cu.marker)
+    const marker = taoMarkerSos(sos, dangChon)
+    markerSosTheoId.set(sos.id, { marker, chuKy })
+    canThem.push(marker)
   }
-  // Thêm theo lô (addLayers) thay vì từng cái: MarkerClusterGroup tính cụm 1 lần cho cả lô.
-  if (sosLayer instanceof L.MarkerClusterGroup) sosLayer.addLayers(markers)
-  else markers.forEach((m) => m.addTo(sosLayer as L.LayerGroup))
+  for (const [id, { marker }] of markerSosTheoId) {
+    if (conTrongDs.has(id)) continue
+    canGo.push(marker)
+    markerSosTheoId.delete(id)
+  }
+  // Gỡ trước, thêm sau — và theo lô: MarkerClusterGroup tính cụm 1 lần cho cả lô.
+  if (canGo.length) {
+    if (sosLayer instanceof L.MarkerClusterGroup) sosLayer.removeLayers(canGo as L.Marker[])
+    else canGo.forEach((m) => sosLayer?.removeLayer(m))
+  }
+  if (canThem.length) {
+    if (sosLayer instanceof L.MarkerClusterGroup) sosLayer.addLayers(canThem)
+    else canThem.forEach((m) => m.addTo(sosLayer as L.LayerGroup))
+  }
 }
 
 // F-MAP-03: chế độ bản đồ nhiệt thay cho marker SOS (không vẽ chồng cả hai — rối mắt).
@@ -292,6 +328,7 @@ onBeforeUnmount(() => {
   map?.remove()
   map = null
   sosLayer = null
+  markerSosTheoId.clear()
   heatLayer = null
   teamLayer = null
   routeLayer = null
