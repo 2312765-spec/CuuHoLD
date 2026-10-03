@@ -451,11 +451,18 @@ onUnmounted(() => {
 .rescuer-map {
   position: relative;
   z-index: 0;
-  height: 42vh;
-  min-height: 260px;
+  /* 42vh/min 260px cũ quá thấp để vừa thấy đường chim bay vừa thấy vùng quanh nạn nhân. */
+  height: clamp(360px, 60vh, 720px);
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
+}
+/* Điện thoại dọc: 360px tối thiểu chiếm gần hết màn thấp → theo tỉ lệ màn hình, chừa chỗ
+   cho thẻ nhiệm vụ đầu tiên lộ ra bên dưới. */
+@media (max-width: 480px) {
+  .rescuer-map {
+    height: 55vh;
+  }
 }
 .map-hint {
   margin: 8px 2px 14px;

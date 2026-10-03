@@ -550,7 +550,9 @@ async function confirmAssign(team: NearestTeam) {
   border-radius: 10px;
   background: var(--fog, #f6f1e7);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
-  font-size: 14px;
+  /* 15px + nút/ô chọn cao 44px: thao tác chạm trên bản đồ, thường đang di chuyển/ngoài trời.
+     Nút zoom Leaflet ở góc trên TRÁI nên hộp lớn hơn không che nó. */
+  font-size: 15px;
   color: var(--ink, #2a2a24);
 }
 .map-che-do__nhom {
@@ -561,7 +563,7 @@ async function confirmAssign(team: NearestTeam) {
   overflow: hidden;
 }
 .map-che-do__nhom button {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 10px;
   border: 0;
   background: transparent;
@@ -575,7 +577,7 @@ async function confirmAssign(team: NearestTeam) {
   font-weight: 600;
 }
 .map-che-do select {
-  min-height: 34px;
+  min-height: 44px;
   border: 1px solid var(--line, #d8d0bd);
   border-radius: 6px;
   background: #ffffff;
