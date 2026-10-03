@@ -4,7 +4,7 @@
 // Tách riêng khỏi useLeafletMap vì composable đó gắn với dữ liệu minh hoạ
 // (DiemCuuTro/BaoCaoSuCo) + lớp ranh giới, còn ở đây chỉ cần marker SOS thật.
 
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import '@/utils/leafletPlugins'
@@ -48,6 +48,10 @@ const STATUS_COLOR: Record<SosStatus, string> = {
 
 const mapContainer = ref<HTMLDivElement | null>(null)
 let map: L.Map | null = null
+// Cho màn cha gắn thêm control lên chính bản đồ này (nút "Vị trí của tôi") mà không phải sửa
+// RescueMap. shallowRef: không bọc đối tượng Leaflet trong proxy phản ứng.
+const mapInstance = shallowRef<L.Map | null>(null)
+defineExpose({ mapInstance })
 // Là MarkerClusterGroup khi gomCum, LayerGroup thường khi không — cùng API addLayers/clearLayers.
 let sosLayer: L.LayerGroup | null = null
 let heatLayer: L.HeatLayer | null = null
@@ -350,9 +354,11 @@ onMounted(() => {
   buildTeamLayer()
   buildRouteLayer()
   focusSelected()
+  mapInstance.value = map
 })
 
 onBeforeUnmount(() => {
+  mapInstance.value = null
   map?.remove()
   map = null
   sosLayer = null

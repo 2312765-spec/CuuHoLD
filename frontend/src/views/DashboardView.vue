@@ -6,6 +6,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import '@/assets/map-style.css'
 import RescueMap from '@/components/map/RescueMap.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
 import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
@@ -21,6 +22,9 @@ import { useSosStats } from '@/composables/useSosStats'
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
+// Bản đồ thật bên trong RescueMap — để gắn nút "Vị trí của tôi" lên đúng bản đồ đó.
+const banDoRef = ref<InstanceType<typeof RescueMap> | null>(null)
+const banDo = computed(() => banDoRef.value?.mapInstance ?? null)
 
 const SOS_TYPE_LABEL: Record<SosType, string> = {
   flood: 'Lũ lụt',
@@ -264,6 +268,7 @@ async function confirmAssign(team: NearestTeam) {
       <div class="dashboard-map">
         <!-- Bản đồ hiện đúng danh sách ĐÃ LỌC (F-MAP-02) để khớp với cột bên phải. -->
         <RescueMap
+          ref="banDoRef"
           :sos-list="danhSachLoc"
           :teams="teams"
           :selected-sos-id="selectedSosId"
@@ -272,6 +277,7 @@ async function confirmAssign(team: NearestTeam) {
           @select-sos="onSelectSosFromMap"
           @tile-error="onTileError"
         />
+        <ViTriCuaToi :map="banDo" />
         <div class="map-che-do">
           <div class="map-che-do__nhom" role="radiogroup" aria-label="Cách hiển thị SOS trên bản đồ">
             <button

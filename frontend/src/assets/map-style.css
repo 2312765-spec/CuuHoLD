@@ -206,6 +206,10 @@
 .leaflet-top.leaflet-right .leaflet-control-zoom{
   margin-top:106px; margin-right:16px;
 }
+/* Nút "Vị trí của tôi" (ViTriCuaToi.vue) ở góc trên TRÁI của trang /map: góc phải đã có zoom +
+   thẻ theo dõi SOS. Cùng mức đẩy xuống dưới thanh MapStats như nút zoom. Chỉ #map (trang /map) —
+   bản đồ Dashboard/Rescuer không có thanh trên nên giữ mặc định, nằm ngay dưới nút zoom. */
+#map .leaflet-top.leaflet-left .vi-tri-control{ margin-top:106px; }
 
 /* ---------- phần bên phải thanh topbar bản đồ (nút + user) ---------- */
 .map-top-right{ display:flex; align-items:center; gap:8px; }
@@ -251,6 +255,7 @@
   /* Màn hẹp: thanh trên xuống dòng → MapStats nằm 96–132px. Để margin 106px của desktop thì nút
      zoom đè lên thanh thống kê. */
   .leaflet-top.leaflet-right .leaflet-control-zoom{ margin-top:142px; }
+  #map .leaflet-top.leaflet-left .vi-tri-control{ margin-top:142px; }
 }
 /* Tooltip marker trên RescueMap (commander/rescuer) — canh chữ đẹp, không dính viền
    như tooltip mặc định Leaflet. Không scoped vì Leaflet render tooltip ngoài component. */

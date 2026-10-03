@@ -21,6 +21,7 @@ vi.mock('@/composables/useSocket', () => ({
 import { layDanhSachSos, xemChiTietSos } from '@/services/sosService'
 import { timDoiGanNhat } from '@/services/gisService'
 import DashboardView from './DashboardView.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
 
 function sos(id: string, status: SosListItem['status']): SosListItem {
   return {
@@ -82,5 +83,14 @@ describe('DashboardView — modal khi bấm SOS', () => {
     expect(w.find('.modal-card h3').text()).toBe('Chi tiết yêu cầu SOS')
     expect(w.find('.modal-card').text()).toContain('Đã huỷ')
     expect(timDoiGanNhat).not.toHaveBeenCalled()
+  })
+})
+
+describe('DashboardView — nút Vị trí của tôi', () => {
+  it('có gắn ViTriCuaToi (tự xin vị trí, commander không có watcher GPS sẵn)', async () => {
+    const w = await gan([])
+    const nut = w.findComponent(ViTriCuaToi)
+    expect(nut.exists()).toBe(true)
+    expect(nut.props('nguonNgoai')).toBeUndefined()
   })
 })

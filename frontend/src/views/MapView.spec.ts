@@ -61,6 +61,7 @@ import { useToastStore } from '@/stores/toast'
 import { layViTriHienTai } from '@/utils/geolocation'
 import { guiSos } from '@/services/sosService'
 import MapView from './MapView.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
 
 // vi.mock được kéo lên đầu file nên biến dùng trong factory phải khai báo bằng vi.hoisted.
 const { themSosVaoHangDoi } = vi.hoisted(() => ({ themSosVaoHangDoi: vi.fn() }))
@@ -128,5 +129,17 @@ describe('MapView — gửi SOS: toạ độ + cờ vị trí ước tính', () 
     expect(themSosVaoHangDoi).toHaveBeenCalledWith(
       expect.objectContaining({ lat: 11.94, lng: 108.44, type: 'medical', locationEstimated: true })
     )
+  })
+})
+
+describe('MapView — nút Vị trí của tôi', () => {
+  it('có gắn ViTriCuaToi lên bản đồ của trang, tự xin vị trí (không dùng nguồn ngoài)', async () => {
+    const w = mount(MapView, {
+      global: { stubs: { MapTopBar: true, MapStats: true, MapLegend: true, SosTrackerPanel: true, AuthModal: true } }
+    })
+    await flushPromises()
+    const nut = w.findComponent(ViTriCuaToi)
+    expect(nut.exists()).toBe(true)
+    expect(nut.props('nguonNgoai')).toBeUndefined()
   })
 })

@@ -15,6 +15,7 @@ import type { MapLayerKey } from '@/types'
 import MapTopBar from '@/components/map/MapTopBar.vue'
 import MapStats from '@/components/map/MapStats.vue'
 import MapLegend from '@/components/map/MapLegend.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
 import SosButton from '@/components/sos/SosButton.vue'
 import SosConfirmDialog from '@/components/sos/SosConfirmDialog.vue'
 import SosTrackerPanel from '@/components/sos/SosTrackerPanel.vue'
@@ -418,6 +419,8 @@ watch(activeLayer, (layer) => {
     <MapTopBar @open-auth="isAuthOpen = true" />
     <MapStats />
     <div id="map"></div>
+    <!-- Mọi vai trò (kể cả khách): xem mình đang ở đâu, không gửi gì đi. -->
+    <ViTriCuaToi :map="mapInstance" />
     <MapLegend />
     <!-- Nút SOS nổi — chỉ hiện cho người dân (victim). Ẩn khi có SOS chưa kết thúc HOẶC
          đang chờ response gửi (dangGui) — thiếu vế sau từng là race condition thật: dialog

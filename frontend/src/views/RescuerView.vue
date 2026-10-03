@@ -17,6 +17,8 @@ import SosTimeline from '@/components/sos/SosTimeline.vue'
 import { fetchRescueTeams, capNhatViTriDoi } from '@/services/rescueTeamsService'
 import { khoangCachMet, etaPhut } from '@/utils/geo'
 import RescueMap from '@/components/map/RescueMap.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
+import { diemTuViTriTrinhDuyet, type DiemGps } from '@/utils/locViTri'
 import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
 import type { SosRequest, SosType, SosStatus, RescueTeam } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
@@ -176,6 +178,9 @@ const hasActiveSos = computed(() => sosList.value.some((s) => ACTIVE_STATUSES.in
 let watchId: number | null = null
 let sendIntervalId: ReturnType<typeof setInterval> | null = null
 const lastPosition = ref<{ lat: number; lng: number } | null>(null)
+// Cùng điểm đó kèm sai số + mốc thời gian, CHỈ cho nút "Vị trí của tôi" hiển thị (dùng lại
+// watcher này thay vì mở watcher thứ hai). Gửi vị trí đội vẫn dùng lastPosition ở trên.
+const diemGpsMoiNhat = ref<DiemGps | null>(null)
 
 async function guiViTriLenServer(): Promise<void> {
   if (!myTeamId.value || !lastPosition.value) return
@@ -191,6 +196,7 @@ function batDauTheoDoiGps(): void {
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
       lastPosition.value = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+      diemGpsMoiNhat.value = diemTuViTriTrinhDuyet(pos)
     },
     () => {
       toastStore.showToast('Không lấy được vị trí GPS — kiểm tra quyền truy cập vị trí.')
@@ -210,6 +216,7 @@ function dungTheoDoiGps(): void {
     sendIntervalId = null
   }
   lastPosition.value = null
+  diemGpsMoiNhat.value = null
 }
 
 watch(
@@ -224,6 +231,9 @@ watch(
 // ---------- Bản đồ: đường từ vị trí mình tới nạn nhân của nhiệm vụ đang chọn ----------
 // Đội cứu hộ khác không vẽ — rescuer chỉ cần thấy chính mình và nạn nhân.
 const KHONG_VE_DOI: RescueTeam[] = []
+// Bản đồ thật bên trong RescueMap — để gắn nút "Vị trí của tôi" lên đúng bản đồ đó.
+const banDoRef = ref<InstanceType<typeof RescueMap> | null>(null)
+const banDo = computed(() => banDoRef.value?.mapInstance ?? null)
 
 const selectedSosId = ref<string | null>(null)
 // Chưa chọn (hoặc nhiệm vụ đang chọn vừa kết thúc) → mặc định nhiệm vụ đầu danh sách.
@@ -288,6 +298,7 @@ onUnmounted(() => {
       <template v-else>
         <div class="rescuer-map">
           <RescueMap
+            ref="banDoRef"
             :sos-list="sosList"
             :teams="KHONG_VE_DOI"
             :selected-sos-id="selectedSos?.id ?? null"
@@ -295,6 +306,7 @@ onUnmounted(() => {
             @select-sos="chonNhiemVu"
             @tile-error="onTileError"
           />
+          <ViTriCuaToi :map="banDo" :nguon-ngoai="diemGpsMoiNhat" />
         </div>
         <p class="map-hint">
           {{
