@@ -428,7 +428,13 @@ async function confirmAssign(team: NearestTeam) {
   height: 100vh;
   background: var(--fog);
 }
+/* style.css có rule toàn cục `header { position: fixed }` viết cho header trang chủ — áp nhầm
+   lên header này: nó không chiếm chỗ, bản đồ + bảng thống kê trượt lên nằm dưới nó, chữ lộ qua
+   nền bán trong suốt. sticky (cùng cách RescuerView): chiếm chỗ bình thường trong cột flex
+   100vh của .dashboard-page; top: 0 để sticky có tác dụng thật. */
 .dashboard-top {
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -523,11 +529,14 @@ async function confirmAssign(team: NearestTeam) {
   display: flex;
   min-height: 0;
 }
+/* z-index: 0 tạo stacking context riêng (như .rescuer-map): pane Leaflet (z 400+) và
+   .map-che-do (z 800) chỉ xếp lớp TRONG vùng bản đồ, không vẽ đè header (z 50). */
 .dashboard-map {
   flex: 0 0 60%;
   max-width: 60%;
   height: 100%;
   position: relative;
+  z-index: 0;
 }
 /* Bảng chọn chế độ bản đồ (F-MAP-03/05) — góc trên phải, trên các pane Leaflet (z 400+). */
 .map-che-do {
@@ -770,8 +779,11 @@ async function confirmAssign(team: NearestTeam) {
   .dashboard-map {
     height: 45vh;
   }
+  /* Lấp phần còn lại thay vì cứng 55vh: header giờ chiếm chỗ (sticky), 45vh + 55vh + header
+     sẽ tràn quá 100vh của .dashboard-page. Danh sách vẫn tự cuộn bên trong (overflow-y). */
   .dashboard-panel {
-    height: 55vh;
+    flex: 1;
+    min-height: 0;
     border-left: none;
     border-top: 1px solid var(--line);
   }
