@@ -742,7 +742,7 @@ async function confirmAssign(team: NearestTeam) {
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .stat-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--fog); border: 1px solid var(--line); }
 .stat-num { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; line-height: 1; color: var(--pine-deep); }
-.stat-lbl { font-size: 13px; color: rgba(42,42,36,0.6); }
+.stat-lbl { font-size: 13px; color: rgba(42,42,36,0.75); } /* 0.6 chỉ đạt 3.8:1 trên --fog */
 .stat-total { background: var(--pine-deep); border-color: var(--pine-deep); }
 .stat-total .stat-num { color: var(--fog); }
 .stat-total .stat-lbl { color: rgba(245,241,230,0.7); }
@@ -756,15 +756,9 @@ async function confirmAssign(team: NearestTeam) {
 .stat-bar-fill { display: block; height: 100%; border-radius: 5px; background: var(--clay); transition: width 0.3s ease; }
 .stat-bar-val { flex: 0 0 24px; text-align: right; font-size: 13px; font-weight: 600; color: var(--ink); }
 
-:root[data-theme="dark"] .stat-card { background: rgba(255,255,255,0.04); border-color: rgba(236,231,217,0.14); }
-:root[data-theme="dark"] .stat-num { color: #ece7d9; }
-:root[data-theme="dark"] .stat-lbl,
-:root[data-theme="dark"] .stat-bar-lbl { color: rgba(236,231,217,0.7); }
-:root[data-theme="dark"] .stat-total { background: rgba(127,174,140,0.16); border-color: rgba(127,174,140,0.3); }
-:root[data-theme="dark"] .stat-total .stat-num { color: #f3efe3; }
-:root[data-theme="dark"] .stat-total .stat-lbl { color: rgba(236,231,217,0.75); }
-:root[data-theme="dark"] .stat-bars-title,
-:root[data-theme="dark"] .stat-bar-val { color: #ece7d9; }
+/* KHÔNG có luật dark riêng cho khu thống kê: .dashboard-panel luôn nền trắng (trang giữ nền
+   sáng ở dark mode, xem style.css), luật cũ ép chữ kem sáng → ~1.0–1.2:1, gần như vô hình.
+   Khoá bằng tuongPhanChu.spec.ts. */
 
 @media (max-width: 900px) {
   .dashboard-body {

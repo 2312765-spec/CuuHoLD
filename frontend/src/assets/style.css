@@ -288,6 +288,12 @@ section{ padding:56px 0; }
   .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) :is(h1, h2, h3){ color:var(--pine-deep); }
 :root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
   .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
+/* Chữ GỐC của chính các vùng đó: body đổi chữ sang kem sáng ở dark mode, phần tử không tự khai
+   báo màu (VD tên nạn nhân .sos-victim) kế thừa chữ kem trên thẻ trắng → ~1.3:1, gần như vô
+   hình. Trả về --ink như chế độ sáng; color-scheme light để ô nhập/thanh cuộn gốc cũng sáng.
+   Khoá bằng src/views/tuongPhanChu.spec.ts. */
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker){ color:var(--ink); color-scheme:light; }
 
 /* Nút menu (hamburger/✕) + nút ⚙ Cài đặt hiển thị (ThemeToggle) nằm trên header TỐI của trang chủ:
    trước đây chữ/nét màu --ink cố định → gần như vô hình. */
