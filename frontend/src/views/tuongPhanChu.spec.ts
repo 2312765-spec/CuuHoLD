@@ -34,14 +34,8 @@ const LUAT_CHUNG = [
   ...docLuat('../assets/map-style.css', import.meta.url)
 ]
 
-// Ngoại lệ CÓ CHỦ ĐÍCH (selector của phần tử → lý do). Chỉ thêm kèm lý do.
-// Số liệu theo trạng thái tô màu riêng (.sc-*) — lỗi tương phản SẴN CÓ ở cả chế độ sáng
-// (cam #d99a35 ≈ 2.2:1, xanh #2f7d4f ≈ 4.4:1 trên nền --fog), không thuộc lỗi dark mode đang
-// sửa; đã báo lại để duyệt màu riêng. Xoá dòng khi đã đổi màu.
-const NGOAI_LE: Record<string, string> = {
-  '.sc-in_progress .stat-num': 'màu trạng thái sẵn có, chờ duyệt',
-  '.sc-resolved .stat-num': 'màu trạng thái sẵn có, chờ duyệt'
-}
+// KHÔNG có ngoại lệ: số liệu theo trạng thái (.sc-*) cũng phải ≥ 4.5:1 — màu trạng thái chỉ
+// dùng cho viền thẻ, chữ số dùng sắc đậm cùng tông (xem DashboardView.vue).
 
 const CHE_DO = [
   { ten: 'sáng', theme: null, contrast: null },
@@ -98,13 +92,14 @@ function datCheDo(theme: string | null, contrast: string | null): void {
   else html.removeAttribute('data-contrast')
 }
 
-// Mỗi phần tử khớp selector → tỉ lệ tương phản thật (bỏ phần tử thuộc ngoại lệ).
+// Mỗi phần tử khớp selector → tỉ lệ tương phản thật.
 function doTuongPhan(w: VueWrapper, luat: LuatCss[], chon: string): { the: string; tiLe: number }[] {
   return w.findAll(chon)
-    .filter((n) => !Object.keys(NGOAI_LE).some((ngoaiLe) => n.element.matches(ngoaiLe)))
     .map((n) => {
       const chu = docMau(giaTriTinhToan(n.element, 'color', luat) ?? '#000')
-      return { the: `${chon} "${n.text()}"`, tiLe: Math.round(tiLeTuongPhan(chu, mauNen(n.element, luat)) * 100) / 100 }
+      // Ghi kèm class của thẻ cha để biết số nào (VD .sc-in_progress) khi đỏ.
+      const cha = n.element.parentElement?.className ?? ''
+      return { the: `${chon} "${n.text()}" trong .${cha.replace(/\s+/g, '.')}`, tiLe: Math.round(tiLeTuongPhan(chu, mauNen(n.element, luat)) * 100) / 100 }
     })
 }
 
@@ -122,6 +117,9 @@ describe.each(CHE_DO)('tương phản chữ ≥ 4.5:1 — chế độ $ten', ({ 
     datCheDo(theme, contrast)
     const kq = CHON.flatMap((c) => doTuongPhan(dash, luatDash, c))
     expect(kq.length).toBeGreaterThan(8) // đã thật sự render: 1 tổng + 2 thẻ số liệu + thanh theo loại + 2 SOS
+    // Thẻ trạng thái luôn render (kể cả số 0) → chắc chắn đã đo 2 màu từng là ngoại lệ.
+    expect(dash.find('.sc-in_progress .stat-num').exists()).toBe(true)
+    expect(dash.find('.sc-resolved .stat-num').exists()).toBe(true)
     expect(kq.filter((k) => k.tiLe < SAN_AA)).toEqual([])
   })
 

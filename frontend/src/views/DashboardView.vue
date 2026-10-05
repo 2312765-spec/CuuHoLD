@@ -748,9 +748,16 @@ async function confirmAssign(team: NearestTeam) {
 .stat-total { background: var(--pine-deep); border-color: var(--pine-deep); }
 .stat-total .stat-num { color: var(--fog); }
 .stat-total .stat-lbl { color: rgba(245,241,230,0.7); }
+/* Màu trạng thái gốc (cam #d99a35, xanh #2f7d4f) chỉ đạt 2.16 và 4.47:1 trên --fog → không dùng
+   cho CHỮ. Giữ màu gốc ở viền trái để nhận diện trạng thái, chữ số dùng sắc đậm cùng tông:
+   #8a5a12 ≈ 5.2:1, #2a6e45 ≈ 5.5:1 (khoá bằng tuongPhanChu.spec.ts). Không dựa vào ngưỡng 3:1
+   "chữ lớn": 22px chưa tới 24px, còn font-weight 600 chưa chắc tính là đậm theo WCAG. */
+.sc-pending { border-left: 4px solid var(--clay); }
+.sc-in_progress { border-left: 4px solid #d99a35; }
+.sc-resolved { border-left: 4px solid #2f7d4f; }
 .sc-pending .stat-num { color: var(--clay); }
-.sc-in_progress .stat-num { color: #d99a35; }
-.sc-resolved .stat-num { color: #2f7d4f; }
+.sc-in_progress .stat-num { color: #8a5a12; }
+.sc-resolved .stat-num { color: #2a6e45; }
 .stat-bars-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
 .stat-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .stat-bar-lbl { flex: 0 0 84px; font-size: 13px; color: rgba(42,42,36,0.7); }
