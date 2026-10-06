@@ -2,9 +2,20 @@
 // LƯU Ý field naming: response REST của backend nhiều chỗ snake_case (api-contract Mục 2),
 // nên type khớp response REST giữ snake_case; payload socket là camelCase (ở shared).
 
-export type { SosType, SosStatus, UserRole, RescueTeamStatus } from '@/shared/socket-events.types'
+export type {
+  SosType,
+  SosStatus,
+  UserRole,
+  RescueTeamStatus,
+  HazardType
+} from '@/shared/socket-events.types'
 
-import type { SosType, SosStatus, RescueTeamStatus } from '@/shared/socket-events.types'
+import type {
+  SosType,
+  SosStatus,
+  RescueTeamStatus,
+  HazardType
+} from '@/shared/socket-events.types'
 
 // ---- SOS: khớp response GET /api/sos/:id (snake_case) ----
 export interface SosRequest {
@@ -72,6 +83,56 @@ export interface RescueTeam {
   leader_phone: string
 }
 
+// ---- Thống kê SOS theo xã: khớp response GET /api/gis/sos-heatmap (snake_case) ----
+export interface SosHeatmapPoint {
+  lat: number
+  lng: number
+  ward_code: string
+  ward_name: string
+  incident_count: number
+}
+
+// ---- Thống kê tổng quan: khớp response GET /api/gis/stats (snake_case) ----
+export interface CountByKey {
+  key: string
+  count: number
+}
+export interface StatsResult {
+  total_sos: number
+  sos_by_status: CountByKey[]
+  sos_by_type: CountByKey[]
+  avg_response_minutes: number | null
+  teams_by_status: CountByKey[]
+  flagged_users_count: number
+}
+
+// ---- Hệ thống: khớp GET /api/system/status và /api/system/activity (snake_case) ----
+export interface SystemStatus {
+  node_env: string
+  uptime_seconds: number
+  database: { ok: boolean; latency_ms: number | null }
+  integrations: {
+    ors_configured: boolean
+    esms_configured: boolean
+    esms_brandname_configured: boolean
+  }
+  counts: {
+    users_by_role: CountByKey[]
+    flagged_users: number
+    inactive_users: number
+    rescue_teams: number
+    active_hazards: number
+  }
+}
+
+export interface ActivityLogEntry {
+  at: string
+  kind: 'sos' | 'hazard'
+  action: string
+  actor_name: string | null
+  detail: string | null
+}
+
 // ---- Đội gần nhất: khớp response GET /api/gis/nearest-teams (snake_case) ----
 export interface NearestTeam {
   id: string
@@ -84,6 +145,119 @@ export interface NearestTeam {
   eta_minutes: number
   leader_name: string
   leader_phone: string
+}
+
+// ---- Cảnh báo/chặn đường: khớp response GET/POST/PATCH /api/hazards (snake_case) ----
+// 'blocked' = ĐỎ: chặn đường, thuật toán tìm đường né. 'caution' = VÀNG: cẩn trọng, chỉ hiển thị.
+export type HazardSeverity = 'blocked' | 'caution'
+
+export interface Hazard {
+  id: string
+  type: HazardType
+  description: string | null
+  lat: number
+  lng: number
+  radius_meters: number
+  severity: HazardSeverity
+  ward_code: string | null
+  is_active: boolean
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface CreateHazardPayload {
+  type: HazardType
+  description?: string
+  lat: number
+  lng: number
+  radiusMeters?: number
+  severity?: HazardSeverity
+}
+
+// ---- Báo cáo cộng đồng: khớp /api/hazard-reports (snake_case) ----
+export type ReportStatus = 'pending' | 'approved' | 'rejected'
+
+export interface HazardReport {
+  id: string
+  type: HazardType
+  description: string | null
+  lat: number
+  lng: number
+  accuracy_m: number | null
+  location_estimated: boolean
+  has_image: boolean
+  status: ReportStatus
+  ward_code: string | null
+  created_at: string
+  reviewed_at: string | null
+  review_note: string | null
+  hazard_id: string | null
+  // Khác null = báo cáo này đã được GỘP vào báo cáo chính (cùng loại, cùng điểm trong 100 m).
+  duplicate_of: string | null
+}
+
+// Cảnh báo đang hoạt động đã phủ khu vực của báo cáo.
+export interface NearbyHazard {
+  id: string
+  type: HazardType
+  severity: HazardSeverity
+  distance_m: number
+}
+
+// Kết quả POST /api/hazard-reports: cho người báo biết báo cáo có được gộp không.
+export interface CreateReportResult extends HazardReport {
+  merged: boolean
+  // Số người (khác nhau) đã báo điểm này, tính cả người vừa gửi.
+  group_reporter_count: number
+  nearby_hazard: NearbyHazard | null
+}
+
+// Một báo cáo đã gộp vào báo cáo chính — commander xem ảnh/mô tả của từng người.
+export interface ReportFollower {
+  id: string
+  reporter_id: string
+  reporter_name: string
+  reporter_phone: string
+  description: string | null
+  accuracy_m: number | null
+  has_image: boolean
+  created_at: string
+}
+
+// Bản dành cho commander kiểm duyệt (hàng đợi + lịch sử): có thêm người báo, người duyệt, các
+// báo cáo đã gộp.
+export interface HazardReportAdmin extends HazardReport {
+  reporter_id: string
+  reporter_name: string
+  reporter_phone: string
+  reviewed_by_name: string | null
+  // Chỉ có khi đã duyệt: mức độ + trạng thái hiện tại của cảnh báo sinh ra từ báo cáo này.
+  hazard_severity: HazardSeverity | null
+  hazard_is_active: boolean | null
+  duplicate_count: number
+  // Số người khác nhau đã báo điểm này (tính cả người báo chính).
+  reporter_count: number
+  nearby_hazard: NearbyHazard | null
+  duplicates: ReportFollower[]
+}
+
+// Kết quả PATCH approve/reject — merged_count = số báo cáo trùng xử lý theo cùng.
+export interface ReviewOutcome {
+  report: HazardReport
+  merged_count: number
+}
+
+// ---- Kết quả GET /api/routing/route (snake_case, giống các response REST khác) ----
+export interface RouteResult {
+  distance_meters: number
+  duration_seconds: number
+  // [lat, lng] — backend đã đảo từ GeoJSON [lng, lat] của OpenRouteService, dùng thẳng cho Leaflet.
+  geometry: [number, number][]
+  // lat/lng: điểm bắt đầu của bước rẽ — dùng để phát hiện rescuer đã tới gần mà đọc to lên.
+  instructions: { text: string; distance_meters: number; lat: number; lng: number }[]
+  // Tuyến gợi ý (nhạt hơn trên bản đồ) — cùng có hoặc cùng không với alternate_distance_meters.
+  alternate_geometry?: [number, number][]
+  alternate_distance_meters?: number
 }
 
 // ---- Kết quả PATCH /api/sos/:id/cancel (camelCase) ----

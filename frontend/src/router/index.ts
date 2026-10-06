@@ -21,6 +21,31 @@ const router = createRouter({
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
       meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
+    },
+    {
+      path: '/users',
+      name: 'users',
+      component: () => import('@/views/UsersView.vue'),
+      meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
+    },
+    {
+      // Mọi vai trò đã đăng nhập đều báo cáo được (người dân, tình nguyện viên/cứu hộ, chỉ huy).
+      path: '/report',
+      name: 'report',
+      component: () => import('@/views/ReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/system',
+      name: 'system',
+      component: () => import('@/views/SystemView.vue'),
+      meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
+    },
+    {
+      path: '/stats',
+      name: 'stats',
+      component: () => import('@/views/StatsView.vue'),
+      meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
     }
   ]
 })

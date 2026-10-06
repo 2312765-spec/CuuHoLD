@@ -5,7 +5,9 @@ import type {
   SosNewPayload,
   SosUpdatedPayload,
   TeamLocationPayload,
-  SystemNotificationPayload
+  SystemNotificationPayload,
+  HazardReportNewPayload,
+  HazardReportReviewedPayload
 } from '@/shared/socket-events.types'
 
 // Sự kiện SERVER gửi XUỐNG cho client
@@ -14,6 +16,8 @@ export interface ServerToClientEvents {
   'sos:updated': (data: SosUpdatedPayload) => void
   'team:location-updated': (data: TeamLocationPayload) => void
   'notification:system': (data: SystemNotificationPayload) => void
+  'hazard-report:new': (data: HazardReportNewPayload) => void
+  'hazard-report:reviewed': (data: HazardReportReviewedPayload) => void
 }
 
 // Sự kiện CLIENT gửi LÊN cho server
