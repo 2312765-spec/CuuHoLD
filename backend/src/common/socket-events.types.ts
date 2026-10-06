@@ -31,11 +31,19 @@ export type UserRole = 'victim' | 'rescuer' | 'commander';
 
 export type RescueTeamStatus = 'available' | 'busy' | 'offline';
 
+// Cảnh báo/chặn đường và báo cáo cộng đồng về chúng (CLAUDE.md Mục 15.14, 15.16).
+export type HazardType =
+  'landslide' | 'fallen_tree' | 'flood' | 'danger' | 'other';
+
+export type HazardReportStatus = 'pending' | 'approved' | 'rejected';
+
 export const SOCKET_EVENTS = {
   SOS_NEW: 'sos:new',
   SOS_UPDATED: 'sos:updated',
   TEAM_LOCATION_UPDATED: 'team:location-updated',
   NOTIFICATION_SYSTEM: 'notification:system',
+  HAZARD_REPORT_NEW: 'hazard-report:new',
+  HAZARD_REPORT_REVIEWED: 'hazard-report:reviewed',
   TEAM_UPDATE_LOCATION: 'team:update-location',
   SOS_VICTIM_CANCEL: 'sos:victim-cancel',
   COMMANDER_ASSIGN_TEAM: 'commander:assign-team',
@@ -83,6 +91,32 @@ export interface SystemNotificationPayload {
   level: 'info' | 'warning' | 'critical';
   wardCode?: string;
   createdAt: string;
+}
+
+// Báo cáo cộng đồng mới chờ duyệt — CHỈ gửi cho commander (phòng province:lamdong), KHÔNG bao giờ
+// gửi vào phòng ward:* vì có tên người báo. Khi báo cáo là bản TRÙNG được gộp vào báo cáo chính,
+// mergedIntoReportId trỏ tới báo cáo chính (client chỉ cần làm mới hàng đợi, không thêm mục mới).
+export interface HazardReportNewPayload {
+  reportId: string;
+  mergedIntoReportId: string | null;
+  type: HazardType;
+  reporterName: string;
+  wardCode: string | null;
+  // Số người (khác nhau) đã báo cáo điểm này, tính cả báo cáo vừa gửi.
+  reporterCount: number;
+  createdAt: string;
+}
+
+// Một commander vừa duyệt/từ chối báo cáo — để commander khác làm mới hàng đợi/lịch sử. Cũng chỉ
+// gửi cho commander.
+export interface HazardReportReviewedPayload {
+  reportId: string;
+  status: 'approved' | 'rejected';
+  hazardId: string | null;
+  reviewerName: string;
+  // Số báo cáo trùng được xử lý theo cùng (không tính báo cáo chính).
+  mergedCount: number;
+  updatedAt: string;
 }
 
 // ── Client → Server ──────────────────────────────────────────

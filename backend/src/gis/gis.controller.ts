@@ -4,7 +4,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GisService } from './gis.service';
-import type { NearestTeamResult, SosHeatmapResult } from './gis.service';
+import type {
+  NearestTeamResult,
+  SosHeatmapResult,
+  StatsResult,
+} from './gis.service';
 import { NearestTeamsQueryDto } from './dto/nearest-teams-query.dto';
 import { SosHeatmapQueryDto } from './dto/sos-heatmap-query.dto';
 
@@ -17,6 +21,12 @@ interface NearestTeamsResponse {
 interface SosHeatmapResponse {
   success: true;
   data: SosHeatmapResult[];
+  message: string;
+}
+
+interface StatsResponse {
+  success: true;
+  data: StatsResult;
   message: string;
 }
 
@@ -49,6 +59,22 @@ export class GisController {
     @Query() query: SosHeatmapQueryDto,
   ): Promise<SosHeatmapResponse> {
     const data = await this.gisService.getSosHeatmap(
+      new Date(query.from),
+      new Date(query.to),
+    );
+    return { success: true, data, message: 'OK' };
+  }
+
+  // Dùng chung SosHeatmapQueryDto (from/to ISO8601) — cùng shape, không tạo DTO riêng chỉ để
+  // đổi tên.
+  @Get('stats')
+  @Roles('commander')
+  @ApiOperation({
+    summary:
+      'Thống kê tổng quan: SOS theo trạng thái/loại, thời gian phản hồi, đội, tài khoản bị flag',
+  })
+  async stats(@Query() query: SosHeatmapQueryDto): Promise<StatsResponse> {
+    const data = await this.gisService.getStats(
       new Date(query.from),
       new Date(query.to),
     );

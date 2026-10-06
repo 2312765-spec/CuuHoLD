@@ -11,6 +11,10 @@ import { AuthModule } from './auth/auth.module';
 import { SosModule } from './sos/sos.module';
 import { GisModule } from './gis/gis.module';
 import { RescueTeamsModule } from './rescue-teams/rescue-teams.module';
+import { RoutingModule } from './routing/routing.module';
+import { HazardsModule } from './hazards/hazards.module';
+import { SystemModule } from './system/system.module';
+import { HazardReportsModule } from './hazard-reports/hazard-reports.module';
 import { envValidationSchema } from './config/env.validation';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 
@@ -50,6 +54,14 @@ import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
     GisModule,
 
     RescueTeamsModule,
+
+    RoutingModule,
+
+    HazardsModule,
+
+    SystemModule,
+
+    HazardReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: UserThrottlerGuard }],
