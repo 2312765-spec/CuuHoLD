@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -14,6 +15,8 @@ import { User } from '../users/user.entity';
 import { SosGateway } from './sos.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GisService } from '../gis/gis.service';
+import { RoutingService } from '../routing/routing.service';
+import type { TravelEstimate } from '../routing/routing.service';
 import type {
   SosNewPayload,
   SosUpdatedPayload,
@@ -31,8 +34,16 @@ const SOS_STATUS_TRANSITIONS: Partial<Record<SosStatus, SosStatus>> = {
 // bán kính tìm đội tự động lúc tạo SOS. SRS F-GIS-01: không có đội trong 10km → mở rộng lên
 // 20km. Cả 2 bán kính đều không có đội thì SOS giữ nguyên 'pending', đúng luồng cũ
 // (commander phân công tay qua PATCH /:id/assign).
-const AUTO_ASSIGN_RADIUS_M = 10000;
-const AUTO_ASSIGN_FALLBACK_RADIUS_M = 20000;
+// Mỗi tầng lấy tối đa `candidates` đội gần nhất theo đường chim bay để so sánh thời gian đi thật
+// (mỗi ứng viên = 1 lượt gọi OpenRouteService khi có cảnh báo; giữ nhỏ để không cạn quota free).
+const AUTO_ASSIGN_TIERS = [
+  { radiusM: 10000, candidates: 3 },
+  { radiusM: 20000, candidates: 5 },
+] as const;
+
+type RoutableNearestTeam = Awaited<
+  ReturnType<GisService['findNearestTeams']>
+>[number];
 
 // Dùng chung cho findById() và findMyActive() — cùng shape cột, chỉ khác WHERE.
 const SOS_DETAIL_SELECT = `
@@ -165,12 +176,15 @@ const LATE_CANCEL_FLAG_THRESHOLD = 3;
 
 @Injectable()
 export class SosService {
+  private readonly logger = new Logger(SosService.name);
+
   constructor(
     @InjectRepository(SosRequest) private sosRepo: Repository<SosRequest>,
     private dataSource: DataSource,
     private sosGateway: SosGateway,
     private notifications: NotificationsService,
     private gisService: GisService,
+    private routingService: RoutingService,
   ) {}
 
   async create(dto: CreateSosDto, victim: User): Promise<CreateSosResult> {
@@ -290,39 +304,68 @@ export class SosService {
     lng: number,
     victim: User,
   ): Promise<string | null> {
-    let [nearest] = await this.gisService.findNearestTeams(
-      lat,
-      lng,
-      AUTO_ASSIGN_RADIUS_M,
-      1,
-    );
-    if (!nearest) {
-      [nearest] = await this.gisService.findNearestTeams(
+    // Chọn đội theo 2 tầng bán kính (SRS F-GIS-01). Mỗi tầng lấy vài đội gần nhất theo đường
+    // chim bay rồi để RoutingService chọn đội ĐẾN NHANH NHẤT theo đường bộ thật, đã né các vùng
+    // cảnh báo chặn đường (sạt lở, cây đổ...). Đội bị chặn hẳn sẽ bị loại và đội kế tiếp (vẫn
+    // 'available', tức chưa được phân công — findNearestTeams chỉ trả đội 'available') được xét.
+    // Hết cả 2 tầng mà không chọn được ai → null, SOS giữ 'pending' cho commander phân công tay.
+    const tried = new Set<string>();
+    let chosen: RoutableNearestTeam | null = null;
+    let travel: TravelEstimate | null = null;
+    let closerSkipped = 0;
+
+    for (const tier of AUTO_ASSIGN_TIERS) {
+      const found = await this.gisService.findNearestTeams(
         lat,
         lng,
-        AUTO_ASSIGN_FALLBACK_RADIUS_M,
-        1,
+        tier.radiusM,
+        tier.candidates,
+      );
+      const candidates = found.filter((t) => !tried.has(t.id));
+      candidates.forEach((t) => tried.add(t.id));
+      if (candidates.length === 0) continue;
+
+      const pick = await this.routingService.pickBestTeamByRoad(
+        candidates,
+        lat,
+        lng,
+      );
+      if (pick.team) {
+        chosen = pick.team;
+        travel = pick.travel;
+        closerSkipped = pick.closerSkipped;
+        break;
+      }
+      this.logger.warn(
+        `SOS ${sosId}: ${candidates.length} đội trong ${tier.radiusM / 1000}km đều bị cảnh báo chặn đường tới nạn nhân`,
       );
     }
-    if (!nearest) return null;
+    if (!chosen) return null;
 
     await this.dataSource.query(
       `UPDATE sos_requests SET assigned_team_id=$2, status='assigned', updated_at=NOW() WHERE id=$1`,
-      [sosId, nearest.id],
+      [sosId, chosen.id],
     );
     await this.dataSource.query(
       `UPDATE rescue_teams SET status='busy', updated_at=NOW() WHERE id=$1`,
-      [nearest.id],
+      [chosen.id],
     );
     // actor_id gán cho chính victim — không có "commander" nào thao tác ở bước tự động
     // này, nhưng actor_id tham chiếu users.id nên không gán được giá trị hệ thống/null;
     // note phân biệt rõ đây là hành động tự động, không phải victim tự bấm.
+    const note = travel
+      ? `Tự động phân công đội: ${chosen.name} (đường bộ ~${Math.max(1, Math.round(travel.duration_seconds / 60))} phút, đã tránh vùng cảnh báo${
+          closerSkipped > 0
+            ? `; bỏ qua ${closerSkipped} đội gần hơn vì đường bị chặn hoặc đi lâu hơn`
+            : ''
+        })`
+      : `Tự động phân công đội gần nhất: ${chosen.name}`;
     await this.dataSource.query(
       `INSERT INTO sos_timeline (sos_id, actor_id, action, note) VALUES ($1, $2, 'assigned', $3)`,
-      [sosId, victim.id, `Tự động phân công đội gần nhất: ${nearest.name}`],
+      [sosId, victim.id, note],
     );
 
-    return nearest.id;
+    return chosen.id;
   }
 
   async findAll(

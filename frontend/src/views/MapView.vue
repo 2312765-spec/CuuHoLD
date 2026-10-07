@@ -11,6 +11,7 @@ import { useToastStore } from '@/stores/toast'
 import { useOfflineQueueStore } from '@/stores/offlineQueue'
 import { layViTriHienTai } from '@/utils/geolocation'
 import { CONFIG } from '@/config'
+import { layCanhBaoDangHoatDong } from '@/services/hazardsService'
 import type { MapLayerKey } from '@/types'
 import MapTopBar from '@/components/map/MapTopBar.vue'
 import MapStats from '@/components/map/MapStats.vue'
@@ -125,6 +126,7 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
       description: payload.description,
       locationEstimated: viTri.uocLuong
     })
+    phongToToiSosCuaMinh(viTri.lat, viTri.lng)
     toastStore.showToast('Đã gửi tín hiệu cứu trợ. Đội điều phối sẽ liên hệ sớm.')
   } catch (err) {
     if (isAxiosError(err) && !err.response) {
@@ -143,6 +145,7 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
         taoLuc: new Date().toISOString()
       })
       sos.datSosChoGui({ localId, lat: viTri.lat, lng: viTri.lng, type: payload.type, locationEstimated: viTri.uocLuong })
+      phongToToiSosCuaMinh(viTri.lat, viTri.lng)
       toastStore.showToast('Không có mạng — đã lưu yêu cầu, sẽ tự gửi ngay khi có mạng trở lại.')
     }
     // Lỗi nghiệp vụ khác (VD: vượt 5 SOS/giờ) đã có toast riêng từ interceptor http.ts.
@@ -164,6 +167,8 @@ const {
   themMarkerBaoCao,
   capNhatMarkerSosCuaMinh,
   capNhatMarkerDoiCuuHo,
+  phongToToiSosCuaMinh,
+  capNhatCanhBaoDuong,
   destroyMap
 } = useLeafletMap()
 
@@ -267,6 +272,10 @@ async function khoiTaoTheoRole(): Promise<void> {
   // initMap() chạy async (chờ tải ranh giới) — nếu state SOS đổi ngay lúc đó, watch ở trên
   // đã bỏ qua vì mapInstance chưa sẵn sàng. Áp lại một lần nữa cho chắc sau khi map đã có.
   apDungMarkerSos()
+  // Vừa khôi phục được SOS (sau F5 hoặc vừa đăng nhập) → đưa bản đồ tới đó, giống lúc vừa
+  // bấm gửi. Chỉ ở đây, KHÔNG trong watch(activeSos): watch đó chạy lại mỗi lượt poll 20s.
+  const dangTheoDoi = sos.activeSos.value
+  if (dangTheoDoi) phongToToiSosCuaMinh(dangTheoDoi.lat, dangTheoDoi.lng)
 }
 
 // ---------- Khởi tạo / dọn dẹp bản đồ theo vòng đời component ----------
@@ -278,6 +287,20 @@ let daKhoiTaoLanDau = false
 // unmount, nếu không mỗi lần vào lại /map là chồng thêm một listener nữa.
 let huyLangNgheHangDoi: (() => void) | null = null
 
+// Cảnh báo chặn đường đã duyệt (GET /api/hazards cần JWT như danh sách đội) — chỉ tải khi đã
+// đăng nhập; đăng xuất thì xoá khỏi bản đồ. Lỗi mạng/server không chặn xem bản đồ.
+async function taiCanhBaoDuong(): Promise<void> {
+  if (!authStore.isLoggedIn) {
+    capNhatCanhBaoDuong([])
+    return
+  }
+  try {
+    capNhatCanhBaoDuong(await layCanhBaoDangHoatDong())
+  } catch {
+    // Interceptor http.ts đã hiện toast lỗi mạng/server.
+  }
+}
+
 onMounted(async () => {
   await initMap('map', activeLayer.value)
   await khoiTaoTheoRole()
@@ -285,6 +308,7 @@ onMounted(async () => {
   // (RolesGuard) — chỉ tải khi đủ cả hai, tránh gọi API vô ích luôn nhận 401 (khách) hoặc 403
   // (victim đã đăng nhập) rồi hiện toast lỗi cho người chỉ muốn xem map.
   if (coTheXemDoiCuuHo.value) mapDataStore.taiDiemCuuTroTuServer()
+  void taiCanhBaoDuong()
   // Khi có mạng trở lại: báo cáo minh hoạ trong hàng đợi được "gửi" theo đúng luồng
   // themMarkerBaoCao() có sẵn (tái dùng, không viết logic vẽ marker riêng lần 2); SOS thật
   // trong hàng đợi được gửi qua guiSos() thật, kết quả đổ ngược lại thẻ theo dõi hiện tại.
@@ -310,6 +334,7 @@ watch(
     // + đúng role, tải danh sách đội cứu hộ. Đăng xuất, hoặc đăng nhập bằng victim → không
     // gọi (tránh 401/403 như đã sửa ở onMounted).
     if (coTheXemDoiCuuHo.value) mapDataStore.taiDiemCuuTroTuServer()
+    void taiCanhBaoDuong()
   }
 )
 
@@ -331,6 +356,11 @@ watch(activeLayer, (layer) => {
     <MapStats />
     <div id="map"></div>
     <MapLegend />
+    <!-- Báo cáo sạt lở / chặn đường từ hiện trường — mọi người dùng đã đăng nhập (người dân,
+         tình nguyện viên). Cần đăng nhập vì báo cáo gắn với người gửi để quản trị viên xác minh. -->
+    <RouterLink v-if="authStore.isLoggedIn" to="/report" class="report-fab">
+      Báo cáo sạt lở / chặn đường
+    </RouterLink>
     <!-- Nút SOS nổi — chỉ hiện cho người dân (victim). Ẩn khi có SOS chưa kết thúc HOẶC
          đang chờ response gửi (dangGui) — thiếu vế sau từng là race condition thật: dialog
          đóng ngay lúc bấm "Gửi ngay" nhưng dangHoatDong chỉ true SAU khi API trả về, nên

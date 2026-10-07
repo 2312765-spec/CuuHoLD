@@ -26,4 +26,8 @@ export const envValidationSchema = Joi.object({
   ESMS_SMS_TYPE: Joi.string().allow('').optional(),
   ESMS_BRANDNAME: Joi.string().allow('').optional(),
   RESCUE_CENTER_PHONE: Joi.string().allow('').optional(),
+
+  // OpenRouteService (CLAUDE.md Mục 15.13) — không bắt buộc, giống eSMS: RoutingService tự
+  // trả 503 khi thiếu, không được chặn boot của cả server vì Quang có thể chưa đăng ký key.
+  ORS_API_KEY: Joi.string().allow('').optional(),
 });
