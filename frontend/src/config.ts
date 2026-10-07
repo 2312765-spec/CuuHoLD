@@ -9,7 +9,13 @@ export interface AppConfig {
     sos: string
     gisNearestTeams: string
     gisSosHeatmap: string
+    gisStats: string
     rescueTeams: string
+    routing: string
+    users: string
+    hazards: string
+    system: string
+    hazardReports: string
   }
 }
 
@@ -21,6 +27,12 @@ export const CONFIG: AppConfig = {
     sos: '/sos',
     gisNearestTeams: '/gis/nearest-teams',
     gisSosHeatmap: '/gis/sos-heatmap',
-    rescueTeams: '/rescue-teams'
+    gisStats: '/gis/stats',
+    rescueTeams: '/rescue-teams',
+    routing: '/routing/route',
+    users: '/users',
+    hazards: '/hazards',
+    system: '/system',
+    hazardReports: '/hazard-reports'
   }
 }

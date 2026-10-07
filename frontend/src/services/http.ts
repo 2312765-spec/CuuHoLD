@@ -3,6 +3,16 @@ import { CONFIG } from '@/config'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth.store'
 
+// Cờ tuỳ chọn cho từng request: bỏ qua toast lỗi toàn cục bên dưới. Dùng cho API "nâng cao"
+// đã tự có fallback riêng, không nên báo lỗi mỗi lần thất bại (VD: routingService.ts —
+// OpenRouteService thiếu key/lỗi mạng thì lặng lẽ giữ đường chim bay đã vẽ sẵn, không hiện
+// "Máy chủ đang gặp sự cố" mỗi 30 giây trong lúc rescuer đang làm nhiệm vụ thật).
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    khongHienToastLoi?: boolean
+  }
+}
+
 export const http = axios.create({
   baseURL: CONFIG.apiBaseUrl,
   timeout: 8000,
@@ -32,6 +42,10 @@ function trichThongBaoLoi(data: unknown): string | null {
 http.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
+    if (axios.isAxiosError(error) && error.config?.khongHienToastLoi) {
+      return Promise.reject(error)
+    }
+
     const toastStore = useToastStore()
     const authStore = useAuthStore()
 

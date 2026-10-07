@@ -5,7 +5,7 @@
 
 import { h, render, ref, shallowRef } from 'vue'
 import L from 'leaflet'
-import type { DiemCuuTro, BaoCaoSuCo, MapLayerKey, SosStatus } from '@/types'
+import type { DiemCuuTro, BaoCaoSuCo, MapLayerKey, SosStatus, Hazard } from '@/types'
 import { useMapDataStore } from '@/stores/mapData'
 import { useToastStore } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth.store'
@@ -94,6 +94,62 @@ export function useLeafletMap() {
     const map = mapInstance.value
     if (!map) return
     map.setView([lat, lng], Math.max(map.getZoom(), ZOOM_THEO_DOI_SOS))
+  }
+
+  // ---- Cảnh báo chặn đường đã được quản trị viên DUYỆT (đỏ = chặn đường, vàng = cẩn trọng) ----
+  // Bản đồ chung chỉ nhận cảnh báo THẬT (GET /api/hazards, đã qua kiểm duyệt) — báo cáo cộng đồng
+  // đang chờ duyệt không bao giờ tới được đây. Nhớ danh sách gần nhất để vẽ lại sau khi initMap()
+  // xong (danh sách có thể về trước bản đồ).
+  let canhBaoLayer: L.LayerGroup | null = null
+  let canhBaoHienTai: Hazard[] = []
+  const NHAN_LOAI: Record<string, string> = {
+    landslide: 'Sạt lở',
+    fallen_tree: 'Cây đổ',
+    flood: 'Ngập lụt',
+    danger: 'Nguy hiểm',
+    other: 'Cảnh báo khác'
+  }
+
+  function veCanhBaoDuong() {
+    if (canhBaoLayer) {
+      canhBaoLayer.remove()
+      canhBaoLayer = null
+    }
+    const map = mapInstance.value
+    if (!map) return
+    canhBaoLayer = L.layerGroup().addTo(map)
+    for (const h of canhBaoHienTai) {
+      const vang = h.severity === 'caution'
+      const nhan = `${vang ? 'Cẩn trọng' : 'Chặn đường'}: ${NHAN_LOAI[h.type] ?? h.type}${
+        h.description ? ' — ' + h.description : ''
+      }`
+      L.circle([h.lat, h.lng], {
+        radius: h.radius_meters,
+        color: vang ? '#a16207' : '#b91c1c',
+        weight: 2,
+        dashArray: '4 6',
+        fillColor: vang ? '#facc15' : '#ef4444',
+        fillOpacity: 0.18
+      })
+        .bindTooltip(nhan, { direction: 'top' })
+        .addTo(canhBaoLayer)
+      L.marker([h.lat, h.lng], {
+        icon: L.divIcon({
+          className: 'hz-icon-wrap',
+          html: `<span class="hz-icon hz-icon--${vang ? 'vang' : 'do'}">!</span>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        }),
+        keyboard: false
+      })
+        .bindTooltip(nhan, { direction: 'top' })
+        .addTo(canhBaoLayer)
+    }
+  }
+
+  function capNhatCanhBaoDuong(danhSach: Hazard[]) {
+    canhBaoHienTai = danhSach
+    veCanhBaoDuong()
   }
 
   // Marker đội cứu hộ được giao cho SOS của victim (Fix #2, CLAUDE.md Mục 15.11) — chấm xanh
@@ -337,6 +393,7 @@ export function useLeafletMap() {
     }
 
     mapInstance.value = map
+    veCanhBaoDuong()
     return map
   }
 
@@ -347,6 +404,7 @@ export function useLeafletMap() {
     sosOwnMarker = null
     teamMarker = null
     boundaryLayer = null
+    canhBaoLayer = null
   }
 
   return {
@@ -360,6 +418,7 @@ export function useLeafletMap() {
     capNhatMarkerSosCuaMinh,
     capNhatMarkerDoiCuuHo,
     phongToToiSosCuaMinh,
+    capNhatCanhBaoDuong,
     destroyMap
   }
 }

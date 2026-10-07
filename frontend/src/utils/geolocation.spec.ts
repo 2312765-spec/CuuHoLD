@@ -5,7 +5,7 @@
 // coi là chính xác tuyệt đối, kể cả khi sai số rất lớn. Các test dưới khoá lại 2 hành vi đó.
 
 import { describe, it, expect, vi } from 'vitest'
-import { layViTriHienTai, TOA_DO_UOC_TINH_TAM_TINH } from './geolocation'
+import { layViTriHienTai, layViTriChiTiet, TOA_DO_UOC_TINH_TAM_TINH } from './geolocation'
 
 function taoGeolocationGia(
   ketQua: { latitude: number; longitude: number; accuracy: number } | 'loi'
@@ -64,5 +64,35 @@ describe('layViTriHienTai', () => {
       expect.any(Function),
       expect.objectContaining({ enableHighAccuracy: true })
     )
+  })
+})
+
+describe('layViTriChiTiet', () => {
+  it('trả thêm sai số (làm tròn) khi lấy GPS thành công', async () => {
+    const geo = {
+      getCurrentPosition: (ok: PositionCallback) =>
+        ok({ coords: { latitude: 11.95, longitude: 108.44, accuracy: 12.6 } } as GeolocationPosition)
+    }
+    expect(await layViTriChiTiet(geo)).toEqual({ lat: 11.95, lng: 108.44, uocLuong: false, doChinhXacM: 13 })
+  })
+
+  it('sai số > 100 m → uocLuong=true nhưng vẫn báo sai số thật', async () => {
+    const geo = {
+      getCurrentPosition: (ok: PositionCallback) =>
+        ok({ coords: { latitude: 11.95, longitude: 108.44, accuracy: 250 } } as GeolocationPosition)
+    }
+    const r = await layViTriChiTiet(geo)
+    expect(r.uocLuong).toBe(true)
+    expect(r.doChinhXacM).toBe(250)
+  })
+
+  it('GPS lỗi/bị từ chối → toạ độ ước tính, doChinhXacM=null (không bịa sai số)', async () => {
+    const geo = {
+      getCurrentPosition: (_ok: PositionCallback, err?: PositionErrorCallback | null) =>
+        err?.({ code: 1 } as GeolocationPositionError)
+    }
+    const r = await layViTriChiTiet(geo)
+    expect(r.uocLuong).toBe(true)
+    expect(r.doChinhXacM).toBeNull()
   })
 })

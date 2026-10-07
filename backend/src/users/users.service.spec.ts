@@ -1,9 +1,14 @@
-import { ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { QueryFailedError, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import { User } from './user.entity';
 import type { RegisterDto } from '../auth/dto/register.dto';
+import type { AdminCreateUserDto } from './dto/admin-create-user.dto';
 
 jest.mock('bcrypt');
 
@@ -65,6 +70,95 @@ describe('UsersService', () => {
       );
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('createByAdmin', () => {
+    it('tạo được tài khoản với role tuỳ ý (endpoint gọi hàm này đã bị khoá commander-only ở controller)', async () => {
+      const dto: AdminCreateUserDto = {
+        phone: '0909999999',
+        name: 'Rescuer Mới',
+        password: 'matkhau123',
+        role: 'rescuer',
+        wardCode: '24823',
+      };
+
+      const user = await service.createByAdmin(dto);
+
+      expect(user.role).toBe('rescuer');
+      expect(user.wardCode).toBe('24823');
+    });
+
+    it('ném ConflictException khi số điện thoại đã tồn tại', async () => {
+      usersRepo.findOne.mockResolvedValueOnce({ id: 'existing' });
+      const dto: AdminCreateUserDto = {
+        phone: '0909999999',
+        name: 'Rescuer Mới',
+        password: 'matkhau123',
+        role: 'rescuer',
+      };
+
+      await expect(service.createByAdmin(dto)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('updateRole', () => {
+    it('ném BadRequestException khi commander tự đổi role của chính mình', async () => {
+      await expect(
+        service.updateRole('user-1', 'commander', 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('ném NotFoundException khi không tìm thấy người dùng', async () => {
+      usersRepo.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateRole('user-2', 'commander', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('đổi role thành công khi target khác actor', async () => {
+      usersRepo.findOne.mockResolvedValueOnce({
+        id: 'user-2',
+        role: 'victim',
+      });
+
+      const result = await service.updateRole('user-2', 'rescuer', 'user-1');
+
+      expect(result.role).toBe('rescuer');
+      expect(usersRepo.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('ném BadRequestException khi commander tự khoá tài khoản của chính mình', async () => {
+      await expect(
+        service.updateStatus('user-1', false, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('ném NotFoundException khi không tìm thấy người dùng', async () => {
+      usersRepo.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateStatus('user-2', false, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('khoá tài khoản thành công khi target khác actor', async () => {
+      usersRepo.findOne.mockResolvedValueOnce({
+        id: 'user-2',
+        isActive: true,
+      });
+
+      const result = await service.updateStatus('user-2', false, 'user-1');
+
+      expect(result.isActive).toBe(false);
+      expect(usersRepo.save).toHaveBeenCalled();
     });
   });
 });

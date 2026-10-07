@@ -18,6 +18,9 @@ import type {
   SosUpdatedPayload,
   TeamLocationPayload,
   TeamUpdateLocationPayload,
+  SystemNotificationPayload,
+  HazardReportNewPayload,
+  HazardReportReviewedPayload,
 } from '../common/socket-events.types';
 import { RescueTeamsService } from '../rescue-teams/rescue-teams.service';
 
@@ -116,6 +119,38 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server
       .to('province:lamdong')
       .emit(SOCKET_EVENTS.TEAM_LOCATION_UPDATED, data);
+  }
+
+  // Dùng cho cảnh báo an toàn chung (vd: HazardsService khi tạo/gỡ cảnh báo chặn đường) —
+  // luôn bắn tới toàn tỉnh (commander theo dõi tổng quan) + thêm đúng xã liên quan nếu có
+  // (wardCode null khi toạ độ nằm ngoài mọi ranh giới xã, vẫn hợp lệ — chỉ bỏ qua phần ward).
+  emitSystemNotification(
+    wardCode: string | null,
+    data: SystemNotificationPayload,
+  ): void {
+    this.server
+      .to('province:lamdong')
+      .emit(SOCKET_EVENTS.NOTIFICATION_SYSTEM, data);
+    if (wardCode) {
+      this.server
+        .to(`ward:${wardCode}`)
+        .emit(SOCKET_EVENTS.NOTIFICATION_SYSTEM, data);
+    }
+  }
+
+  // Báo cáo cộng đồng về sạt lở/chặn đường — CHỈ bắn vào phòng toàn tỉnh, nơi duy nhất mà commander
+  // join (handleConnection). TUYỆT ĐỐI không bắn vào ward:{code}: rescuer/victim cùng xã join phòng đó
+  // và payload có tên người báo cáo.
+  emitHazardReportNew(data: HazardReportNewPayload): void {
+    this.server
+      .to('province:lamdong')
+      .emit(SOCKET_EVENTS.HAZARD_REPORT_NEW, data);
+  }
+
+  emitHazardReportReviewed(data: HazardReportReviewedPayload): void {
+    this.server
+      .to('province:lamdong')
+      .emit(SOCKET_EVENTS.HAZARD_REPORT_REVIEWED, data);
   }
 
   @SubscribeMessage(SOCKET_EVENTS.TEAM_UPDATE_LOCATION)

@@ -8,6 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RescueTeamsModule } from '../rescue-teams/rescue-teams.module';
 import { GisModule } from '../gis/gis.module';
+import { RoutingModule } from '../routing/routing.module';
 
 @Module({
   imports: [
@@ -16,6 +17,8 @@ import { GisModule } from '../gis/gis.module';
     NotificationsModule,
     forwardRef(() => RescueTeamsModule),
     GisModule,
+    // Chọn đội theo đường bộ thật, né vùng cảnh báo (xem SosService.tryAutoAssignNearestTeam).
+    forwardRef(() => RoutingModule),
   ],
   controllers: [SosController],
   providers: [SosService, SosGateway],

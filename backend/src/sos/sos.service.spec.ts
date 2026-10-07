@@ -11,6 +11,7 @@ import { SosRequest } from './sos.entity';
 import { SosGateway } from './sos.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GisService } from '../gis/gis.service';
+import { RoutingService } from '../routing/routing.service';
 import { User } from '../users/user.entity';
 
 function buildUser(overrides: Partial<User> = {}): User {
@@ -36,6 +37,7 @@ describe('SosService', () => {
   let gateway: { emitNewSos: jest.Mock; emitSosUpdated: jest.Mock };
   let notifications: { sendSosSms: jest.Mock };
   let gisService: { findNearestTeams: jest.Mock };
+  let routingService: { pickBestTeamByRoad: jest.Mock };
 
   beforeEach(() => {
     dataSource = { query: jest.fn() };
@@ -44,12 +46,28 @@ describe('SosService', () => {
     // Mặc định KHÔNG có đội nào gần đó — giữ nguyên hành vi 'pending' cho các test create()
     // không cố ý test auto-assign; test riêng override mock này khi cần.
     gisService = { findNearestTeams: jest.fn().mockResolvedValue([]) };
+    // Mặc định như khi KHÔNG có cảnh báo chặn đường nào: lấy đội đầu danh sách (đường chim bay).
+    routingService = {
+      pickBestTeamByRoad: jest.fn((candidates: unknown[]) =>
+        Promise.resolve(
+          candidates.length > 0
+            ? {
+                mode: 'straight_line',
+                team: candidates[0],
+                travel: null,
+                closerSkipped: 0,
+              }
+            : { mode: 'blocked', team: null, travel: null, closerSkipped: 0 },
+        ),
+      ),
+    };
     service = new SosService(
       {} as unknown as Repository<SosRequest>,
       dataSource as unknown as DataSource,
       gateway as unknown as SosGateway,
       notifications as unknown as NotificationsService,
       gisService as unknown as GisService,
+      routingService as unknown as RoutingService,
     );
   });
 
@@ -153,7 +171,7 @@ describe('SosService', () => {
         11.94,
         108.44,
         10000,
-        1,
+        3,
       );
       // Đã có đội trong 10km → KHÔNG mở rộng lên 20km.
       expect(gisService.findNearestTeams).toHaveBeenCalledTimes(1);
@@ -208,8 +226,8 @@ describe('SosService', () => {
 
       expect(result.status).toBe('assigned');
       expect(gisService.findNearestTeams.mock.calls).toEqual([
-        [11.94, 108.44, 10000, 1],
-        [11.94, 108.44, 20000, 1],
+        [11.94, 108.44, 10000, 3],
+        [11.94, 108.44, 20000, 5],
       ]);
       const [, assignParams] = dataSource.query.mock.calls[2] as [
         string,
@@ -239,6 +257,124 @@ describe('SosService', () => {
 
       expect(result.status).toBe('pending');
       expect(dataSource.query).toHaveBeenCalledTimes(2); // kiểm tra SOS active + INSERT, không có UPDATE/timeline
+      expect(gateway.emitSosUpdated).not.toHaveBeenCalled();
+    });
+
+    // ---- Chọn đội theo đường bộ thật, né cảnh báo chặn đường ----
+    const sosRow = (id: string) => ({
+      id,
+      type: 'flood',
+      status: 'pending',
+      ward_code: '24781',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      cancel_deadline: new Date('2026-01-01T00:03:00Z'),
+      location_estimated: false,
+    });
+    const team = (id: string) => ({
+      id,
+      name: `Đội ${id}`,
+      lat: 11.9,
+      lng: 108.4,
+    });
+
+    it('gán đội do RoutingService chọn (không nhất thiết đội gần nhất đường chim bay) và ghi rõ vào timeline', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([sosRow('sos-r1')])
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      const near = team('gan-nhung-bi-chan');
+      const far = team('xa-hon-nhung-di-duoc');
+      gisService.findNearestTeams.mockResolvedValueOnce([near, far]);
+      routingService.pickBestTeamByRoad.mockResolvedValueOnce({
+        mode: 'road',
+        team: far,
+        travel: { distance_meters: 4200, duration_seconds: 540 },
+        closerSkipped: 1,
+      });
+
+      const result = await service.create(
+        { lat: 11.94, lng: 108.44, type: 'flood' },
+        victim,
+      );
+
+      expect(result.status).toBe('assigned');
+      const [, assignParams] = dataSource.query.mock.calls[2] as [
+        string,
+        unknown[],
+      ];
+      expect(assignParams).toEqual(['sos-r1', 'xa-hon-nhung-di-duoc']);
+      const [, timelineParams] = dataSource.query.mock.calls[4] as [
+        string,
+        unknown[],
+      ];
+      const note = timelineParams[2] as string;
+      expect(note).toContain('~9 phút');
+      expect(note).toContain('bỏ qua 1 đội gần hơn');
+    });
+
+    it('mọi đội trong 10km đều bị chặn → thử tầng 20km, KHÔNG xét lại đội đã bị loại', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([sosRow('sos-r2')])
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      const a = team('a');
+      const b = team('b');
+      const c = team('c');
+      gisService.findNearestTeams
+        .mockResolvedValueOnce([a, b]) // tầng 10km
+        .mockResolvedValueOnce([a, b, c]); // tầng 20km trả lại a, b + đội mới c
+      routingService.pickBestTeamByRoad
+        .mockResolvedValueOnce({
+          mode: 'blocked',
+          team: null,
+          travel: null,
+          closerSkipped: 2,
+        })
+        .mockResolvedValueOnce({
+          mode: 'road',
+          team: c,
+          travel: { distance_meters: 9000, duration_seconds: 900 },
+          closerSkipped: 0,
+        });
+
+      const result = await service.create(
+        { lat: 11.94, lng: 108.44, type: 'flood' },
+        victim,
+      );
+
+      expect(result.status).toBe('assigned');
+      // Lần xét thứ 2 chỉ gồm đội mới (c), a và b đã bị loại ở tầng 1.
+      const secondCall = routingService.pickBestTeamByRoad.mock
+        .calls[1] as unknown[];
+      expect(secondCall[0]).toEqual([c]);
+      const [, assignParams] = dataSource.query.mock.calls[2] as [
+        string,
+        unknown[],
+      ];
+      expect(assignParams).toEqual(['sos-r2', 'c']);
+    });
+
+    it('mọi đội ở cả 2 tầng đều bị chặn → giữ pending cho commander phân công tay', async () => {
+      dataSource.query.mockResolvedValueOnce([sosRow('sos-r3')]);
+      gisService.findNearestTeams
+        .mockResolvedValueOnce([team('a')])
+        .mockResolvedValueOnce([team('a'), team('b')]);
+      routingService.pickBestTeamByRoad.mockResolvedValue({
+        mode: 'blocked',
+        team: null,
+        travel: null,
+        closerSkipped: 1,
+      });
+
+      const result = await service.create(
+        { lat: 11.94, lng: 108.44, type: 'flood' },
+        victim,
+      );
+
+      expect(result.status).toBe('pending');
+      expect(dataSource.query).toHaveBeenCalledTimes(2); // kiểm tra SOS active + INSERT, không UPDATE
       expect(gateway.emitSosUpdated).not.toHaveBeenCalled();
     });
 

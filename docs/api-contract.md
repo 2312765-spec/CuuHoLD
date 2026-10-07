@@ -349,7 +349,8 @@ Khi chuyển sang `resolved`, backend tự set `resolved_at` và đưa đội c�
 
 ---
 
-## 3. GIS (`/api/gis`) 🔒 — role `commander` cho cả 2 endpoint
+## 3. GIS + Routing + Hazards 🔒 — `/api/gis/*` role `commander`, `/api/routing/route` role
+`rescuer`, `/api/hazards*` xem được mọi role, sửa role `commander` (CLAUDE.md Mục 15.14)
 
 ### GET /api/gis/nearest-teams
 Tìm đội cứu hộ `available` gần một toạ độ (PostGIS `ST_DWithin` + `ST_Distance`).
@@ -396,6 +397,165 @@ Tổng hợp số lượng SOS theo vị trí + xã/phường trong khoảng th�
 }
 ```
 Sắp xếp `incident_count` giảm dần.
+
+### GET /api/routing/route
+Role: `rescuer`. Tuyến đường bộ THẬT từ vị trí rescuer tới nạn nhân — gọi OpenRouteService
+(dựa trên OSM, free tier, CLAUDE.md Mục 15.13), không phải Google Maps.
+
+**Query params**
+| Tên | Bắt buộc | Ghi chú |
+|---|---|---|
+| `fromLat` | ✅ | -90..90 — vị trí rescuer |
+| `fromLng` | ✅ | -180..180 |
+| `toLat` | ✅ | -90..90 — vị trí nạn nhân |
+| `toLng` | ✅ | -180..180 |
+
+**200 OK**
+```json
+{
+  "success": true, "message": "OK",
+  "data": {
+    "distance_meters": 1626,
+    "duration_seconds": 145,
+    "geometry": [[11.94, 108.44], [11.941, 108.441]],
+    "instructions": [{ "text": "Rẽ phải vào Trần Phú", "distance_meters": 500 }]
+  }
+}
+```
+`geometry` là mảng `[lat, lng]` (đã đảo từ GeoJSON `[lng, lat]` của OpenRouteService — dùng
+thẳng cho Leaflet).
+
+**400 Bad Request** — `fromLat/fromLng` hoặc `toLat/toLng` nằm ngoài ranh giới tỉnh Lâm Đồng
+(kiểm tra bằng `ST_Contains` trên `wards.boundary` — hợp của 123 xã/phường, không có
+bảng/file ranh giới tỉnh riêng). Kiểm tra này chạy TRƯỚC khi gọi OpenRouteService, đỡ tốn
+quota free tier cho toạ độ chắc chắn sai (demo, lỗi client...).
+
+**503 Service Unavailable** — thiếu `ORS_API_KEY`, OpenRouteService lỗi/timeout/hết quota,
+hoặc không tìm được tuyến đường. **Đây là trạng thái BÌNH THƯỜNG**, không phải
+lỗi hệ thống — frontend tự lùi về đường chim bay (`utils/geo.ts`), không hiện toast (xem
+`routingService.ts`/`http.ts` cờ `khongHienToastLoi`). Cả lỗi 400 lẫn 503 đều bị nuốt ở
+`routingService.ts` phía frontend — không phân biệt 2 trạng thái này, cùng lùi về chim bay.
+
+Khi có cảnh báo/chặn đường đang active (xem `/api/hazards` bên dưới), request gửi ORS kèm
+thêm `options.avoid_polygons` (MultiPolygon, buffer PostGIS quanh mỗi cảnh báo theo bán kính
+mét thật) — thuật toán tự tránh vùng đó. **⚠️ Tham số này chưa được xác nhận trực tiếp với ORS
+thật** (ORS không kết nối được lúc viết tính năng, xem CLAUDE.md Mục 15.14) — nếu ORS từ chối
+vì lý do bất kỳ, response vẫn rơi vào đúng nhánh 503 ở trên, không có mã lỗi riêng.
+
+### GET /api/hazards
+Cảnh báo/chặn đường đang hoạt động (sạt lở, cây đổ, ngập lụt, nguy hiểm khác). Mọi role đã
+đăng nhập gọi được — an toàn thực địa, không chỉ commander.
+
+**200 OK**
+```json
+{
+  "success": true, "message": "OK",
+  "data": [
+    {
+      "id": "uuid", "type": "landslide", "description": "Sạt lở taluy dương",
+      "lat": 11.9465, "lng": 108.4419, "radius_meters": 200,
+      "severity": "blocked", "ward_code": "24781", "is_active": true,
+      "created_at": "2026-09-25T00:00:00.000Z", "resolved_at": null
+    }
+  ]
+}
+```
+`type` ∈ `landslide | fallen_tree | flood | danger | other`.
+
+### GET /api/hazards/all
+Role: `commander`. Giống trên nhưng gồm cả cảnh báo đã gỡ (`is_active: false`) — dùng cho màn
+quản lý, không dùng để vẽ bản đồ (bản đồ chỉ nên vẽ `GET /api/hazards`).
+
+### POST /api/hazards
+Role: `commander`. Tạo cảnh báo mới.
+
+**Body**
+| Tên | Bắt buộc | Ghi chú |
+|---|---|---|
+| `type` | ✅ | 1 trong 5 giá trị ở trên |
+| `description` | optional | tối đa 500 ký tự |
+| `lat` | ✅ | -90..90 |
+| `lng` | ✅ | -180..180 |
+| `radiusMeters` | optional | mặc định 200, 10..5000 |
+| `severity` | optional | `blocked` (ĐỎ, mặc định — chặn đường, tuyến đi né) \| `caution` (VÀNG — chỉ hiển thị, KHÔNG đổi tuyến) |
+
+**201/200 OK** — trả object hazard vừa tạo (cùng shape `GET /api/hazards`). `ward_code` tự suy
+ra qua trigger PostGIS (`ST_Contains`), không nhận từ client — null nếu toạ độ ngoài mọi
+xã/phường (vẫn tạo được, chỉ không có ward_code). Phát socket `notification:system` (level
+`warning`) tới `province:lamdong` + `ward:{code}` nếu có.
+
+### Báo cáo cộng đồng (crowdsourcing) — `/api/hazard-reports` 🔒 (CLAUDE.md Mục 15.16, 15.17)
+Người dân/tình nguyện viên báo sạt lở, cây đổ... từ hiện trường; báo cáo ở trạng thái `pending` và
+**KHÔNG hiện lên bản đồ chung, KHÔNG ảnh hưởng tuyến đường** cho tới khi commander duyệt. Commander
+đang online được báo ngay qua socket (xem "Sự kiện socket" ngay dưới bảng).
+
+| Route | Role | Ghi chú |
+|---|---|---|
+| `POST /hazard-reports` | mọi role đã đăng nhập | `multipart/form-data`: `type`, `lat`, `lng`, `image` (file) **bắt buộc**; `description`, `accuracyMeters`, `locationEstimated` tuỳ chọn. Rate limit 10/giờ/user. → 201 |
+| `GET /hazard-reports/mine` | mọi role | 50 báo cáo mới nhất của chính mình, kèm trạng thái duyệt + ghi chú của quản trị viên |
+| `GET /hazard-reports?status=&limit=&offset=` | commander | hàng đợi (`status=pending`, mặc định) hoặc lịch sử (`approved` \| `rejected`), mới nhất trước. `limit` 1..100 (mặc định 50), `offset` ≥ 0. Không bao giờ chứa dữ liệu ảnh, chỉ cờ `has_image` |
+| `GET /hazard-reports/:id/image` | commander hoặc chính người gửi | stream ảnh (`image/jpeg` \| `png` \| `webp`, `Cache-Control: private`); người khác 403, không có ảnh 404. Thẻ `<img>` không gửi được JWT → FE tải bằng axios (blob) rồi `URL.createObjectURL` |
+| `PATCH /hazard-reports/:id/approve` | commander | body `{ severity: "blocked" \| "caution", radiusMeters?, note? }` → tạo cảnh báo thật (`road_hazards`), gắn `hazard_id`, áp dụng luôn cho các báo cáo đã gộp. Data: `{ report, hazard, merged_count }` |
+| `PATCH /hazard-reports/:id/reject` | commander | body `{ note? }`, áp dụng luôn cho các báo cáo đã gộp. Data: `{ report, merged_count }` |
+
+**Lỗi của `POST /hazard-reports`**
+- `400` — toạ độ nằm ngoài tỉnh Lâm Đồng; thiếu ảnh; ảnh > 2MB; file không phải JPEG/PNG/WebP (kiểm
+  bằng magic bytes nên SVG/HTML giả danh ảnh bị chặn).
+- `409` — bạn đã có báo cáo **chờ duyệt** cùng loại trong bán kính 100 m (không cần báo lại); hoặc đã
+  có 5 báo cáo chờ duyệt.
+- `429` — quá 10 báo cáo/giờ.
+
+**Ảnh "chụp trực tiếp" là ràng buộc của UI, không phải của server.** Form `/report`
+(`CameraCapture.vue`) chỉ dùng `getUserMedia`, không có ô chọn file; ảnh được nén JPEG và bỏ EXIF ngay
+trên trình duyệt, vị trí GPS lấy lại ngay lúc bấm chụp. Server chỉ kiểm định dạng — nó **không thể**
+biết ảnh có thật sự đến từ camera hay không, và ai gọi thẳng API vẫn gửi được ảnh bất kỳ. Vì vậy ràng
+buộc này làm tăng độ tin cậy cho người dùng bình thường, KHÔNG thay được bước commander xác minh.
+
+**Gộp báo cáo trùng.** Báo cáo mới **cùng `type`**, cách ≤ 100 m so với báo cáo **chờ duyệt cũ nhất**
+(chưa bị gộp) sẽ tự gộp vào báo cáo đó: `duplicate_of` = id báo cáo chính, response có `merged: true`.
+Hàng đợi chỉ hiện báo cáo chính; các báo cáo gộp nằm trong `duplicates[]`. Duyệt/từ chối báo cáo chính
+áp dụng cho cả nhóm; duyệt/từ chối trực tiếp một báo cáo đã gộp → `409` ("hãy duyệt/từ chối báo cáo
+chính"). Báo cáo đã xử lý rồi → `409` ("đã được xử lý trước đó", không sinh cảnh báo trùng). Báo cáo
+"mồ côi" (gộp vào báo cáo chính nhưng báo cáo chính đã ở trạng thái khác, VD gửi đúng lúc báo cáo chính
+vừa được duyệt) vẫn hiện thành mục riêng để không bị bỏ sót.
+
+**Response**
+- Báo cáo (snake_case): `id, type, description, lat, lng, accuracy_m, location_estimated, has_image,
+  status, ward_code, created_at, reviewed_at, review_note, hazard_id, duplicate_of`.
+- `POST` (201) thêm: `merged` (boolean), `group_reporter_count` (số người khác nhau đã báo điểm này,
+  tính cả mình), `nearby_hazard` (`{ id, type, severity, distance_m }` hoặc `null` — cảnh báo đang hoạt
+  động đã phủ khu vực này, để báo cho người gửi biết).
+- `GET /hazard-reports` (commander) thêm: `reporter_id, reporter_name, reporter_phone,
+  reviewed_by_name, hazard_severity, hazard_is_active` (khi đã duyệt), `duplicate_count,
+  reporter_count`, `nearby_hazard` (chỉ báo cáo chờ duyệt), `duplicates[]` (mỗi phần tử: `id,
+  reporter_id, reporter_name, reporter_phone, description, accuracy_m, has_image, created_at`).
+
+**Sự kiện socket** (kiểu dùng chung ở `shared/socket-events.types.ts`; chỉ phát vào room
+`province:lamdong` = commander, người dân/rescuer KHÔNG nhận)
+
+| Event | Payload (camelCase) | Khi nào |
+|---|---|---|
+| `hazard-report:new` | `{ reportId, mergedIntoReportId \| null, type, reporterName, wardCode \| null, reporterCount, createdAt }` | có báo cáo mới; khi bị gộp thì `mergedIntoReportId` = báo cáo chính (`reportId` vẫn là báo cáo mới) |
+| `hazard-report:reviewed` | `{ reportId, status: "approved" \| "rejected", hazardId \| null, reviewerName, mergedCount, updatedAt }` | một commander vừa duyệt/từ chối (`reportId` = báo cáo chính) |
+
+Dashboard chỉ nhận realtime khi đang mở (toast, tab nhấp nháy, `(N)` ở tiêu đề tab trình duyệt, tự làm
+mới hàng đợi); ngoài Dashboard không có thông báo đẩy.
+
+### PATCH /api/hazards/:id/resolve
+Role: `commander`. Gỡ cảnh báo — soft (`is_active=false`, `resolved_at=NOW()`), không xoá hẳn
+(giữ lịch sử audit). **404** nếu id không tồn tại. Phát `notification:system` (level `info`).
+
+### GET /api/system/status
+Role: `commander`. `data`: `node_env`, `uptime_seconds`, `database {ok, latency_ms}`,
+`integrations {ors_configured, esms_configured, esms_brandname_configured}` (chỉ boolean —
+KHÔNG bao giờ trả giá trị key/secret), `counts {users_by_role[{key,count}], flagged_users,
+inactive_users, rescue_teams, active_hazards}`.
+
+### GET /api/system/activity?limit=50
+Role: `commander`. `limit` 1..200 (mặc định 50). Nhật ký gộp từ `sos_timeline` + `road_hazards`,
+mới nhất trước: `[{ at, kind: "sos"|"hazard", action, actor_name|null, detail|null }]`.
+`action` ∈ `created|assigned|in_progress|arrived|resolved|cancelled|hazard_created|hazard_resolved`.
+`actor_name=null` ở `hazard_resolved` (bảng chưa lưu ai gỡ).
 
 ---
 

@@ -9,7 +9,9 @@ import type {
   SosNewPayload,
   SosUpdatedPayload,
   TeamLocationPayload,
-  SystemNotificationPayload
+  SystemNotificationPayload,
+  HazardReportNewPayload,
+  HazardReportReviewedPayload
 } from '@/shared/socket-events.types'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -20,6 +22,9 @@ interface SocketHandlers {
   onSosUpdated?: (data: SosUpdatedPayload) => void
   onTeamLocation?: (data: TeamLocationPayload) => void
   onSystemNotification?: (data: SystemNotificationPayload) => void
+  // Chỉ commander nhận (server bắn vào phòng province:lamdong).
+  onHazardReportNew?: (data: HazardReportNewPayload) => void
+  onHazardReportReviewed?: (data: HazardReportReviewedPayload) => void
 }
 
 export function useSocket(handlers: SocketHandlers = {}) {
@@ -65,6 +70,8 @@ export function useSocket(handlers: SocketHandlers = {}) {
     socket.on('sos:updated', (data) => handlers.onSosUpdated?.(data))
     socket.on('team:location-updated', (data) => handlers.onTeamLocation?.(data))
     socket.on('notification:system', (data) => handlers.onSystemNotification?.(data))
+    socket.on('hazard-report:new', (data) => handlers.onHazardReportNew?.(data))
+    socket.on('hazard-report:reviewed', (data) => handlers.onHazardReportReviewed?.(data))
   }
 
   function disconnect() {

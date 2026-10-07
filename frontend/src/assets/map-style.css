@@ -197,6 +197,27 @@
   position:fixed; right:24px; bottom:24px; z-index:950;
 }
 
+/* ---------- nút báo cáo sạt lở / chặn đường (mọi người dùng đã đăng nhập) ---------- */
+/* Góc dưới phải, nằm trên nút SOS (120px) khi có nút SOS (victim); không có SOS thì xuống sát đáy. */
+.report-fab{
+  position:fixed; right:24px; bottom:24px; z-index:940;
+  padding:12px 18px; min-height:44px; display:inline-flex; align-items:center;
+  border-radius:999px; background:#fff; color:#92400e; font-size:13px; font-weight:600;
+  text-decoration:none; border:2px solid #eab308; box-shadow:0 2px 10px rgba(0,0,0,.18);
+}
+.map-page.co-nut-sos .report-fab{ bottom:158px; }
+.report-fab:hover{ background:#fef9c3; }
+
+/* ---------- biểu tượng cảnh báo trên bản đồ chung (đỏ = chặn đường, vàng = cẩn trọng) ---------- */
+.hz-icon-wrap{ background:transparent; border:0; }
+.hz-icon{
+  display:flex; align-items:center; justify-content:center; width:26px; height:26px;
+  border-radius:50%; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.45);
+  font:700 15px/1 system-ui,sans-serif; color:#fff;
+}
+.hz-icon--do{ background:#dc2626; }
+.hz-icon--vang{ background:#eab308; color:#422006; }
+
 /* Nút zoom Leaflet đặt góc phải TRÊN (position:'topright' trong useLeafletMap.ts).
    Đẩy xuống dưới thanh MapStats (~96px từ đỉnh) để không bị thanh trên che. */
 .leaflet-top.leaflet-right .leaflet-control-zoom{

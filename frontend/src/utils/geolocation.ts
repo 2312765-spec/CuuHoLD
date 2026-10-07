@@ -43,3 +43,32 @@ export function layViTriHienTai(geolocation: GeolocationGetter | undefined): Pro
     )
   })
 }
+
+// Bản chi tiết cho form báo cáo cộng đồng: ngoài toạ độ còn trả sai số (mét) trình duyệt báo, để
+// người duyệt biết vị trí đáng tin tới đâu. doChinhXacM=null khi không lấy được GPS thật.
+export interface KetQuaViTriChiTiet extends KetQuaViTri {
+  doChinhXacM: number | null
+}
+
+export function layViTriChiTiet(
+  geolocation: GeolocationGetter | undefined
+): Promise<KetQuaViTriChiTiet> {
+  return new Promise((resolve) => {
+    if (!geolocation) {
+      resolve({ ...TOA_DO_UOC_TINH_TAM_TINH, doChinhXacM: null })
+      return
+    }
+    geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          uocLuong: pos.coords.accuracy > NGUONG_SAI_SO_CANH_BAO_M,
+          doChinhXacM: Math.round(pos.coords.accuracy)
+        })
+      },
+      () => resolve({ ...TOA_DO_UOC_TINH_TAM_TINH, doChinhXacM: null }),
+      { enableHighAccuracy: true, timeout: GEOLOCATION_TIMEOUT_MS }
+    )
+  })
+}

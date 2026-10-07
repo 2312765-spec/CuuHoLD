@@ -30,6 +30,7 @@ rescue-gis-lamdong/          ← Monorepo
 | Database | PostgreSQL 15 + PostGIS (Supabase) | B + C |
 | GIS Queries | PostGIS SQL (viết trong `gis/queries.sql`) | C |
 | SMS | eSMS.vn REST API (không dùng SDK, dùng axios) | B |
+| Routing | OpenRouteService (openrouteservice.org, free tier, dựa trên OSM) — dẫn đường thật cho RescuerView, không gọi Google Maps API. Xem Mục 15.13 | B |
 | Deploy | Vercel (FE) + Render.com (BE) + Supabase (DB) | B |
 
 ---
@@ -428,6 +429,8 @@ PATCH  /api/rescue-teams/:id/status  — Cập nhật trạng thái (role: rescu
 'sos:updated'          // Payload: SosUpdatedPayload — Trạng thái SOS đổi
 'team:location-updated'// Payload: TeamLocationPayload — GPS đội cứu hộ
 'notification:system'  // Payload: SystemNotificationPayload — Cảnh báo
+'hazard-report:new'     // Payload: HazardReportNewPayload — báo cáo cộng đồng mới/được gộp (CHỈ room province:lamdong)
+'hazard-report:reviewed'// Payload: HazardReportReviewedPayload — commander vừa duyệt/từ chối (CHỈ room province:lamdong)
 ```
 
 ### Client → Server
@@ -477,6 +480,10 @@ ESMS_SMS_TYPE=2
 # "Brand name code is not exist".
 ESMS_BRANDNAME=
 RESCUE_CENTER_PHONE=0901234567
+
+# OpenRouteService (openrouteservice.org/dev/#/signup, free tier — Mục 15.13) — để trống thì
+# /api/routing/route trả 503, frontend tự lùi về đường chim bay, không ảnh hưởng phần khác.
+ORS_API_KEY=
 ```
 
 **⛔ Không bao giờ commit `.env`. Chỉ commit `.env.example`.**
@@ -643,7 +650,7 @@ openssl rand -base64 32
 - [x] **Bị chặn 429 (too many requests) lúc đăng nhập nhưng vẫn hiện thêm toast "Sai số điện thoại hoặc mật khẩu".** — **Đã xử lý (2026-09-06).** `AuthModal.vue dangNhap()` có `catch` bắt MỌI lỗi rồi luôn hiện cứng 1 câu "Sai số điện thoại hoặc mật khẩu" bất kể lỗi thật là gì — trong khi interceptor toàn cục `http.ts` đã tự hiện đúng toast theo status thật (401 sai mật khẩu, 429 rate-limit, mất mạng...) rồi. Vì `toastStore` xếp hàng đợi (không đè lên nhau, cố ý để không mất toast khi dồn dập — xem `stores/toast.ts`), user thấy CẢ 2 toast nối tiếp: toast đúng (429) rồi tới toast sai/thừa (401 giả). **Fix:** không phải thêm `if (status === 401)` vào component (dạy component đọc HTTP status là band-aid, lặp lại kiến thức đã có sẵn ở `http.ts`) — mà xoá hẳn toast cứng đó, để `catch {}` rỗng kèm comment, đúng quy ước ĐÃ CÓ SẴN ở mọi nơi khác gọi API trong codebase (`RescuerView.vue`, `DashboardView.vue`, `MapView.vue`, `stores/mapData.ts` đều dùng pattern này). `AuthModal.vue` là chỗ DUY NHẤT lệch quy ước, giờ đã khớp lại. Đã kiểm chứng: `eslint`, `npm run build` sạch.
 
 ### 15.5 Vận hành
-- [ ] **Chưa có health-check endpoint** (`GET /api/health`). Deploy lên Render.com (Mục 2) mà thiếu endpoint này thì platform không có cách xác định server còn sống hay đã treo để tự restart.
+- [x] **Chưa có health-check endpoint** (`GET /api/health`). — **Đã xử lý (2026-10-05)**, xem Mục 15.15. Deploy lên Render.com (Mục 2) mà thiếu endpoint này thì platform không có cách xác định server còn sống hay đã treo để tự restart.
 - [ ] **`frontend/.env` bị root `.gitignore` (`**/.env`) chặn**, trong khi comment ở `frontend/.gitignore` khẳng định ngược lại ("không phải secret, commit để cả nhóm dùng chung cấu hình chuẩn"). Hai file `.gitignore` đang mâu thuẫn — cần thêm exception `!frontend/.env` ở root hoặc sửa lại comment sai.
 - [ ] **Trước khi coi một phiên làm việc là "xong": luôn chạy `git status` ở cả `backend/` và `frontend/`.** Từng xảy ra thật: toàn bộ `frontend/` chưa commit lần nào dù đã có nhiều tính năng hoàn chỉnh — dễ mất việc nếu máy hỏng/branch bị xoá nhầm.
 
@@ -749,7 +756,7 @@ openssl rand -base64 32
 **Chưa làm — ảnh hưởng nghiệp vụ, nên ưu tiên trước:**
 - [x] **F-SOS-01: "Chỉ 1 SOS active cùng lúc/user" (SRS 3.2.1) không được enforce.** `SosService.create()` ([sos.service.ts:164](backend/src/sos/sos.service.ts#L164)) không kiểm tra victim đã có SOS active (`pending/assigned/in_progress/arrived`) trước khi insert thêm — giới hạn duy nhất đang có là rate limit 5 SOS/giờ, không phải "1 active/user". `GET /api/sos/mine/active` đã có sẵn (dùng để khôi phục UI sau F5, xem Mục 15.4) nên chặn được bằng cách gọi lại chính hàm đó trong `create()` trước khi insert, ném `ConflictException` (409) nếu đã có active.
 - [x] **F-GIS-01: thiếu fallback mở rộng bán kính 10km → 20km (SRS 3.3.2).** `GisService.findNearestTeams()` ([gis.service.ts:30-61](backend/src/gis/gis.service.ts#L30)) đã nhận `radiusM` làm tham số nhưng `tryAutoAssignNearestTeam` trong `sos.service.ts` chỉ gọi đúng 1 lần với `10000` cố định — không có đội trong 10km thì giữ nguyên `'pending'` luôn, không thử lại ở 20000. Cần thêm 1 lần gọi lại với `radiusM=20000` khi lần đầu rỗng. — **Đã xử lý (2026-09-11).** `tryAutoAssignNearestTeam` gọi lại `findNearestTeams(..., AUTO_ASSIGN_FALLBACK_RADIUS_M=20000, 1)` khi lần 10km rỗng; cả 2 rỗng mới giữ `'pending'`. **Phạm vi có chủ đích:** chỉ áp cho auto-assign (SRS ghi tác nhân F-GIS-01 là "Hệ thống — tự động khi có SOS mới"); `GET /api/gis/nearest-teams` của commander giữ nguyên, trả đúng bán kính `radiusMeters` được truyền, không tự mở rộng. Thêm test "mở rộng lên 20km" + assert "đã có đội trong 10km thì không gọi 20km" ở `sos.service.spec.ts`; `docs/api-contract.md` Mục 2 cập nhật mô tả.
-- [x] **6.1 RescuerView: không có bản đồ/route nào trong màn hình (SRS yêu cầu "route di chuyển trên bản đồ").** [RescuerView.vue](frontend/src/views/RescuerView.vue) hiện là list thuần, chỉ có `googleMapsLink()` mở Google Maps ra ngoài app — không dùng `useLeafletMap`/`RescueMap` nào. Cần quyết định: nhúng bản đồ thật (tốn công, đúng SRS) hay sửa lại SRS chấp nhận hướng "mở Google Maps ngoài app" như hiện tại. — **Đã xử lý (2026-09-11), team chọn nhúng bản đồ thật, kiểu "đường thẳng + chỉ đường ngoài".** RescuerView giờ có bản đồ ở đầu trang (tái dùng [RescueMap.vue](frontend/src/components/map/RescueMap.vue), thêm prop `route`, nới kiểu `sosList` để nhận cả `SosRequest`): vẽ **đường thẳng nét đứt** từ GPS của rescuer (`watchPosition` sẵn có) tới nạn nhân của nhiệm vụ đang chọn (bấm thẻ hoặc marker để chọn, mặc định nhiệm vụ đầu danh sách), mỗi thẻ hiện khoảng cách chim bay + ETA ước tính 40 km/h ([utils/geo.ts](frontend/src/utils/geo.ts), công thức ETA khớp `GisService.findNearestTeams()`). Link Google Maps đổi từ "xem điểm" sang **chỉ đường** (`/maps/dir/?api=1&destination=`). **Cố ý KHÔNG dùng định tuyến đường bộ thật (OSRM demo server):** không SLA, giới hạn 1 req/s, và không chạy khi mất mạng — đúng lúc cứu hộ thực địa hay mất sóng (cùng loại rủi ro tile OSM ở 15.7); đường thẳng + ghi rõ "đường chim bay, không phải tuyến đường bộ" dưới bản đồ thì trung thực và vẫn chạy offline (tile z8–10 bundle sẵn). Nếu hội đồng hỏi "route": dẫn đường theo đường bộ giao cho Google Maps qua nút "Chỉ đường". Kiểm chứng: `geo.spec.ts` (6 test, viết trước, đỏ → xanh), 26 test FE pass, `vue-tsc` + build + eslint sạch; chụp màn hình thật (Chrome headless, leader `0900000222`, GPS giả lập tại vị trí đội) — khoảng cách hiện ≈ 1.6 km, khớp 1.626 m PostGIS tính trong DB. **Phát hiện kèm lúc chụp:** `style.css` (đã commit) có rule toàn cục `header { position: fixed; z-index: 50 }` viết cho header trang chủ nhưng áp lên MỌI thẻ `<header>` — header của RescuerView không chiếm chỗ, nội dung đầu trang (trước đây là thẻ nhiệm vụ đầu tiên, giờ là bản đồ) nằm dưới header; thêm vào đó pane Leaflet (z-index 400+) vẽ đè lên header. Đã xử lý **trong RescuerView**: `.rescuer-top { position: sticky }` + `.rescuer-map { position: relative; z-index: 0 }` (stacking context riêng cho bản đồ).
+- [x] **6.1 RescuerView: không có bản đồ/route nào trong màn hình (SRS yêu cầu "route di chuyển trên bản đồ").** [RescuerView.vue](frontend/src/views/RescuerView.vue) hiện là list thuần, chỉ có `googleMapsLink()` mở Google Maps ra ngoài app — không dùng `useLeafletMap`/`RescueMap` nào. Cần quyết định: nhúng bản đồ thật (tốn công, đúng SRS) hay sửa lại SRS chấp nhận hướng "mở Google Maps ngoài app" như hiện tại. — **Đã xử lý (2026-09-11), team chọn nhúng bản đồ thật, kiểu "đường thẳng + chỉ đường ngoài".** RescuerView giờ có bản đồ ở đầu trang (tái dùng [RescueMap.vue](frontend/src/components/map/RescueMap.vue), thêm prop `route`, nới kiểu `sosList` để nhận cả `SosRequest`): vẽ **đường thẳng nét đứt** từ GPS của rescuer (`watchPosition` sẵn có) tới nạn nhân của nhiệm vụ đang chọn (bấm thẻ hoặc marker để chọn, mặc định nhiệm vụ đầu danh sách), mỗi thẻ hiện khoảng cách chim bay + ETA ước tính 40 km/h ([utils/geo.ts](frontend/src/utils/geo.ts), công thức ETA khớp `GisService.findNearestTeams()`). Link Google Maps đổi từ "xem điểm" sang **chỉ đường** (`/maps/dir/?api=1&destination=`). **Cố ý KHÔNG dùng định tuyến đường bộ thật (OSRM demo server):** không SLA, giới hạn 1 req/s, và không chạy khi mất mạng — đúng lúc cứu hộ thực địa hay mất sóng (cùng loại rủi ro tile OSM ở 15.7); đường thẳng + ghi rõ "đường chim bay, không phải tuyến đường bộ" dưới bản đồ thì trung thực và vẫn chạy offline (tile z8–10 bundle sẵn). Nếu hội đồng hỏi "route": dẫn đường theo đường bộ giao cho Google Maps qua nút "Chỉ đường". Kiểm chứng: `geo.spec.ts` (6 test, viết trước, đỏ → xanh), 26 test FE pass, `vue-tsc` + build + eslint sạch; chụp màn hình thật (Chrome headless, leader `0900000222`, GPS giả lập tại vị trí đội) — khoảng cách hiện ≈ 1.6 km, khớp 1.626 m PostGIS tính trong DB. **Phát hiện kèm lúc chụp:** `style.css` (đã commit) có rule toàn cục `header { position: fixed; z-index: 50 }` viết cho header trang chủ nhưng áp lên MỌI thẻ `<header>` — header của RescuerView không chiếm chỗ, nội dung đầu trang (trước đây là thẻ nhiệm vụ đầu tiên, giờ là bản đồ) nằm dưới header; thêm vào đó pane Leaflet (z-index 400+) vẽ đè lên header. Đã xử lý **trong RescuerView**: `.rescuer-top { position: sticky }` + `.rescuer-map { position: relative; z-index: 0 }` (stacking context riêng cho bản đồ). **⚠️ Cập nhật 2026-09-22 (Mục 15.13): quyết định "chỉ đường thẳng, giao Google Maps" ở dòng này đã được NÂNG CẤP lên dẫn đường thật (GraphHopper tự host) — không còn là trạng thái hiện tại của RescuerView. Dòng này giữ nguyên làm lịch sử audit.**
 - [ ] **DashboardView cũng dùng `<header class="dashboard-top">` nên dính cùng rule `header { position: fixed }` toàn cục ở `style.css`** (xem dòng trên) — chưa sửa, chưa kiểm chứng bằng ảnh. Sửa gốc đúng nhất: đổi selector `header` trong `style.css` thành class riêng của `AppHeader.vue`, rồi xem lại trang chủ/MapView (có thể đang dựa vào header fixed, VD `#map{padding-top:96px}` ở Mục 15.7) — khi đó override `sticky` trong RescuerView thành thừa, gỡ đi được.
 - [ ] **F-PWA-04: GPS breadcrumb mỗi 2 phút kể cả offline (SRS 3.5) — hoàn toàn chưa tồn tại.** Không tìm thấy logic nào lưu tọa độ định kỳ vào IndexedDB cho mục đích này ở bất kỳ đâu trong `frontend/src`. `watchPosition` hiện có ở `RescuerView.vue`/`MapView.vue` chỉ phục vụ gửi GPS đội cứu hộ mỗi 30s khi có nhiệm vụ active (F-RT-01), không phải breadcrumb liên tục cho ca mất tích/trekking mà SRS mô tả. Nếu team quyết định bỏ tính năng này (ít giá trị demo, nhiều công), nên sửa SRS 3.5/8.2 ghi rõ "ngoài phạm vi MVP" thay vì để lệch âm thầm.
 
@@ -815,7 +822,7 @@ Dữ liệu demo tái hiện đúng: SOS ở xã `24778`, đội "Đội cứu h
 - Backend: `SOS_DETAIL_SELECT` thêm `ST_Y/ST_X(rt.current_location::geometry) AS team_lat/team_lng` qua đúng `LEFT JOIN rescue_teams` sẵn có (nên có ở cả `GET /api/sos/:id` lẫn `/mine/active`). Frontend: `SosRequest` thêm `team_lat/team_lng`; `ActiveSos` thêm `teamLat/teamLng`, gán lúc `khoiPhucSosDangHoatDong()` và **mỗi lượt poll** (trước đây poll chỉ cập nhật `status`); `useLeafletMap.capNhatMarkerDoiCuuHo()` vẽ chấm xanh dương (cùng quy ước màu "đội" với `RescueMap.vue`); `MapView.apDungMarkerSos()` gọi hàm này **chỉ khi SOS chưa kết thúc** — poll dừng lúc resolved/cancelled nên để lại chấm đội sẽ gây hiểu nhầm đội còn đó.
 - **Quyết định có chủ đích (phương án A):** SOS vừa gửi phải chờ lượt poll đầu (tối đa 20s) mới thấy marker đội, dù auto-assign đã chạy đồng bộ — không gọi thêm `GET /:id` ngay sau `POST /sos` cho đơn giản.
 - **Giới hạn đã biết:** (1) trễ tối đa ~50s (poll 20s + GPS đội 30s) — đủ để thấy "đội đang tới", không phải dẫn đường; (2) `rescue_teams.current_location` là vị trí **gần nhất từng ghi nhận**, có thể còn từ nhiệm vụ trước nếu rescuer chưa gửi GPS lần nào kể từ khi được giao — marker khi đó gây hiểu nhầm "đội đang ở đây", chưa có dấu hiệu cảnh báo kiểu "vị trí ước tính" (Mục 15.6); (3) khi đội ở rất gần SOS (ảnh kiểm chứng: cách ~11 m), **pin SOS che gần hết chấm đội** ở mọi mức zoom thường dùng.
-- Kiểm chứng: test viết trước, đỏ → xanh — BE thêm 1 test (`findMyActive` SQL có `team_lat/team_lng`, tổng 45 pass), FE thêm 2 test (`khoiPhucSosDangHoatDong` mang toạ độ đội; lượt poll cập nhật toạ độ đội — fake timers, tổng 28 pass); lint + build (có `vue-tsc`) sạch cả 2 workspace. Thật: `GET /api/sos/mine/active` trên SOS thật của victim `0901242427` trả đúng `team_lat/team_lng`; ảnh chụp `/map` của victim thấy chấm xanh đội cạnh pin SOS. **Không kiểm chứng được bằng ảnh việc marker DI CHUYỂN** (cần ghi DB để giả lập đội di chuyển trong lúc victim đang có SOS thật) — phần đó chỉ có unit test.
+- Kiểm chứng: test viết trước, đỏ → xanh — BE thêm 1 test (`findMyActive` SQL có `team_lat/team_lng`, tổng 45 pass), FE thêm 2 test (`khoiPhucSosDangHoatDong` mang toạ độ đội; lượt poll cập nhật toạ độ đội — fake timers, tổng 28 pass); lint + build (có `vue-tsc`) sạch cả 2 workspace. Thật: `GET /api/sos/mine/active` trên SOS thật của một victim thử (đã ẩn số điện thoại) trả đúng `team_lat/team_lng`; ảnh chụp `/map` của victim thấy chấm xanh đội cạnh pin SOS. **Không kiểm chứng được bằng ảnh việc marker DI CHUYỂN** (cần ghi DB để giả lập đội di chuyển trong lúc victim đang có SOS thật) — phần đó chỉ có unit test.
 - **⚠️ Sự cố do agent gây ra lúc kiểm chứng:** script kiểm chứng đầu tiên có khối dọn dẹp ghi `current_location` của đội "Xuân Hương 2" về toạ độ seed **vô điều kiện**, kể cả khi script tự dừng sớm (vì phát hiện victim đang có SOS thật). Đội này đang `busy` cho SOS thật đó và có `updated_at` 16:28 — nhiều khả năng là 1 lần app rescuer gửi GPS thật, và giá trị đó đã bị ghi đè (không lưu lại được giá trị cũ). Tự đúng lại ở lần rescuer gửi GPS kế tiếp; log backend lúc đó (TypeORM in `PARAMETERS`) có giá trị gốc nếu cần. Bài học: khối dọn dẹp của script kiểm chứng chỉ được hoàn tác đúng những gì chính script đã ghi.
 
 ### 15.12 Bug thật đã sửa (2026-09-13) — GPS SOS lệch, bản đồ trắng trên điện thoại, Viettel chặn openstreetmap.org
@@ -839,7 +846,408 @@ Dữ liệu demo tái hiện đúng: SOS ở xã `24778`, đội "Đội cứu h
 - [ ] 4G Viettel có bị chặn giống vậy không; Viettel có chặn cả theo IP không (laptop bật WARP nên không thử được) — chưa rõ.
 - [ ] Điều khoản sử dụng của `tile.openstreetmap.fr/hot` chưa đọc được (wiki OSM liệt kê điều khoản cũng bị Viettel chặn). Đây vẫn là máy chủ **tình nguyện, không SLA** — lời giải cho đồ án. Triển khai thật cần nguồn có API key + giới hạn referrer, hoặc backend làm proxy tile (Mục 15.7 việc #4).
 
-### 15.13 Bug thật đã sửa (2026-09-18) — commander/rescuer không thấy marker nào; victim tự zoom tới SOS
+### 15.13 Nâng cấp (2026-09-22) — dẫn đường thật trên bản đồ cho RescuerView (GraphHopper tự host)
+
+> **Thay thế/nâng cấp quyết định ở Mục 15.9** ("RescuerView: đường thẳng + chỉ đường ngoài" —
+> phương án A đã chọn lúc đó vì chưa có hạ tầng routing riêng). Quang yêu cầu dẫn đường thật
+> ngay trên bản đồ trong app, không mở Google Maps, theo hướng tự chủ routing giống Grab
+> (nhưng dùng dữ liệu mở OSM, không tự thu thập dữ liệu như Grab thật — đã nói rõ với Quang,
+> tránh hiểu nhầm khi bảo vệ đồ án). Mục 15.9 KHÔNG bị xoá — giữ làm lịch sử audit, chỉ không
+> còn là trạng thái hiện tại của RescuerView nữa.
+>
+> **Đổi hướng trong cùng phiên làm việc:** thiết kế ban đầu là tự host GraphHopper trên Oracle
+> Cloud Always Free VM (đã viết xong `infra/graphhopper/` — script setup, config, systemd,
+> Nginx). Quang hỏi "có cách nào không cần chạy máy ảo không" → đổi sang gọi thẳng
+> **OpenRouteService** (dịch vụ định tuyến OSM miễn phí, không cần quản lý server nào) —
+> **đánh đổi có chủ đích:** đổi lấy sự đơn giản (không VM, không SSH, không systemd) bằng việc
+> phụ thuộc vào một bên thứ 3 (giới hạn quota, có thể đổi điều khoản). `infra/graphhopper/`
+> đã bị xoá vì không còn dùng — không để lại infra chết trong repo.
+
+**Kiến trúc:** `RescuerView.vue` → `routingService.ts` → `GET /api/routing/route` (JWT + role
+`rescuer`) → `RoutingService` (`backend/src/routing/`) → **OpenRouteService**
+(`api.heigit.org`, HeiGIT — Viện Địa tin học Đại học Heidelberg, dựa trên dữ liệu OSM) qua
+`POST .../v2/directions/driving-car/geojson`, xác thực bằng header `Authorization: <ORS_API_KEY>`.
+
+**Vì sao KHÔNG cho frontend gọi thẳng ORS:** key sẽ phải nhúng vào bundle Vite (public, ai
+cũng đọc được từ DevTools) — mất kiểm soát quota free tier. Giống pattern eSMS đã có sẵn (cũng
+qua backend, không lộ secret ra FE).
+
+**Đã xác nhận trực tiếp (gọi thử endpoint thật, KHÔNG đoán theo tài liệu)** vì trang docs
+tương tác của ORS (`openrouteservice.org/dev`) là SPA khó cào tự động: base URL đúng là
+`https://api.heigit.org/openrouteservice/v2/directions/{profile}` (không phải
+`api.openrouteservice.org` như nhiều tài liệu cũ trên mạng vẫn ghi — HeiGIT đã gộp domain),
+`POST .../geojson` với body `{coordinates: [[lng,lat],[lng,lat]], instructions: true}` (đã thử
+gọi không kèm key, nhận đúng `401 "Authorization field missing"` — xác nhận URL/body hợp lệ,
+chỉ thiếu xác thực). `language: "vi"` gửi kèm — **đã xác nhận hoạt động thật với API key thật**
+(xem "Đã test với ORS_API_KEY THẬT" bên dưới): ORS trả hướng dẫn rẽ đúng tiếng Việt.
+
+**Route thật là lớp NÂNG CAO, không thay fallback đang chạy tốt:** đường chim bay
+(`utils/geo.ts`) vẫn vẽ ngay lập tức, không chờ mạng. Route thật tải bất đồng bộ, cùng nhịp
+30s với việc gửi GPS đội lên server (không tạo interval riêng, tránh dội request thừa vào free
+tier ORS mỗi lần GPS nhích vài mét) + tải lại ngay khi đổi nhiệm vụ đang chọn. Lỗi (thiếu
+`ORS_API_KEY`, hết quota free tier, ORS lỗi/mất mạng...) → `routingService.ts` **nuốt lỗi, trả
+`null`**, map tự lùi về đường chim bay — không throw, không toast (thêm cờ `khongHienToastLoi`
+mới vào interceptor toàn cục `http.ts`, vì interceptor cũ hiện toast cho MỌI lỗi kể cả 503, sẽ
+spam "Máy chủ đang gặp sự cố" mỗi 30 giây cho một tính năng vốn dĩ chỉ là nâng cao). Link "Chỉ
+đường (Google Maps)" giữ nguyên làm phương án cuối cùng. **(Từ 2026-10-06 link chỉ hiện khi đường bộ trong app
+không dùng được — xem Mục 15.18.)**
+
+**Bẫy toạ độ, cùng họ với `ST_MakePoint(lng, lat)` ở PostGIS:** ORS nhận VÀ trả toạ độ theo
+CÙNG chuẩn GeoJSON `[lng, lat]` (khác GraphHopper, nơi request "lat,lng" nhưng response
+"lng,lat" — 2 chiều khác nhau trong 1 API). Dù ORS nhất quán hơn, `Leaflet` vẫn dùng
+`[lat, lng]` nên `RoutingService.findRoute()` (`backend/src/routing/routing.service.ts`) vẫn
+phải đảo lại geometry response trước khi trả cho frontend — xem comment cảnh báo trong code.
+
+**Đã tra thật OSM có đủ dữ liệu đường không (Overpass API, không đoán):** khung toạ độ bao
+Lâm Đồng mới (9.97–12.81°N, 107.21–109.09°E) có **217.619 đoạn đường tổng**, trong đó
+**163.798 (~75%) là đường ô tô đi được** (`primary/secondary/tertiary/residential/
+unclassified/service`), phần còn lại là đường mòn/lối đi bộ. Mật độ tổng thể ổn, đặc biệt
+quanh Đà Lạt/Bảo Lộc/Phan Thiết (đô thị, du lịch, được cộng đồng OSM vẽ kỹ). **Chưa kiểm
+chứng được** từng xã cụ thể (Overpass API công khai bị rate-limit khi thử so sánh Đà Lạt vs 1
+vùng xa) — nghi ngờ hợp lý là các xã vùng sâu/miền núi thuộc phần Đắk Nông cũ sáp nhập vào có
+thể thưa dữ liệu hơn. Đã dặn Quang tự kiểm nhanh 2-3 xã hay dùng để demo bằng
+[Overpass Turbo](https://overpass-turbo.eu) trước khi bảo vệ đồ án.
+
+**File mới:**
+- Backend: `backend/src/routing/{routing.service.ts, routing.controller.ts, routing.module.ts, dto/route-query.dto.ts, routing.service.spec.ts}` — role `rescuer`, trả 503 (không crash boot) khi thiếu `ORS_API_KEY`/lỗi mạng/ORS không tìm được tuyến. `env.validation.ts` + `.env.example` thêm `ORS_API_KEY` (optional, giống pattern ESMS_*).
+- Frontend: `frontend/src/services/routingService.ts` (nuốt lỗi, trả `null`); `http.ts` thêm cờ `khongHienToastLoi`; `RescueMap.vue` thêm prop `routeThat` (vẽ liền nét khi có, lùi về `route` chấm chấm khi không); `RescuerView.vue` gọi `layTuyenDuongThat`, hiện khoảng cách/ETA thật + danh sách hướng dẫn rẽ (tối đa 8 bước, có "+N bước nữa") **(danh sách chữ này sau đó đã được thay bằng giọng đọc —
+xem Mục 15.18)**.
+
+**Đã kiểm chứng (2026-09-22):** backend `npm run build`/`npm test` (4 test cho `RoutingService`:
+đảo đúng toạ độ lng/lat→lat/lng, 503 khi thiếu key, 503 khi axios lỗi/timeout, 503 khi
+`features` rỗng — tổng 49 test pass)/`eslint` (không `--fix`) đều sạch. Frontend `npm run
+build` (gồm `vue-tsc -b`)/`npm test` (41 test pass)/`eslint` đều sạch. **Test qua browser
+thật** (Chrome headless, dev server thật, JWT ký tay bằng `JWT_SECRET` thật — không sửa mật
+khẩu tài khoản nào trong DB): đăng nhập rescuer có nhiệm vụ active thật (SOS y tế thật, đội
+"Xuân Hương 2"), map hiển thị SOS đúng, không lỗi console, không toast lặp.
+
+**Đã test với `ORS_API_KEY` THẬT (Quang gửi key ngay sau đó, cùng phiên) — xác nhận toàn bộ
+chuỗi hoạt động đúng, không còn là giả định:**
+- Gọi thẳng ORS bằng script cô lập: `POST .../geojson` trả `200`, `distance=2433.2m`,
+  `duration=189.3s`, 79 điểm toạ độ, **`language: 'vi'` hoạt động thật** — instruction thật là
+  *"Đi theo hướng Hướng tây trên đường Trần Quốc Toản"* (không còn là "best-effort chưa xác
+  nhận" như ghi trước đó ở đoạn "Bẫy toạ độ" bên trên).
+- Gọi qua đúng `GET /api/routing/route` (dev server backend thật, JWT hợp lệ cho rescuer
+  `0900000222`, từ vị trí đội "Xuân Hương 2" tới SOS thật cách ~3.7km chim bay): `200 OK`,
+  `distance_meters: 7091`, `duration_seconds: 599`, `geometry` đúng thứ tự `[lat, lng]` (số
+  đầu ~11.95xx, số sau ~108.44xx — khớp Đà Lạt, không bị đảo ngược) — xác nhận
+  `RoutingService.findRoute()` đảo toạ độ đúng qua toàn bộ chuỗi thật, không chỉ qua unit test
+  mock. Route thật dài hơn hẳn đường chim bay (7km vs 3.7km) vì đi theo đường thật, không phải
+  do lỗi — đúng như kỳ vọng.
+- **Vẫn chưa test được:** GPS thật trên trình duyệt di động (Chrome headless trong session này
+  không giả lập được `watchPosition` sau khi component đã mount) và giao diện thật trên điện
+  thoại (route liền nét + panel hướng dẫn rẽ hiển thị đúng trên màn hình nhỏ).
+
+**Còn nợ, Quang tự làm:**
+- [x] ~~Đăng ký free tier + điền `ORS_API_KEY`~~ — xong, đã điền vào `backend/.env` và test thành công (xem trên).
+- [ ] Test trên điện thoại thật với nhiệm vụ active thật — xác nhận route liền nét + panel hướng dẫn rẽ hiển thị đúng trên màn hình nhỏ, và tự kiểm 2-3 xã hay demo bằng Overpass Turbo (xem phần "Đã tra thật OSM" ở trên).
+- [ ] Đọc kỹ điều khoản/hạn mức free tier của ORS trước khi demo đông người dùng cùng lúc (hội đồng bảo vệ, nhiều rescuer test song song) — free tier có giới hạn request/phút, request/ngày.
+
+**Bổ sung (2026-09-22, cùng ngày) — giới hạn `/api/routing/route` chỉ trong phạm vi tỉnh Lâm
+Đồng:** Quang hỏi có file `lam_dong_data.json` (kinh độ/vĩ độ toàn bộ xã/phường sau sáp nhập)
+muốn dùng để "tìm đường trong phạm vi bao quanh". File đó **không tồn tại trong repo** (đã
+`glob` xác nhận) — nhưng dữ liệu tương đương **đã có sẵn**: `wards.boundary`
+(GEOMETRY(MultiPolygon,4326), PostGIS) phủ đúng 123 xã/phường Lâm Đồng mới, hợp của toàn bộ
+ward chính là ranh giới tỉnh. Không cần thêm file/bảng nào — dùng lại nguồn này.
+
+Đã hỏi rõ mức độ mong muốn (2 hướng khác hẳn nhau): **(1) validate đầu vào** — kiểm tra 2 điểm
+trước khi gọi ORS, không nằm trong tỉnh thì từ chối luôn, không đổi cách route được tính; hay
+**(2) ép engine chỉ đi đường bên trong ranh giới** — không khả thi hợp lý với ORS hosted (chỉ
+có `avoid_polygons` để TRÁNH 1 vùng, không có "chỉ định tuyến trong vùng này"; muốn làm được
+phải tính vùng "ngoài ranh giới" làm vùng tránh — phức tạp, tốn quota, và không cần thiết vì
+SOS/đội cứu hộ vốn luôn ở trong tỉnh). Quang chọn **(1)**.
+
+**Đã triển khai (1):** `GisService.isPointInProvince(lat, lng)` mới
+([gis.service.ts](backend/src/gis/gis.service.ts)) — `SELECT EXISTS(... WHERE
+ST_Contains(boundary, ST_SetSRID(ST_MakePoint($lng,$lat),4326)))` trên bảng `wards`.
+`RoutingService.findRoute()` gọi hàm này cho CẢ 2 điểm (song song, `Promise.all`) **trước** khi
+gọi OpenRouteService — điểm nào ngoài tỉnh (VD: toạ độ Hà Nội) → `400 BadRequestException`
+"Điểm xuất phát hoặc điểm đến nằm ngoài phạm vi tỉnh Lâm Đồng — không tìm đường", **không gọi
+ORS** (đỡ tốn quota free tier cho toạ độ chắc chắn sai). `RoutingModule` import `GisModule` để
+inject được `GisService`. Phía frontend **không cần sửa gì** — `routingService.ts` đã nuốt mọi
+lỗi (400 lẫn 503) và trả `null`, tự lùi về đường chim bay, không phân biệt 2 mã lỗi này.
+
+Kiểm chứng: thêm `gis.service.spec.ts` (mới — trước đây `GisService` chưa có test nào, xem nợ
+đã ghi ở Mục 15.9) + 2 test trong `routing.service.spec.ts` (chặn khi điểm đi/điểm đến ngoài
+tỉnh, không gọi axios) — tổng 53 test BE pass, `npm run build`/`eslint` (không `--fix`) sạch.
+`docs/api-contract.md` Mục 3 cập nhật thêm response `400`.
+
+### 15.14 Tính năng mới (2026-09-25) — Quản lý cảnh báo/chặn đường (3/4 việc "admin" liệt kê ở
+Mục 11) + hoàn thiện Thống kê tổng quan (2/4)
+
+> Tiếp nối danh sách 4 việc "hệ thống giám sát tổng quan (commander)" mà audit trước đó xác
+> nhận CHƯA hề tồn tại (không bảng DB, không backend, không frontend): (1) Quản lý người dùng —
+> xong ngày 2026-09-25 cùng phiên trước Mục này (`UsersController`, `UsersView.vue`, route
+> `/users`); (2) Thống kê tổng quan — xong cùng ngày (`GisService.getStats()`,
+> `StatsView.vue`, route `/stats`); (3) Quản lý cảnh báo/chặn đường — xong trong Mục này; (4)
+> Cấu hình hệ thống/xem log — CHƯA làm, để lại cho phiên sau.
+
+**Thiết kế:** commander chọn 1 điểm trên bản đồ + bán kính (hình tròn, không phải vẽ polygon
+tay — đơn giản cho việc đánh dấu nhanh) để đánh dấu sạt lở/cây đổ/ngập lụt/nguy hiểm khác.
+Cảnh báo hiện cho MỌI vai trò đã đăng nhập xem (an toàn thực địa, không chỉ commander), nhưng
+chỉ commander tạo/gỡ được. Điểm khác biệt với 1 CRUD đơn thuần: cảnh báo active được buffer
+bằng PostGIS (`ST_Buffer` theo mét thật, không phải độ kinh/vĩ) thành `avoid_polygons` gửi cho
+OpenRouteService — `RoutingService.findRoute()` (RescuerView, Mục 15.13) tự động TRÁNH vùng
+cảnh báo khi tính đường, đúng yêu cầu gốc của Quang ("để thuật toán tìm đường khác đi").
+
+**Bảng mới:** `gis/09-create-road-hazards.sql` — `road_hazards` (type, description, location,
+radius_meters ≤5000m, ward_code tự suy ra qua trigger `set_ward_code_from_location()` DÙNG LẠI
+từ `03-migrate-existing-tables.sql`, created_by, is_active, resolved_at), GiST index, RLS bật
+không policy (cùng cách làm với `rescue_teams`). **Cần tự chạy trên Supabase SQL Editor** (agent
+không tự chạy migration lên DB thật — cùng quy ước đã áp dụng cho 05/06/07/08) — SAU 01-03.
+
+**Backend:** `backend/src/hazards/` (`hazards.service.ts`, `hazards.controller.ts`,
+`hazards.module.ts`, `hazard.types.ts`, `dto/create-hazard.dto.ts`) — `GET /api/hazards` (mọi
+role, active only), `GET /api/hazards/all` (commander, gồm đã gỡ), `POST /api/hazards`
+(commander), `PATCH /api/hazards/:id/resolve` (commander, soft — set `is_active=false`, không
+hard-delete, giữ lịch sử audit giống `is_flagged` thay vì xoá). Tạo/gỡ cảnh báo phát
+`notification:system` (Mục 8 — type đã định nghĩa từ lâu nhưng CHƯA từng được emit ở đâu, xem
+audit cũ) qua `SosGateway.emitSystemNotification()` mới thêm — bắn tới `province:lamdong` +
+`ward:{code}` nếu suy ra được xã.
+
+`HazardsService.findActiveAvoidPolygons()` gộp `ST_Buffer(location::geography,
+radius_meters)` của mọi cảnh báo active thành 1 GeoJSON MultiPolygon; `RoutingService` gọi hàm
+này và gắn vào `options.avoid_polygons` trong request ORS — bỏ hẳn field `options` (không gửi
+mảng rỗng) khi không có cảnh báo nào, tránh phải đoán ORS xử lý mảng rỗng ra sao.
+
+**⚠️ CHƯA xác nhận trực tiếp `options.avoid_polygons` với ORS thật** (khác base URL/coordinate
+order/alternative_routes ở Mục 15.13, đều đã gọi thử endpoint thật) — `api.heigit.org` không
+kết nối được từ môi trường lúc viết tính năng này (`ECONNREFUSED`, đã thử cả qua Bash lẫn qua
+trình duyệt, DNS phân giải đúng IP thật nên không phải kiểu bị chặn DNS như Viettel ở Mục
+15.12 — nhiều khả năng ORS tạm ngừng hoạt động lúc đó). Tham số này là hành vi ORS Directions
+API đã ổn định/tài liệu hoá từ lâu nên triển khai theo đúng tài liệu, nhưng nếu sai cú pháp,
+catch sẵn có vẫn bắt được và trả 503 (frontend lùi về đường chim bay, không vỡ tính năng
+chính) — **cần Quang tự verify lại với `ORS_API_KEY` thật ngay khi ORS truy cập được**, ghi
+tiếp vào Mục này.
+
+**Frontend:** `hazardsService.ts` (4 hàm khớp 4 endpoint). `RescueMap.vue` thêm prop `hazards`
+(vẽ `L.circle` bán kính MÉT THẬT — khác `L.circleMarker` bán kính pixel đã dùng cho SOS/đội —
+cùng bán kính PostGIS đang dùng để tính `avoid_polygons`, không phải ước lượng riêng ở FE) +
+prop `placingHazard` (đổi con trỏ crosshair, click bản đồ emit `pick-location` thay vì hành vi
+khác). `DashboardView.vue` thêm tab thứ 2 ở panel phải ("Cảnh báo/chặn đường") + nút "+ Đánh
+dấu cảnh báo" (bật chế độ chọn điểm) + modal tạo cảnh báo (loại/bán kính/mô tả) + nút "Gỡ cảnh
+báo" cho từng cảnh báo active. `RescuerView.vue` chỉ hiển thị read-only (`layCanhBaoDangHoatDong()`,
+không có quyền sửa) — để rescuer hiểu TẠI SAO route thật đôi khi đi vòng.
+
+**Kiểm chứng:** Backend — `hazards.service.spec.ts` (9 test, mock đúng hình dạng tuple
+`UPDATE...RETURNING` theo bài học đã ghi ở Mục 15.11) + 2 test mới trong
+`routing.service.spec.ts` (có/không avoid_polygons trong body ORS) — tổng 75 test BE pass,
+`npm run build`/`eslint` (không `--fix`) sạch. Frontend — build/`vue-tsc`/eslint/41 test đều
+sạch. **Test qua browser thật** (dev server thật, JWT commander thật) — xác nhận toàn chuỗi
+wiring đúng dù bảng chưa tồn tại trên Supabase: `GET /api/hazards/all` → 500 "relation
+road_hazards does not exist" (đúng như kỳ vọng, KHÔNG phải lỗi code — Postgres parse SQL
+thành công, chỉ thiếu bảng); UI không crash, hiện "Chưa có cảnh báo nào." + toast lỗi chung
+đúng 1 lần (không lặp); bấm "+ Đánh dấu cảnh báo" → crosshair → click bản đồ → modal hiện đúng
+toạ độ thật click được (11.80821, 108.71817) → submit → log backend xác nhận
+`INSERT INTO road_hazards` nhận đúng tham số theo đúng thứ tự `ST_MakePoint(lng, lat)`
+(`108.71817..., 11.80821...`) + `created_by` đúng UUID commander thật. **Cần Quang tự chạy
+`gis/09-create-road-hazards.sql` trên Supabase để tính năng hoạt động thật** — sau đó test lại
+toàn bộ luồng (tạo cảnh báo → route thật của rescuer đi vòng qua vùng đó) để xác nhận
+avoid_polygons hoạt động đúng như tài liệu ORS.
+
+**Còn nợ:**
+- [x] Xác nhận `options.avoid_polygons` với ORS thật — **Đã xác nhận (2026-10-05)**, xem dưới.
+- [x] Chạy `gis/09-create-road-hazards.sql` trên Supabase — xong, `GET /api/hazards/all` trả 200.
+- [x] Test tạo cảnh báo chặn giữa route thật — **Đã xác nhận (2026-10-05)**, xem dưới.
+- [x] Việc thứ 4/4 "Cấu hình hệ thống, xem log" — **Đã làm (2026-10-05)**, xem dưới.
+- [ ] Màu marker đội cứu hộ trên `DashboardView` chưa tự cập nhật theo trạng thái đổi giữa
+  phiên (nợ cũ từ Mục 15.11, không liên quan tính năng này, ghi lại để không quên).
+- [ ] `hazard_resolved` trong nhật ký không biết AI gỡ (bảng `road_hazards` chưa có `resolved_by`)
+  — hiện hiện "Hệ thống". Thêm cột nếu cần audit đầy đủ.
+
+**Xác nhận avoid_polygons với ORS THẬT (2026-10-05, ORS đã online lại):** script
+e2e qua HTTP thật (commander + rescuer JWT, backend chạy thật, DB thật): route gốc
+(11.952,108.438 → 11.942,108.447) = 3253 m → tạo hazard `landslide` bán kính 150 m ngay điểm giữa
+route (`POST /api/hazards` → 201, `ward_code` tự suy ra = 24781) → route lại = 3304 m, đi vòng, điểm gần
+nhất của route mới cách tâm cảnh báo 887 m > 150 m → **ORS né đúng vùng**. Cảnh báo test đã tự gỡ
+(`PATCH /resolve` → 200); dòng test còn lại trong DB ở trạng thái đã gỡ (hiện trong nhật ký).
+
+### 15.14.1 Chọn đội theo đường bộ thật, né cảnh báo (2026-10-05)
+
+**Lỗ hổng đã sửa:** `findNearestTeams()` (PostGIS) chỉ tính khoảng cách chim bay nên đội "gần nhất"
+có thể bị sạt lở chặn mà vẫn được tự động phân công; chỉ tuyến đi của họ mới đi vòng (Mục 15.14).
+**Cách làm** (`SosService.tryAutoAssignNearestTeam` + `RoutingService.pickBestTeamByRoad/estimateTravel`):
+- Mỗi tầng bán kính (10 km lấy 3 đội, 20 km lấy 5 đội, theo SRS F-GIS-01) lấy các đội `available` gần nhất
+  theo chim bay, tính **thời gian đi thật** từng đội qua ORS (đã né vùng cảnh báo), chọn đội **đến nhanh nhất**.
+  Đội bị chặn hẳn bị loại; đội đã xét ở tầng 10 km không xét lại ở tầng 20 km. Đội đã `busy` (đã được phân
+  công) không bao giờ là ứng viên vì `findNearestTeams` chỉ trả `available`.
+- **Chọn theo thời gian đi thật chứ không phải "bị chặn thì loại":** đội có đường vòng nhỏ vẫn đủ điều kiện nếu
+  vẫn nhanh nhất; chỉ khi vòng quá xa hoặc không có đường thì đội khác thắng. Timeline ghi rõ
+  "~N phút, đã tránh vùng cảnh báo; bỏ qua K đội gần hơn vì đường bị chặn hoặc đi lâu hơn".
+- **Không tốn quota ORS khi không có cảnh báo nào active** (giữ nguyên hành vi cũ, 0 lượt gọi).
+- **Phân biệt "bị cảnh báo chặn" với "điểm không nằm gần đường nào"** (nạn nhân/đội giữa rừng, ORS cũng 404):
+  khi ORS báo không có tuyến lúc né cảnh báo thì thử lại KHÔNG né; có đường → bị cảnh báo chặn thật (loại đội);
+  vẫn không có đường → không liên quan cảnh báo, giữ đội gần nhất chim bay (không bỏ rơi SOS).
+- ORS lỗi/hết quota → lùi về đội gần nhất chim bay. Mọi đội đều bị chặn ở cả 2 tầng → SOS giữ `pending`
+  (log cảnh báo), commander phân công tay.
+- Module: có vòng Sos → Routing → Hazards → Sos nên 3 module dùng `forwardRef`.
+
+**Kiểm chứng:** 90 test BE (thêm 9: 6 cho `pickBestTeamByRoad`, 3 cho auto-assign) + lint/build sạch. Test thật với
+ORS + DB thật (không tạo SOS để khỏi gửi SMS thật; gọi thẳng hàm chọn đội): nạn nhân (11.958,108.452), cảnh báo đặt
+giữa tuyến của Xuân Hương 1: r=150 m → vẫn Xuân Hương 1 (4 phút); r=600 m → vẫn Xuân Hương 1 nhưng 8 phút
+(đi vòng); r=1200 m → **chuyển sang Xuân Hương 2** (12 phút, bỏ qua 2 đội gần hơn); r=2500 m → cả 3 đội bị chặn,
+không chọn ai. Không có cảnh báo: Xuân Hương 1 như cũ.
+
+**Còn nợ / giới hạn đã biết:**
+- [ ] **Chỉ áp dụng lúc TỰ ĐỘNG phân công khi tạo SOS.** Hai chỗ chưa làm: (a) danh sách gợi ý trong modal phân
+  công tay của commander (`GET /api/gis/nearest-teams`) vẫn xếp theo chim bay; (b) cảnh báo mới tạo SAU khi đã phân
+  công KHÔNG tự điều đội khác — đội đang trên đường chỉ đổi tuyến ở lần tải route kế tiếp. Tự đổi đội giữa chừng
+  nguy hiểm hơn nên cần quyết định riêng.
+- [ ] Mỗi lần tạo SOS khi có cảnh báo tốn tối đa 3 (tầng 1) + 5 (tầng 2) lượt ORS, cộng thêm lượt kiểm tra lại không
+  né cảnh báo khi bị chặn — free tier có hạn mức, theo dõi nếu demo đông.
+
+### 15.18 Link Google Maps chỉ còn là dự phòng + đo tuyến "nhanh nhất" (2026-10-06)
+
+Quang hỏi lại: phần nạn nhân xem vị trí đội cứu hộ và phần đội cứu hộ tìm đường có hiển thị hết trên bản đồ của dự án,
+không phải sang Google Maps không? Rà lại code thật thì cả hai đều vẽ bằng Leaflet của app, nhưng còn lệch 2 chỗ:
+- **Link "Chỉ đường (Google Maps)" trên thẻ nhiệm vụ trước đây LUÔN hiện** (kể cả khi tuyến đường bộ đã vẽ trên bản
+  đồ), và chú thích dưới bản đồ lúc ORS lỗi còn bảo bấm vào nó. Đã sửa (`RescuerView.vue`): toạ độ nạn nhân luôn hiện
+  dạng chữ; link "Mở Google Maps (dự phòng)" chỉ hiện khi `hienLinkDuPhong = !routeThat && (gpsLoi || tuyenThatLoi)` —
+  tức đường bộ trong app KHÔNG dùng được: không có GPS (từ chối quyền/lỗi/trình duyệt không hỗ trợ) hoặc lần tải tuyến
+  thật gần nhất thất bại (ORS lỗi/thiếu key/mất mạng). Chưa có GPS lần đầu hoặc đang tải lần đầu thì CHƯA hiện (tránh
+  hiện rồi biến mất sau 1–2 giây); tải lại sau lỗi cũng KHÔNG tắt link (`tuyenThatLoi` giữ tới khi một lần tải thành
+  công) nên link không nháy mỗi 30 giây khi ORS còn hỏng. **Không bỏ hẳn link** vì khi ORS sập app chỉ còn đường chim
+  bay, không dẫn đường được; nếu muốn bỏ hẳn thì xoá khối `<template v-if="hienLinkDuPhong">` ở thẻ nhiệm vụ.
+- **"Ngắn nhất" thực ra là "nhanh nhất"** — backend không đặt `preference` cho ORS nên dùng mặc định. Đã đo 3 cặp điểm
+  thật (Xuân Hương 2 → Đà Lạt, Xuân Hương 1 → Lâm Viên 1, Lâm Viên 1 → Xuân Hương 2): tuyến mặc định TRÙNG HỆT
+  `fastest` ở cả 3; `shortest` ngắn hơn 0,2–2 km nhưng chậm hơn 2–7 phút (VD 13,4 km/25 phút so với 15,4 km/18 phút).
+  Giữ nguyên mặc định: cứu hộ cần đến sớm nhất chứ không phải ít km nhất — đừng đổi sang `shortest`. Khi bảo vệ đồ án
+  nên nói "tuyến nhanh nhất, tự né vùng cảnh báo".
+- **Lệch tài liệu Mục 15.13 (không phải do đợt này)**: danh sách chữ hướng dẫn rẽ đã được thay bằng giọng đọc (Web
+  Speech API, đọc khi cách điểm rẽ ≤ 60 m, cần máy có giọng tiếng Việt) — trên màn hình chỉ còn đường liền + khoảng
+  cách/thời gian. Bản đồ rescuer chỉ hiện khi đang có nhiệm vụ.
+- **Phía nạn nhân** (Mục 15.11 Fix #2): chấm xanh dương "Đội cứu hộ được phân công" ngay trên bản đồ `/map`, cập nhật
+  bằng poll 20 giây nên trễ tối đa ~50 giây; chỉ có vị trí, không có đường/thời gian đến. Không dùng Google Maps ở
+  bất kỳ chỗ nào của phía nạn nhân.
+- **Kiểm chứng**: `RescuerView.spec.ts` mới (7 test, viết trước, đỏ 7/7 rồi xanh; FE tổng 62 test), eslint + vue-tsc +
+  build sạch. Trên app thật, dùng một nhiệm vụ thử chèn bằng SQL trực tiếp (KHÔNG qua API nên không gọi eSMS, không phát
+  socket; đã xoá ngay sau đó, DB về 0 SOS đang hoạt động): ORS hoạt động → 0 link, đường liền `#2563eb` + tuyến thay thế
+  `#93c5fd` + 2 vùng cảnh báo đỏ vẽ trên bản đồ, "≈ 10,1 km theo đường bộ · ~12 phút"; ép ORS lỗi → link hiện, chú
+  thích đổi, lùi về nét đứt; ORS phục hồi → link tắt, không nháy trong lúc tải lại; GPS bị từ chối → link hiện + chú
+  thích GPS + 0 request tuyến. (Giả lập GPS bằng cách ghi đè `navigator.geolocation` ngay sau khi tải trang; ép ORS lỗi
+  bằng cách bắt `XMLHttpRequest.open` của request tuyến.)
+- **Còn nợ / giới hạn**:
+  - [ ] Lần làm mới 30 giây mà thất bại thì tuyến đang hiển thị bị XOÁ (`routeThat` = null) thay vì giữ tuyến cũ thêm
+    vài chục giây — ORS chập chờn một lần là đường liền biến mất, chỉ còn nét đứt + link dự phòng tới lần làm mới thành
+    công kế tiếp. Chưa sửa.
+  - [ ] Chưa thử trên điện thoại thật (GPS thật, giọng đọc tiếng Việt, bấm link dự phòng mở app Google Maps).
+
+### 15.17 Báo cáo cộng đồng — camera bắt buộc, thông báo realtime, gộp báo cáo trùng, lịch sử (2026-10-05)
+
+Hoàn thiện 3 khoản nợ của Mục 15.16 và siết độ xác thực theo yêu cầu của Quang: người dân báo sạt lở **phải cho
+phép camera và chụp ảnh tại hiện trường**, quản trị viên được báo ngay, và **chỉ khi quản trị viên xác nhận** mới
+đánh dấu đoạn đường nguy hiểm lên bản đồ chung (luồng duyệt này đã có từ 15.16).
+- **Migration `gis/11-hazard-reports-dedupe.sql`** (đã chạy trên Supabase 2026-10-05, 1 transaction, chỉ thêm
+  mới): cột `hazard_reports.duplicate_of` (FK tự tham chiếu, `ON DELETE SET NULL`) + index một phần.
+- **Camera bắt buộc, chụp trực tiếp**: `components/report/CameraCapture.vue` dùng `getUserMedia` (ưu tiên camera
+  sau, `audio:false`), CỐ Ý không có `<input type=file>` và không dùng thuộc tính `capture` (đó chỉ là gợi ý,
+  nhiều trình duyệt vẫn cho chọn ảnh trong thư viện). Nút chụp chỉ bật sau khung hình đầu tiên; chụp xong tắt
+  camera ngay; tự tắt khi đổi tab. Lỗi được phân loại ở `utils/camera.ts` (từ chối quyền / không có camera /
+  đang bị app khác dùng / không phải ngữ cảnh bảo mật). Vị trí GPS được **lấy lại ngay lúc bấm chụp**. Backend
+  nay **bắt buộc có ảnh** (400 nếu thiếu).
+  ⚠️ **Giới hạn trung thực**: server không phân biệt được ảnh chụp trực tiếp hay tải lên — ai gọi thẳng API vẫn gửi
+  được ảnh bất kỳ. Ràng buộc camera tăng độ tin cậy với người dùng bình thường, KHÔNG thay bước commander xác
+  minh. Camera chỉ chạy trên HTTPS hoặc localhost: demo qua ngrok được, mở bằng `http://192.168.x.x` thì không.
+- **Thông báo realtime cho quản trị viên**: 2 sự kiện socket mới `hazard-report:new` / `hazard-report:reviewed`,
+  chỉ bắn vào room `province:lamdong` (commander) — tên/SĐT người báo và vị trí không đi tới dân/cứu hộ. Dashboard:
+  toast, tab "Báo cáo chờ duyệt" nhấp nháy khi đang ở tab khác (KHÔNG tự chuyển tab — đang xử lý SOS thì không bị
+  giật sang chỗ khác), `(N)` ở tiêu đề tab trình duyệt, hàng đợi tự làm mới chạy nền. Kiểu dữ liệu ở
+  `shared/socket-events.types.ts` — nhớ sửa đủ **3 bản** (`shared/`, `backend/src/common/`, `frontend/src/shared/`).
+- **Gộp báo cáo trùng**: cùng `type`, ≤ 100 m (`DUPLICATE_RADIUS_M`), so với báo cáo CHỜ DUYỆT cũ nhất chưa bị
+  gộp. Việc chọn báo cáo chính nằm **ngay trong câu `INSERT ... SELECT`** (không tra cứu rồi mới chèn) để thu hẹp
+  khe hở đua giữa 2 người gửi cùng lúc. Duyệt/từ chối báo cáo chính áp dụng cho cả nhóm; thao tác trực tiếp lên
+  báo cáo đã gộp → 409. Báo cáo "mồ côi" (báo cáo chính đã đổi trạng thái) vẫn hiện thành mục riêng để không bị
+  bỏ sót. Một người không tự gộp vào chính mình (409). Người gửi được báo "đã gộp, N người cùng báo".
+- **Lịch sử**: `ReportModerationPanel.vue` có bộ lọc Chờ duyệt / Đã duyệt / Từ chối, phân trang (`limit` ≤ 100,
+  `offset`); mục lịch sử cho biết người duyệt, ghi chú, mức Đỏ/Vàng, cảnh báo còn hoạt động hay đã gỡ. Người báo
+  xem được trạng thái + ghi chú của quản trị viên ở "Báo cáo của tôi". API: `docs/api-contract.md` Mục 3.
+- **Kiểm chứng**: BE 123 test / 12 suite (thêm: gộp/không gộp, cascade duyệt-từ chối, 409 báo cáo đã gộp, tự báo
+  trùng, phân trang, gateway chỉ bắn vào room commander), FE 55 test (từ 47: thêm 8 test của `camera.spec.ts`);
+  eslint + tsc/vue-tsc + build sạch. E2E qua HTTP + socket.io-client: 37 kiểm tra đạt. Giao diện thật trong trình
+  duyệt (2 tab: commander + nạn nhân giả lập 375×812, giả lập `getUserMedia`/`getCurrentPosition`): GPS lỗi → khoá
+  gửi; camera bị từ chối → hướng dẫn cấp quyền, vẫn không gửi được; chụp → xem trước + camera tắt + GPS lấy lại;
+  chụp lại; gửi → tab commander nhận toast + nhấp nháy + `(1)` ở tiêu đề; nhóm 2 người → 1 mục với 2 ảnh; duyệt
+  cả nhóm (Vàng) → icon vàng + mục lịch sử đúng; từ chối cả nhóm / từ chối đơn → mục "Từ chối"; người báo thấy ghi chú.
+- **Bài học test**: (1) `App.vue` bọc `RouterView` trong `<transition mode="out-in">` — khi khung trình duyệt bị
+  ẩn, `requestAnimationFrame` không chạy nên chuyển cảnh SPA treo ở trang cũ (URL đã đổi nhưng DOM chưa); khi test
+  hãy tải thẳng URL thay vì bấm link. (2) Mỗi truy vấn Supabase từ xa ~350 ms, duyệt cả nhóm mất 3–4 s — đọc DOM
+  ngay sau khi bấm sẽ thấy trạng thái cũ, phải chờ trạng thái đổi chứ đừng chờ một khoảng cố định.
+- **Còn nợ / giới hạn**:
+  - [ ] **Chưa thử camera thật trên điện thoại** (mới giả lập `getUserMedia` bằng canvas). Cần thử iPhone Safari và
+    Chrome Android qua HTTPS (ngrok): cấp/từ chối quyền, camera sau, xoay màn hình, trình duyệt trong Zalo/Facebook.
+  - [ ] Thông báo realtime chỉ có khi **Dashboard đang mở** (không có push/âm thanh/Notification API; các trang
+    commander khác như /users, /stats không nghe sự kiện). Commander đóng tab thì chỉ thấy khi mở lại Dashboard.
+  - [ ] Chưa có hộp xác nhận khi "Duyệt/Từ chối cả nhóm" — bấm nhầm tác động tới cả N người báo, và chưa có thao
+    tác hoàn tác (chỉ sửa được bằng SQL).
+  - [ ] Bán kính gộp 100 m là hằng số, chưa cấu hình được; 2 điểm sạt khác nhau cùng loại cách < 100 m sẽ bị gộp.
+  - [ ] Danh sách báo cáo chạy 2 truy vấn tuần tự (~1 s với Supabase từ xa, lần đầu ~3 s do kết nối nguội); nếu
+    chậm khi triển khai thật thì gộp truy vấn "báo cáo đã gộp" vào truy vấn chính.
+  - [ ] **Dữ liệu thử còn lại trong DB thật** (đếm 2026-10-05): 17 dòng `hazard_reports` (7 đã duyệt, 10 từ chối;
+    TOÀN BỘ là dữ liệu thử, mô tả chứa "E2E"/"UI-TEST"), trong đó 4 dòng đứng tên 1 tài khoản người dùng thật
+    của nhóm (đã ẩn tên + số điện thoại trong tài liệu này); 30 dòng `road_hazards` đã gỡ. Chưa xoá vì xoá dữ liệu trên DB thật cần Quang đồng ý.
+  - [ ] **2 cảnh báo ĐỎ đang hoạt động không phải do bài test này tạo** — `aae9a47c…` ("Sạt lở taluy, đá lăn xuống
+    đường (demo)", r=300 m, ward 24805) và `44eb9f44…` ("Điểm Sạt lở", r=200 m, ward 24781, tạo 15:03 bởi tài
+    khoản Admin Local). Cảnh báo đỏ làm tuyến đi né và ảnh hưởng chọn đội tự động (Mục 15.14.1): nếu là dữ liệu
+    thử thì gỡ ở Dashboard → "Cảnh báo/chặn đường" → "Gỡ cảnh báo".
+  - ℹ️ Phát hiện ngoài phạm vi (đã tách thành việc riêng, chưa sửa): `MapView.vue` (dòng ~296, ~321) gọi
+    `GET /api/rescue-teams` cho cả nạn nhân → 403 + toast "Không có quyền truy cập" mỗi lần mở `/map`.
+
+### 15.16 Báo cáo cộng đồng (crowdsourcing) + cảnh báo đỏ/vàng (2026-10-05)
+
+Yêu cầu: người dân/tình nguyện viên báo sạt lở từ điện thoại — tự lấy GPS, đính kèm ảnh, lưu "Chờ duyệt",
+quản trị viên xác minh rồi mới hiện icon đỏ/vàng lên bản đồ chung.
+- **Migration `gis/10-hazard-reports-and-severity.sql`** (đã chạy trên Supabase 2026-10-05, trong 1 transaction,
+  chỉ thêm mới): bảng `hazard_reports` (ảnh `BYTEA` + `image_mime`, `accuracy_m`, `status`
+  pending/approved/rejected, `reviewed_by/at`, `hazard_id`, `ward_code` qua trigger) và cột
+  `road_hazards.severity` (`blocked` = ĐỎ mặc định, `caution` = VÀNG).
+- **Đỏ/vàng = mức độ**: đỏ chặn đường (vào `avoid_polygons`, tuyến đi né); vàng chỉ hiển thị, `findActiveAvoidPolygons`
+  lọc `severity='blocked'` nên vàng KHÔNG làm tuyến đi vòng. Cảnh báo cũ tự thành đỏ.
+- **Backend** `backend/src/hazard-reports/`: `POST /api/hazard-reports` (multipart, mọi role đăng nhập; 10/giờ/user,
+  tối đa 5 báo cáo chờ duyệt, toạ độ ngoài tỉnh bị chặn), `GET /mine`, `GET ?status=` (commander), `GET /:id/image`
+  (commander hoặc chủ báo cáo), `PATCH /:id/approve|reject` (commander). Duyệt = `UPDATE ... WHERE status='pending'`
+  "chiếm" báo cáo trước rồi mới tạo cảnh báo (2 commander bấm cùng lúc không sinh trùng; lỗi tạo cảnh báo thì trả về
+  pending). Chi tiết: `docs/api-contract.md` Mục 3.
+- **Ảnh**: nén ở trình duyệt (cạnh dài ≤1280px, JPEG q0.75, đồng thời bỏ EXIF) → backend kiểm **magic bytes**
+  (không tin Content-Type), chỉ JPEG/PNG/WebP ≤2MB; SVG/HTML giả danh ảnh bị 400. Lưu thẳng DB (không cần dịch vụ lưu
+  trữ, không mất khi deploy lại) và chỉ đọc qua `GET /:id/image` có phân quyền (không SELECT trong danh sách).
+- **Frontend**: `/report` (`ReportView.vue`, mobile-first): vị trí lấy tự động bằng Geolocation (không cho gõ tay),
+  **không gửi được khi GPS thất bại** (khác SOS: toạ độ giả tâm tỉnh sẽ đặt cảnh báo sai chỗ trên bản đồ chung),
+  GPS kém (>100 m) vẫn gửi nhưng gắn cờ; chọn loại, mô tả, ảnh (từ Mục 15.17: BẮT BUỘC, chỉ chụp trực tiếp bằng camera, không chọn ảnh có sẵn); "Báo cáo của tôi" kèm trạng thái.
+  Lối vào: nút nổi "Báo cáo sạt lở / chặn đường" trên `/map` (đã đăng nhập) + nút ở header RescuerView.
+  Dashboard commander: tab thứ 3 "Báo cáo chờ duyệt" (xem ảnh, người báo, GPS ±m; chọn Đỏ/Vàng + bán kính; Duyệt /
+  Từ chối), điểm "?" vàng nét đứt trên bản đồ CHỈ commander thấy; form tạo cảnh báo trực tiếp cũng có chọn mức độ.
+  Bản đồ chung `/map` (đã đăng nhập) vẽ cảnh báo đã duyệt: vòng tròn + icon "!" đỏ/vàng.
+- **Kiểm chứng**: BE 112 test (thêm 22: kiểm ảnh, duyệt/từ chối/chống trùng, phân quyền ảnh, vàng không vào
+  avoid_polygons), FE 47 test, lint/build sạch. E2E qua HTTP thật (28 kiểm tra đạt): 401 khi chưa đăng nhập, ngoài
+  tỉnh/SVG giả ảnh/loại sai → 400, báo cáo chờ duyệt KHÔNG lọt vào `/api/hazards`, người dân không xem được hàng đợi
+  hay tự duyệt (403), ảnh chỉ chủ + commander xem được, duyệt VÀNG → hiện nhưng tuyến 3253 m không đổi, duyệt ĐỎ →
+  tuyến né (cách tâm 890 m > 200 m), duyệt lần 2 → 409, từ chối → không hiện. Giao diện thật (trình duyệt, giả lập
+  GPS + chọn ảnh 3000×2000): form điện thoại, gửi → "Chờ duyệt", commander duyệt vàng → icon vàng, đếm tab đúng.
+- **2 lỗi chỉ lộ ra khi test giao diện thật (test API không thấy)**: (1) `services/http.ts` đặt sẵn
+  `Content-Type: application/json` nên axios biến `FormData` thành JSON → ảnh mất, server báo "property image should not
+  exist" — request upload phải ghi đè `multipart/form-data`; (2) `ref<Blob>` bọc Blob thành Proxy reactive, `FormData`
+  không nhận ra → dùng `shallowRef`. Bài học: upload file luôn phải test qua trình duyệt, không chỉ script.
+- **Còn nợ / giới hạn**: [x] chưa có thông báo realtime cho commander khi có báo cáo mới — **Đã xử lý
+  (2026-10-05), Mục 15.17** (không dùng `notification:system` mà thêm 2 sự kiện riêng `hazard-report:*`);
+  [x] chưa chống báo cáo trùng — **Đã xử lý, Mục 15.17**; [x] báo cáo đã duyệt/bị từ chối chưa có tab lịch sử
+  trên Dashboard — **Đã xử lý, Mục 15.17**; [ ] chưa chạy trên điện thoại thật (mới giả lập GPS/camera, xem 15.17).
+
+### 15.15 Việc "admin" thứ 4/4 (2026-10-05) — Hệ thống & nhật ký + health check
+
+Quang chọn hiểu "cấu hình hệ thống, xem log" là **xem trạng thái + nhật ký, CHỈ ĐỌC**: cấu hình thật
+là biến môi trường (`.env`) của máy chủ nên sửa qua web vừa vô nghĩa (cần restart) vừa nguy hiểm
+(lộ/ghi đè secret). Trang hiển thị key nào đã cấu hình (boolean), không bao giờ giá trị.
+- Backend `backend/src/system/`: `GET /api/health` (công khai, **đóng nợ Mục 15.5** — Render có
+  endpoint kiểm tra sống; DB lỗi → 200 `degraded`, không throw), `GET /api/system/status`,
+  `GET /api/system/activity` (commander). Nhật ký gộp `sos_timeline` + `road_hazards` — không tạo bảng audit mới.
+- Frontend: `SystemView.vue` route `/system`, link "Hệ thống" ở header Dashboard.
+- Kiểm chứng: `system.service.spec.ts` (6 test, gồm test "không lộ key/secret"), tổng 81 test BE + 41 FE
+  pass, build/eslint sạch; gọi thật: health 200, status/activity đúng số liệu DB thật, không token → 401;
+  trình duyệt `/system` hiện đúng DB 356 ms, ORS/eSMS đã cấu hình, nhật ký thật.
+- Phát hiện: **`ESMS_BRANDNAME` đang trống** → `ESMS_SMS_TYPE=2` sẽ báo lỗi `CodeResult=104` (xem Mục 9) —
+  SMS dự phòng chưa thực sự gửi được cho tới khi đăng ký Brandname với eSMS.
+
+### 15.19 Bug thật đã sửa (2026-09-18, đổi số từ 15.13 lúc merge PR #4) — commander/rescuer không thấy marker nào; victim tự zoom tới SOS
 
 **1. Merge `01a9704` làm mất marker trên `RescueMap.vue`.** Khi giải quyết conflict (giữ tooltip tiếng Việt mới), 3 dòng bị xoá: `marker.on('click', …emit('select-sos'))`, `marker.addTo(sosLayer)`, `marker.addTo(teamLayer)` — marker vẫn được TẠO nhưng không lên bản đồ. Hệ quả: dashboard commander VÀ RescuerView không có marker SOS lẫn marker đội, bấm marker không mở được modal phân công; danh sách SOS bên cạnh vẫn đủ nên dễ tưởng là lỗi dữ liệu. Không liên quan "vị trí ước tính". Đã rà cả 15 dòng bị xoá trong merge đó — chỉ `RescueMap.vue` hỏng thật, phần còn lại chỉ bị dời chỗ. Test hồi quy `RescueMap.spec.ts` đếm marker thật trong DOM (đỏ khi thiếu fix, xanh khi có). ⚠️ jsdom thiếu `SVGSVGElement.createSVGRect` → Leaflet coi như không hỗ trợ SVG và `circleMarker` không vẽ gì; spec polyfill bằng `vi.hoisted` (phải chạy TRƯỚC khi import leaflet). **Bài học:** sau merge có conflict, `git diff <main> <merge>` và đọc riêng các dòng `-`.
 
@@ -847,8 +1255,16 @@ Dữ liệu demo tái hiện đúng: SOS ở xã `24778`, đội "Đội cứu h
 
 **3. Tính năng mới:** sau khi victim gửi SOS (gửi được hoặc lưu hàng đợi lúc mất mạng), bản đồ tự zoom tới SOS — `phongToToiSosCuaMinh()` trong `useLeafletMap.ts`, mức `ZOOM_THEO_DOI_SOS = 16`, không zoom RA nếu người dùng đang xem sâu hơn. Cố ý KHÔNG gắn vào `capNhatMarkerSosCuaMinh()` (chạy lại mỗi lượt poll 20s → sẽ giật bản đồ về SOS liên tục). Cũng zoom khi khôi phục SOS lúc tải lại trang/đăng nhập (cuối `khoiTaoTheoRole()` trong `MapView.vue` — cả SOS từ server lẫn SOS còn trong hàng đợi offline); không có SOS thì giữ nguyên zoom. Test `useLeafletMap.spec.ts`; kiểm chứng Chrome headless: zoom 8 → 16, pin SOS ở giữa khung, cả online lẫn offline.
 
+**Merge PR #4 (2026-10-07):** PR #4 tách nhánh TRƯỚC merge `01a9704` nên vẫn có 3 dòng marker; nhưng merge 3 chiều lấy phía đã xoá của main → nếu chỉ merge PR #4 thì bug marker VẪN CÒN. Bản sửa ở mục này được commit riêng trước khi merge và giữ nguyên qua merge (đã kiểm `RescueMap.spec.ts`). Cùng lúc: PR #4 thêm `GET /api/health` thứ 2 ở `SystemController` (không `@SkipThrottle`) trùng với route đã có ở `AppController` → đã xoá bản của PR (route, `SystemService.health()`, test, mô tả trùng trong `docs/api-contract.md`); `GET /api/health` duy nhất là của `AppController`. Mục 15.15 nhắc tới health của `SystemController` là lịch sử, không còn đúng.
+
 ---
 
+*Phiên bản: 2.14.0 — Cập nhật: 2026-10-07 (merge PR #4; mục bug marker/tự zoom SOS đổi số 15.13 → 15.19; bỏ `GET /api/health` trùng của SystemController)*
+*Phiên bản: 2.13.1 — Cập nhật: 2026-10-06 (thêm Mục 15.18 — link Google Maps trên màn hình rescuer chỉ hiện khi đường bộ trong app không dùng được; ghi lại kết quả đo: tuyến ORS mặc định là tuyến NHANH nhất, không phải ngắn nhất theo km)*
+*Phiên bản: 2.13.0 — Cập nhật: 2026-10-05 (thêm Mục 15.17 — báo cáo cộng đồng: camera bắt buộc chụp trực tiếp, thông báo realtime cho commander qua socket `hazard-report:*`, gộp báo cáo trùng trong 100 m, tab lịch sử đã duyệt/từ chối; migration `gis/11-hazard-reports-dedupe.sql`)*
+*Phiên bản: 2.12.0 — Cập nhật: 2026-09-25 (thêm Mục 15.14 — Quản lý cảnh báo/chặn đường: bảng road_hazards, HazardsModule, tích hợp avoid_polygons vào RoutingService, UI đánh dấu trên DashboardView + xem read-only ở RescuerView; hoàn thiện luôn Thống kê tổng quan — StatsView.vue, route /stats)*
+*Phiên bản: 2.11.1 — Cập nhật: 2026-09-22 (Mục 15.13 bổ sung: chặn `/api/routing/route` cho toạ độ ngoài tỉnh Lâm Đồng bằng `wards.boundary` sẵn có, không cần file ranh giới riêng)*
+*Phiên bản: 2.11.0 — Cập nhật: 2026-09-22 (thêm Mục 15.13 — dẫn đường thật trên bản đồ RescuerView, thay cho đường chim bay + Google Maps ở Mục 15.9; đổi hướng trong cùng phiên từ tự host GraphHopper/Oracle VM sang gọi thẳng OpenRouteService free tier, không cần quản lý server)*
 *Phiên bản: 2.10.0 — Cập nhật: 2026-09-13 (thêm Mục 15.12 — GPS SOS lệch do thiếu enableHighAccuracy; tile z7 trỏ vào thư mục offline không tồn tại; Viettel chặn DNS openstreetmap.org → thử openstreetmap.de (404 ở z18) → chốt openstreetmap.fr/hot)*
 *Phiên bản: 2.9.0 — Cập nhật: 2026-09-12 (Mục 15.11 thêm Fix #2 — victim thấy đội cứu hộ được giao đang tới, dùng poll 20s sẵn có thay vì socket mới)*
 *Phiên bản: 2.8.0 — Cập nhật: 2026-09-12 (thêm Mục 15.11 — fix marker đội cứu hộ không di chuyển trên dashboard commander + bug TypeORM UPDATE...RETURNING trả tuple khiến PATCH location/status đội cứu hộ luôn 500; xác nhận + sửa cùng bug ở sos.service.ts: cancel/assign/updateStatus, mock test sửa đúng hình dạng driver)*
