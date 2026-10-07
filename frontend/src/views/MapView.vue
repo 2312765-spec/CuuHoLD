@@ -125,6 +125,7 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
       description: payload.description,
       locationEstimated: viTri.uocLuong
     })
+    phongToToiSosCuaMinh(viTri.lat, viTri.lng)
     toastStore.showToast('Đã gửi tín hiệu cứu trợ. Đội điều phối sẽ liên hệ sớm.')
   } catch (err) {
     if (isAxiosError(err) && !err.response) {
@@ -143,6 +144,7 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
         taoLuc: new Date().toISOString()
       })
       sos.datSosChoGui({ localId, lat: viTri.lat, lng: viTri.lng, type: payload.type, locationEstimated: viTri.uocLuong })
+      phongToToiSosCuaMinh(viTri.lat, viTri.lng)
       toastStore.showToast('Không có mạng — đã lưu yêu cầu, sẽ tự gửi ngay khi có mạng trở lại.')
     }
     // Lỗi nghiệp vụ khác (VD: vượt 5 SOS/giờ) đã có toast riêng từ interceptor http.ts.
@@ -164,6 +166,7 @@ const {
   themMarkerBaoCao,
   capNhatMarkerSosCuaMinh,
   capNhatMarkerDoiCuuHo,
+  phongToToiSosCuaMinh,
   destroyMap
 } = useLeafletMap()
 
@@ -267,6 +270,10 @@ async function khoiTaoTheoRole(): Promise<void> {
   // initMap() chạy async (chờ tải ranh giới) — nếu state SOS đổi ngay lúc đó, watch ở trên
   // đã bỏ qua vì mapInstance chưa sẵn sàng. Áp lại một lần nữa cho chắc sau khi map đã có.
   apDungMarkerSos()
+  // Vừa khôi phục được SOS (sau F5 hoặc vừa đăng nhập) → đưa bản đồ tới đó, giống lúc vừa
+  // bấm gửi. Chỉ ở đây, KHÔNG trong watch(activeSos): watch đó chạy lại mỗi lượt poll 20s.
+  const dangTheoDoi = sos.activeSos.value
+  if (dangTheoDoi) phongToToiSosCuaMinh(dangTheoDoi.lat, dangTheoDoi.lng)
 }
 
 // ---------- Khởi tạo / dọn dẹp bản đồ theo vòng đời component ----------

@@ -20,6 +20,11 @@ interface GeoJsonProps {
   SapNhap: string
 }
 
+// Mức zoom khi tự đưa victim tới SOS vừa gửi: đủ sâu để thấy đường phố quanh mình và chấm
+// đội cứu hộ khi tới gần, mà vẫn còn đủ bối cảnh xung quanh. Sâu hơn ZOOM_AN_RANH_GIOI nên
+// lớp ranh giới tự ẩn — đúng ý, lúc này người dùng cần vị trí chứ không cần ranh giới xã.
+export const ZOOM_THEO_DOI_SOS = 16
+
 export function useLeafletMap() {
   const store = useMapDataStore()
   const toastStore = useToastStore()
@@ -79,6 +84,16 @@ export function useLeafletMap() {
     })
       .bindPopup(`<div class="pin-popup"><b>SOS của bạn</b><span>${sos.label}</span></div>`)
       .addTo(mapInstance.value)
+  }
+
+  // Gọi NGAY SAU KHI victim bấm gửi SOS (gửi được, hoặc lưu hàng đợi lúc mất mạng) — không
+  // gắn vào capNhatMarkerSosCuaMinh() vì hàm đó chạy lại mỗi lượt poll/cập nhật trạng thái,
+  // gắn vào đó sẽ giật bản đồ về SOS mỗi 20s dù người dùng đang tự kéo xem chỗ khác.
+  // Không zoom RA nếu người dùng đang xem sâu hơn — chỉ đưa tâm về đúng chỗ.
+  function phongToToiSosCuaMinh(lat: number, lng: number): void {
+    const map = mapInstance.value
+    if (!map) return
+    map.setView([lat, lng], Math.max(map.getZoom(), ZOOM_THEO_DOI_SOS))
   }
 
   // Marker đội cứu hộ được giao cho SOS của victim (Fix #2, CLAUDE.md Mục 15.11) — chấm xanh
@@ -344,6 +359,7 @@ export function useLeafletMap() {
     themMarkerBaoCao,
     capNhatMarkerSosCuaMinh,
     capNhatMarkerDoiCuuHo,
+    phongToToiSosCuaMinh,
     destroyMap
   }
 }

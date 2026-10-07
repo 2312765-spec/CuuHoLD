@@ -73,7 +73,8 @@ function buildSosLayer() {
     const tenNan = sos.victim_name?.trim()
     const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`
     marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
-
+    marker.on('click', () => emit('select-sos', sos.id))
+    marker.addTo(sosLayer)
   }
 }
 
@@ -94,7 +95,7 @@ function buildTeamLayer() {
       tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
     }
     marker.bindTooltip(tooltip, { direction: 'top', className: 'rescue-tooltip' })
-
+    marker.addTo(teamLayer)
   }
 }
 

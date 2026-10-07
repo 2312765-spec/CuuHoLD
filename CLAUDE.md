@@ -839,6 +839,14 @@ Dữ liệu demo tái hiện đúng: SOS ở xã `24778`, đội "Đội cứu h
 - [ ] 4G Viettel có bị chặn giống vậy không; Viettel có chặn cả theo IP không (laptop bật WARP nên không thử được) — chưa rõ.
 - [ ] Điều khoản sử dụng của `tile.openstreetmap.fr/hot` chưa đọc được (wiki OSM liệt kê điều khoản cũng bị Viettel chặn). Đây vẫn là máy chủ **tình nguyện, không SLA** — lời giải cho đồ án. Triển khai thật cần nguồn có API key + giới hạn referrer, hoặc backend làm proxy tile (Mục 15.7 việc #4).
 
+### 15.13 Bug thật đã sửa (2026-09-18) — commander/rescuer không thấy marker nào; victim tự zoom tới SOS
+
+**1. Merge `01a9704` làm mất marker trên `RescueMap.vue`.** Khi giải quyết conflict (giữ tooltip tiếng Việt mới), 3 dòng bị xoá: `marker.on('click', …emit('select-sos'))`, `marker.addTo(sosLayer)`, `marker.addTo(teamLayer)` — marker vẫn được TẠO nhưng không lên bản đồ. Hệ quả: dashboard commander VÀ RescuerView không có marker SOS lẫn marker đội, bấm marker không mở được modal phân công; danh sách SOS bên cạnh vẫn đủ nên dễ tưởng là lỗi dữ liệu. Không liên quan "vị trí ước tính". Đã rà cả 15 dòng bị xoá trong merge đó — chỉ `RescueMap.vue` hỏng thật, phần còn lại chỉ bị dời chỗ. Test hồi quy `RescueMap.spec.ts` đếm marker thật trong DOM (đỏ khi thiếu fix, xanh khi có). ⚠️ jsdom thiếu `SVGSVGElement.createSVGRect` → Leaflet coi như không hỗ trợ SVG và `circleMarker` không vẽ gì; spec polyfill bằng `vi.hoisted` (phải chạy TRƯỚC khi import leaflet). **Bài học:** sau merge có conflict, `git diff <main> <merge>` và đọc riêng các dòng `-`.
+
+**2. "Vị trí ước tính" khi test trên laptop là ĐÚNG, không phải bug.** Đo bằng Windows Location API: laptop trả đúng toạ độ đã gửi, sai số **106 m** > ngưỡng 100 m (`utils/geolocation.ts`). Laptop không có chip GPS (định vị Wi-Fi); trước 2026-09-13 sai số không được đọc nên trông như "vẫn lấy GPS bình thường".
+
+**3. Tính năng mới:** sau khi victim gửi SOS (gửi được hoặc lưu hàng đợi lúc mất mạng), bản đồ tự zoom tới SOS — `phongToToiSosCuaMinh()` trong `useLeafletMap.ts`, mức `ZOOM_THEO_DOI_SOS = 16`, không zoom RA nếu người dùng đang xem sâu hơn. Cố ý KHÔNG gắn vào `capNhatMarkerSosCuaMinh()` (chạy lại mỗi lượt poll 20s → sẽ giật bản đồ về SOS liên tục). Cũng zoom khi khôi phục SOS lúc tải lại trang/đăng nhập (cuối `khoiTaoTheoRole()` trong `MapView.vue` — cả SOS từ server lẫn SOS còn trong hàng đợi offline); không có SOS thì giữ nguyên zoom. Test `useLeafletMap.spec.ts`; kiểm chứng Chrome headless: zoom 8 → 16, pin SOS ở giữa khung, cả online lẫn offline.
+
 ---
 
 *Phiên bản: 2.10.0 — Cập nhật: 2026-09-13 (thêm Mục 15.12 — GPS SOS lệch do thiếu enableHighAccuracy; tile z7 trỏ vào thư mục offline không tồn tại; Viettel chặn DNS openstreetmap.org → thử openstreetmap.de (404 ở z18) → chốt openstreetmap.fr/hot)*
