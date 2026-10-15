@@ -161,4 +161,85 @@ describe('UsersService', () => {
       expect(usersRepo.save).toHaveBeenCalled();
     });
   });
+
+  // F-UI-01 — người dùng tự sửa hồ sơ. Chỉ được đổi TÊN; số điện thoại (tên đăng nhập) và
+  // xã/phường (quyết định rescuer xem SOS xã nào) không có đường tự đổi.
+  describe('updateMyName', () => {
+    it('đổi tên (đã trim), không đụng phone/wardCode/role', async () => {
+      const goc = {
+        id: 'u1',
+        phone: '0901234567',
+        name: 'Ten Cu',
+        wardCode: '24781',
+        role: 'victim',
+      } as User;
+      usersRepo.findOne.mockResolvedValueOnce({ ...goc });
+
+      const user = await service.updateMyName('u1', '  Ten Moi  ');
+
+      expect(user.name).toBe('Ten Moi');
+      expect(user.phone).toBe('0901234567');
+      expect(user.wardCode).toBe('24781');
+      expect(user.role).toBe('victim');
+      expect(usersRepo.findOne).toHaveBeenCalledWith({ where: { id: 'u1' } });
+    });
+
+    it('ném NotFoundException khi tài khoản không còn tồn tại', async () => {
+      usersRepo.findOne.mockResolvedValueOnce(null);
+      await expect(
+        service.updateMyName('u1', 'Ten Moi'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changeMyPassword', () => {
+    const user = { id: 'u1', passwordHash: 'hash-cu' } as User;
+
+    beforeEach(() => {
+      jest.mocked(bcrypt.compare).mockReset();
+    });
+
+    it('đúng mật khẩu hiện tại → băm mật khẩu mới với cost 12 và lưu', async () => {
+      usersRepo.findOne.mockResolvedValueOnce({ ...user });
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
+      jest.mocked(bcrypt.hash).mockResolvedValueOnce('hash-moi' as never);
+
+      await service.changeMyPassword('u1', 'matkhau-cu', 'matkhau-moi');
+
+      expect(bcrypt.compare).toHaveBeenCalledWith('matkhau-cu', 'hash-cu');
+      expect(bcrypt.hash).toHaveBeenCalledWith('matkhau-moi', 12);
+      expect(usersRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u1', passwordHash: 'hash-moi' }),
+      );
+    });
+
+    it('sai mật khẩu hiện tại → 400 (KHÔNG 401: frontend gặp 401 sẽ tự đăng xuất), không lưu', async () => {
+      usersRepo.findOne.mockResolvedValueOnce({ ...user });
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(false as never);
+
+      await expect(
+        service.changeMyPassword('u1', 'sai', 'matkhau-moi'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(bcrypt.hash).not.toHaveBeenCalled();
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('mật khẩu mới trùng mật khẩu hiện tại → 400, không lưu', async () => {
+      usersRepo.findOne.mockResolvedValueOnce({ ...user });
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
+
+      await expect(
+        service.changeMyPassword('u1', 'giong-nhau', 'giong-nhau'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('ném NotFoundException khi tài khoản không còn tồn tại', async () => {
+      usersRepo.findOne.mockResolvedValueOnce(null);
+      await expect(
+        service.changeMyPassword('u1', 'a', 'matkhau-moi'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
 });

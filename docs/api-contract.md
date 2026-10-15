@@ -169,6 +169,28 @@ cũng không phát hiện được tái sử dụng. Hệ quả phải biết: *
 > chuyển `refreshToken` sang cookie `httpOnly` trước (xem CLAUDE.md Mục 15.4), rồi mới làm
 > interceptor. Hiện `accessToken` hết hạn → bắt user đăng nhập lại như cũ.
 
+### PATCH /api/users/me
+🔒 Mọi role. **F-UI-01** — tự sửa hồ sơ của chính mình. **Chỉ sửa được `name`.**
+
+**Body**: `{ "name": "Nguyễn Văn B" }` — trim, 2–100 ký tự. Gửi kèm `phone`, `wardCode`, `role`
+hay field nào khác → `400` (`forbidNonWhitelisted`): số điện thoại là tên đăng nhập, xã/phường
+quyết định rescuer xem được SOS xã nào — cho tự đổi là tự mở quyền xem SOS xã khác.
+
+**200 OK**: `data` = user sau khi sửa (cùng shape `GET /api/auth/me`, không có `passwordHash`).
+
+### PATCH /api/users/me/password
+🔒 Mọi role. **F-UI-01**. Rate limit **5 lần/15 phút/user**.
+
+**Body**: `{ "currentPassword": "...", "newPassword": "..." }` — `newPassword` 8–72 ký tự
+(bcrypt chỉ dùng 72 byte đầu), băm bcrypt cost 12.
+
+**200 OK**: `data: null`. Lỗi: **`400`** khi sai mật khẩu hiện tại hoặc mật khẩu mới trùng mật
+khẩu cũ — cố ý **không** dùng `401`, vì interceptor `http.ts` của frontend gặp `401` sẽ tự đăng
+xuất người đang đăng nhập.
+
+> ⚠️ JWT không trạng thái: `accessToken`/`refreshToken` cấp **trước** khi đổi mật khẩu vẫn dùng
+> được tới khi hết hạn (24h / 7 ngày). Muốn thu hồi ngay phải lưu phiên ở DB (chưa có).
+
 ---
 
 ## 2. SOS (`/api/sos`) 🔒 — tất cả route đều cần JWT
@@ -260,6 +282,33 @@ cần biết trước `id`, đúng cái bị mất lúc reload).
 **200 OK — có SOS đang hoạt động**: shape giống hệt `GET /api/sos/:id`.
 **200 OK — không có SOS nào đang hoạt động**: `{ "success": true, "data": null, "message": "Không có SOS nào đang hoạt động" }`
 (xem ngoại lệ `data:null` ở Mục 0).
+
+### GET /api/sos/mine/history
+Role: `victim`. **F-UI-02** — lịch sử SOS của **chính người gọi**, mọi trạng thái (kể cả đã huỷ/
+hoàn tất — khác `mine/active`), mới nhất trước.
+
+Query (đều tuỳ chọn): `page` (số nguyên ≥ 1, mặc định 1), `limit` (1–50, mặc định 10). Sai → `400`.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "uuid", "type": "flood", "status": "resolved", "description": "...",
+        "image_url": "/api/sos/<id>/image", "location_estimated": false,
+        "created_at": "...", "resolved_at": "...", "lat": 11.94, "lng": 108.44,
+        "team_name": "Đội cứu hộ Xuân Hương 2"
+      }
+    ],
+    "total": 7, "page": 1, "limit": 10
+  },
+  "message": "OK"
+}
+```
+Cố ý **không** trả tên/SĐT (chính người gọi) và **không** trả toạ độ hiện tại của đội (SOS đã
+xong thì đội đang làm việc khác). Timeline từng SOS: `GET /api/sos/:id`.
 
 ### POST /api/sos/:id/image
 Role: `victim` (chủ SOS). **F-SOS-06 — gửi SAU khi `POST /api/sos` thành công**, để ảnh chậm/lỗi
@@ -628,6 +677,39 @@ Role: `rescuer`, phải là leader của đội đó.
 ```json
 { "success": true, "message": "Đã cập nhật trạng thái", "data": { "teamId": "uuid", "status": "available", "updatedAt": "..." } }
 ```
+
+---
+
+## 4b. Thông báo đẩy (`/api/push`) 🔒 — mọi role đã đăng nhập (F-PWA-05)
+
+Cần bảng `push_subscriptions` (`gis/13-create-push-subscriptions.sql`) và khoá VAPID trong
+`backend/.env` (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`). Thiếu khoá → server vẫn
+chạy, thông báo đẩy tắt, `GET /vapid-public-key` trả `503`.
+
+### GET /api/push/vapid-public-key
+**200 OK**: `data` = `{ "publicKey": "B..." }` (base64url). `503` khi chưa cấu hình VAPID.
+
+### POST /api/push/subscriptions
+**Body**: nguyên `PushSubscription.toJSON()` của trình duyệt —
+`{ "endpoint": "https://...", "expirationTime": null, "keys": { "p256dh": "...", "auth": "..." } }`.
+`endpoint` phải là `https`. Upsert theo `endpoint` và **gán lại `user_id` cho người đang gọi** (đổi
+tài khoản trên cùng máy thì người trước không nhận tin nữa). **201**, `data: null`.
+
+### DELETE /api/push/subscriptions
+**Body**: `{ "endpoint": "https://..." }` (trong body, không phải query). Chỉ xoá đăng ký **của
+chính người gọi**. **200**, `data: null`.
+
+### Khi nào backend gửi
+| Sự kiện | Người nhận | `url` mở khi bấm |
+|---|---|---|
+| SOS mới, không tự phân công được đội | mọi commander đang hoạt động | `/dashboard` |
+| SOS được phân công (tự động hoặc commander) | trưởng đội được giao | `/rescuer` |
+| SOS được phân công / đội tới nơi (`arrived`) / hoàn tất (`resolved`) | nạn nhân | `/map` |
+
+Nội dung `{ title, body, url, tag }` (`tag = sos-<id>`: tin mới thay tin cũ cùng SOS). **Không**
+chứa tên, số điện thoại hay toạ độ nạn nhân — tin đi qua dịch vụ push bên thứ 3 và hiện trên màn
+hình khoá. Thiết bị trả `404/410` → backend tự xoá đăng ký. Lỗi gửi push không bao giờ làm hỏng
+hay làm chậm luồng SOS.
 
 ---
 

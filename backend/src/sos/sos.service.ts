@@ -16,6 +16,7 @@ import { SosGateway } from './sos.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GisService } from '../gis/gis.service';
 import { RoutingService } from '../routing/routing.service';
+import { PushService } from '../push/push.service';
 import type { TravelEstimate } from '../routing/routing.service';
 import type {
   SosNewPayload,
@@ -137,6 +138,27 @@ interface SosTimelineRow {
   created_at: Date;
 }
 
+export interface SosHistoryRow {
+  id: string;
+  type: SosType;
+  status: SosStatus;
+  description: string | null;
+  image_url: string | null;
+  location_estimated: boolean;
+  created_at: Date;
+  resolved_at: Date | null;
+  lat: number;
+  lng: number;
+  team_name: string | null;
+}
+
+export interface SosHistoryPage {
+  items: SosHistoryRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface SosDetailResult extends SosDetailRow {
   timeline: SosTimelineRow[];
 }
@@ -145,6 +167,8 @@ interface SosStatusRow {
   status: SosStatus;
   ward_code: string | null;
   assigned_team_id: string | null;
+  // Chỉ assign() lấy cột này (cho nội dung thông báo đẩy gửi trưởng đội).
+  type?: SosType;
 }
 
 interface RescueTeamStatusRow {
@@ -185,7 +209,16 @@ export class SosService {
     private notifications: NotificationsService,
     private gisService: GisService,
     private routingService: RoutingService,
+    private push: PushService,
   ) {}
+
+  // F-PWA-05 — thông báo đẩy chỉ là kênh BÁO THÊM: không await (không làm chậm response) và
+  // nuốt lỗi tại đây (PushService đã tự nuốt, đây là lớp chặn thứ hai cho chắc).
+  private baoDay(viec: Promise<void>): void {
+    viec.catch((err: unknown) => {
+      this.logger.warn(`Thông báo đẩy lỗi: ${(err as Error).message}`);
+    });
+  }
 
   async create(dto: CreateSosDto, victim: User): Promise<CreateSosResult> {
     // SRS F-SOS-01: "Chỉ 1 SOS active cùng lúc/user". Trước đây KHÔNG được enforce —
@@ -280,6 +313,13 @@ export class SosService {
         assignedTeamId,
         updatedAt: new Date().toISOString(),
       });
+    }
+
+    if (assignedTeamId) {
+      this.baoDay(this.push.baoDoiDuocGiao(sos.id, assignedTeamId, sos.type));
+      this.baoDay(this.push.baoNanNhan(sos.id, 'assigned'));
+    } else {
+      this.baoDay(this.push.baoSosMoiChuaCoDoi(sos.id, sos.type));
     }
 
     // await để đảm bảo lời gọi SMS thực sự chạy trước khi request kết thúc,
@@ -455,6 +495,20 @@ export class SosService {
       accountFlagged = updated[0].is_flagged;
     }
 
+    // Báo ngay cho commander (Dashboard), đội được giao (RescuerView hiện toast "nạn nhân đã huỷ")
+    // và các tab khác của nạn nhân — trước đây cancel() không phát gì, phải F5 mới thấy.
+    const wardCode = rows[0].ward_code ?? '';
+    const payload: SosUpdatedPayload = {
+      sosId,
+      status: 'cancelled',
+      wardCode,
+      penaltyApplied,
+      updatedAt: new Date().toISOString(),
+    };
+    if (rows[0].assigned_team_id)
+      payload.assignedTeamId = rows[0].assigned_team_id;
+    this.sosGateway.emitSosUpdated(sosId, wardCode, payload);
+
     return { sosId, status: 'cancelled', penaltyApplied, accountFlagged };
   }
 
@@ -500,6 +554,36 @@ export class SosService {
     return this.attachTimeline(sos);
   }
 
+  // F-UI-02 — lịch sử SOS của chính victim đang gọi, MỌI trạng thái (khác findMyActive chỉ lấy
+  // SOS chưa kết thúc), mới nhất trước, có phân trang. Chỉ lấy cột cần cho danh sách: không
+  // kèm tên/SĐT (chính người gọi) và KHÔNG kèm toạ độ hiện tại của đội cứu hộ (với SOS đã kết
+  // thúc, đội đó đang làm nhiệm vụ khác — lộ vị trí đội là thừa). Timeline từng SOS xem qua
+  // GET /api/sos/:id như cũ, không nhồi vào danh sách.
+  async findMyHistory(
+    victim: User,
+    page: number,
+    limit: number,
+  ): Promise<SosHistoryPage> {
+    const items = await this.dataSource.query<SosHistoryRow[]>(
+      `SELECT s.id, s.type, s.status, s.description, s.image_url, s.location_estimated,
+              s.created_at, s.resolved_at,
+              ST_Y(s.location::geometry) AS lat,
+              ST_X(s.location::geometry) AS lng,
+              rt.name AS team_name
+       FROM sos_requests s
+       LEFT JOIN rescue_teams rt ON rt.id = s.assigned_team_id
+       WHERE s.victim_id = $1
+       ORDER BY s.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [victim.id, limit, (page - 1) * limit],
+    );
+    const dem = await this.dataSource.query<{ total: number }[]>(
+      'SELECT COUNT(*)::int AS total FROM sos_requests WHERE victim_id = $1',
+      [victim.id],
+    );
+    return { items, total: dem[0]?.total ?? 0, page, limit };
+  }
+
   private async attachTimeline(sos: SosDetailRow): Promise<SosDetailResult> {
     const timeline = await this.dataSource.query<SosTimelineRow[]>(
       `SELECT id, actor_id, action, note, created_at
@@ -515,7 +599,7 @@ export class SosService {
     commander: User,
   ): Promise<AssignSosResult> {
     const sosRows = await this.dataSource.query<SosStatusRow[]>(
-      `SELECT status, ward_code, assigned_team_id FROM sos_requests WHERE id = $1`,
+      `SELECT status, ward_code, assigned_team_id, type FROM sos_requests WHERE id = $1`,
       [sosId],
     );
     if (!sosRows[0]) throw new NotFoundException('Không tìm thấy SOS');
@@ -558,6 +642,10 @@ export class SosService {
       updatedAt,
     };
     this.sosGateway.emitSosUpdated(sosId, sosRows[0].ward_code ?? '', payload);
+    this.baoDay(
+      this.push.baoDoiDuocGiao(sosId, teamId, sosRows[0].type ?? 'other'),
+    );
+    this.baoDay(this.push.baoNanNhan(sosId, 'assigned'));
 
     return {
       sosId,
@@ -629,6 +717,10 @@ export class SosService {
       updatedAt,
     };
     this.sosGateway.emitSosUpdated(sosId, sos.ward_code ?? '', payload);
+    // SRS: báo nạn nhân khi đội TỚI NƠI và khi HOÀN TẤT (lúc phân công đã báo ở assign/create).
+    if (newStatus === 'arrived' || newStatus === 'resolved') {
+      this.baoDay(this.push.baoNanNhan(sosId, newStatus));
+    }
 
     return { sosId, status: newStatus, updatedAt };
   }

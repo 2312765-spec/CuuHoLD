@@ -1,6 +1,6 @@
-// Tính năng frontend ĐÃ làm xong nhưng backend CHƯA có API (CLAUDE.md Mục 15.22). Mặc định TẮT
-// để người dùng không bấm vào nút chỉ nhận lỗi 404 — bật bằng biến môi trường khi B làm xong
-// route tương ứng, không cần sửa code. Là hàm (không phải hằng) để test bật/tắt được bằng
+// Tính năng cần API backend (CLAUDE.md Mục 15.22). Backend đã có từ Mục 15.24, nhưng mặc định
+// vẫn TẮT để bản frontend này chạy được cả với backend cũ chưa có route (bấm vào chỉ nhận 404) —
+// bật bằng biến môi trường lúc build (xem frontend/.env.example), không cần sửa code. Là hàm (không phải hằng) để test bật/tắt được bằng
 // vi.stubEnv sau khi module đã nạp.
 
 function bat(bien: string | undefined): boolean {
