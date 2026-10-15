@@ -41,7 +41,7 @@ import {
   RejectHazardReportDto,
 } from './dto/review-hazard-report.dto';
 import { ListHazardReportsQueryDto } from './dto/list-hazard-reports-query.dto';
-import { MAX_IMAGE_BYTES } from './image-validation';
+import { MAX_IMAGE_BYTES } from '../common/image-validation';
 
 interface AuthenticatedRequest extends Request {
   user: User;

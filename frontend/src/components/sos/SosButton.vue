@@ -43,4 +43,12 @@ defineEmits<{ open: [] }>()
 @media (prefers-reduced-motion: reduce){
   .sos-ring{ animation:none; }
 }
+
+
+/* Mobile: nút SOS nhỏ lại cho hợp màn hình điện thoại (PC giữ 120px). */
+@media (max-width: 1023px) {
+  .sos-main-btn { width: 92px; height: 92px; }
+  .sos-core { width: 74px; height: 74px; }
+  .sos-core b { font-size: 16px; }
+}
 </style>

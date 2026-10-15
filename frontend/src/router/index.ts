@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import type { UserRole } from '@/shared/socket-events.types'
+import { xuLyLoiTaiTrang } from './taiLaiKhiLoiTaiTrang'
+import { coLichSuSos } from '@/constants/tinhNangBackend'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -10,6 +12,22 @@ const router = createRouter({
     // /map xem được không cần đăng nhập — chỉ hành động gửi SOS mới cần login (nhắc qua modal).
     { path: '/map', name: 'map', component: () => import('@/views/MapView.vue') },
     // Khu vực rescuer/commander vẫn bắt buộc đăng nhập đúng vai trò.
+    // F-UI-01 — hồ sơ cá nhân + đổi mật khẩu, mọi role đã đăng nhập.
+    {
+      path: '/ho-so',
+      name: 'ho-so',
+      component: () => import('@/views/HoSoView.vue'),
+      meta: { requiresAuth: true }
+    },
+    // F-UI-02 — lịch sử SOS cá nhân, chỉ victim (người gửi SOS). Backend chưa có
+    // GET /api/sos/mine/history → tắt mặc định, vào thẳng /lich-su thì về bản đồ.
+    {
+      path: '/lich-su',
+      name: 'lich-su',
+      component: () => import('@/views/LichSuSosView.vue'),
+      meta: { requiresAuth: true, roles: ['victim'] as UserRole[] },
+      beforeEnter: () => (coLichSuSos() ? true : { name: 'map' })
+    },
     {
       path: '/rescuer',
       name: 'rescuer',
@@ -65,5 +83,8 @@ router.beforeEach((to) => {
   }
   return true
 })
+
+// Tải file JS của trang thất bại → tự tải lại toàn trang tới đúng địa chỉ (xem file dưới).
+router.onError((loi, to) => xuLyLoiTaiTrang(loi, to.fullPath))
 
 export default router

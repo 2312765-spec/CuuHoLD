@@ -24,7 +24,9 @@ vi.mock('@/utils/offlineQueue', () => ({
   xoaKhoiHangDoi: vi.fn(),
   themSosVaoHangDoi: vi.fn(),
   layToanBoHangDoiSos: vi.fn(),
-  xoaKhoiHangDoiSos: vi.fn()
+  xoaKhoiHangDoiSos: vi.fn(),
+  luuPhienDongBo: vi.fn(),
+  xoaPhienDongBo: vi.fn()
 }))
 
 vi.mock('@/services/sosService', () => ({ guiSos: vi.fn() }))
@@ -234,5 +236,73 @@ describe('offlineQueueStore — hàng đợi gắn với đúng chủ nhân', ()
 
     // Mục của A mới hơn nhưng KHÔNG được trả về — nếu không sẽ lộ toạ độ SOS của A cho B.
     expect(ketQua?.localId).toBe('cua-B')
+  })
+})
+
+describe('offlineQueueStore — gửi SOS nền (SRS F-PWA-02 Background Sync)', () => {
+  function datServiceWorker(coSync: boolean) {
+    const register = vi.fn(async () => undefined)
+    const nghe: Record<string, (e: MessageEvent) => void> = {}
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        ready: Promise.resolve(coSync ? { sync: { register } } : {}),
+        addEventListener: (ten: string, fn: (e: MessageEvent) => void) => {
+          nghe[ten] = fn
+        },
+        removeEventListener: vi.fn()
+      }
+    })
+    return { register, nghe }
+  }
+
+  afterEach(() => {
+    delete (navigator as unknown as Record<string, unknown>).serviceWorker
+  })
+
+  it('xếp SOS vào hàng đợi → lưu token (URL API tuyệt đối) cho service worker + đăng ký sync', async () => {
+    const sw = datServiceWorker(true)
+    dangNhapGia('victim-A')
+    const { localId: _l, victimId: _v, ...sos } = taoSosChoGui()
+    await useOfflineQueueStore().themSosVaoHangDoi({ ...sos, localId: 'x' })
+    await doiXongViec()
+
+    expect(db.luuPhienDongBo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        victimId: 'victim-A',
+        accessToken: 'token-victim-A',
+        apiBaseUrl: new URL('/api', window.location.origin).href
+      })
+    )
+    expect(sw.register).toHaveBeenCalledWith('gui-sos-hang-doi')
+  })
+
+  it('trình duyệt không hỗ trợ Background Sync → vẫn lưu hàng đợi bình thường, không lỗi', async () => {
+    datServiceWorker(false)
+    dangNhapGia('victim-A')
+    const { localId: _l, victimId: _v, ...sos } = taoSosChoGui()
+    await expect(useOfflineQueueStore().themSosVaoHangDoi({ ...sos, localId: 'x' })).resolves.toBeUndefined()
+    expect(db.themSosVaoHangDoi).toHaveBeenCalled()
+  })
+
+  it('trang tự gửi hết hàng đợi → xoá token khỏi IndexedDB', async () => {
+    dangNhapGia('victim-A')
+    layHangDoiSos.mockResolvedValueOnce([taoSosChoGui({ victimId: 'victim-A' })]).mockResolvedValue([])
+    guiSos.mockResolvedValueOnce({ id: 'sos-1' } as CreateSosResult)
+    donDep = useOfflineQueueStore().khoiTao(vi.fn(), vi.fn())
+    await doiXongViec()
+    await doiXongViec()
+    expect(db.xoaPhienDongBo).toHaveBeenCalledWith('victim-A')
+  })
+
+  it('service worker báo đã gửi → cập nhật giao diện như khi trang tự gửi', async () => {
+    const sw = datServiceWorker(true)
+    dangNhapGia('victim-A')
+    const onGuiThanhCong = vi.fn()
+    donDep = useOfflineQueueStore().khoiTao(vi.fn(), onGuiThanhCong)
+    const goc = taoSosChoGui({ victimId: 'victim-A' })
+    sw.nghe.message({ data: { type: 'sos-da-gui', goc, ketQua: { id: 'sos-that' } } } as MessageEvent)
+    await doiXongViec()
+    expect(onGuiThanhCong).toHaveBeenCalledWith({ id: 'sos-that' }, goc)
   })
 })

@@ -22,6 +22,9 @@ import { layTuyenDuongThat } from '@/services/routingService'
 import { layCanhBaoDangHoatDong } from '@/services/hazardsService'
 import { khoangCachMet, etaPhut } from '@/utils/geo'
 import RescueMap from '@/components/map/RescueMap.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
+import { diemTuViTriTrinhDuyet, type DiemGps } from '@/utils/locViTri'
+import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
 import type { SosRequest, SosType, SosStatus, RescueTeam, RouteResult, Hazard } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
 
@@ -150,6 +153,13 @@ const { isConnected, connect } = useSocket({
     if (existing) {
       if (!ACTIVE_STATUSES.includes(data.status)) {
         boSosKhoiDanhSach(data.sosId)
+        // Nạn nhân huỷ giữa chừng — trước đây nhiệm vụ biến mất im lặng, đội có thể tưởng lỗi
+        // app mà vẫn chạy tới. Nói rõ để đội dừng lại (backend cancel() emit từ 2026-09-29).
+        if (data.status === 'cancelled') {
+          toastStore.showToast(
+            `Nạn nhân đã huỷ yêu cầu SOS (${SOS_TYPE_LABEL[existing.type]}). Đội có thể dừng di chuyển tới điểm này.`
+          )
+        }
       } else {
         existing.status = data.status
       }
@@ -177,6 +187,9 @@ const lastPosition = ref<{ lat: number; lng: number } | null>(null)
 // true khi không có vị trí GPS để vẽ đường (bị từ chối quyền/không lấy được/trình duyệt không hỗ
 // trợ) — lúc đó app không có điểm xuất phát nên không dẫn đường được trong app.
 const gpsLoi = ref(false)
+// Cùng điểm đó kèm sai số + mốc thời gian, CHỈ cho nút "Vị trí của tôi" hiển thị (dùng lại
+// watcher bên dưới thay vì mở watcher thứ hai). Gửi vị trí đội vẫn dùng lastPosition ở trên.
+const diemGpsMoiNhat = ref<DiemGps | null>(null)
 
 async function guiViTriLenServer(): Promise<void> {
   if (!myTeamId.value || !lastPosition.value) return
@@ -190,6 +203,9 @@ async function guiViTriLenServer(): Promise<void> {
 // ---------- Bản đồ: đường từ vị trí mình tới nạn nhân của nhiệm vụ đang chọn ----------
 // Đội cứu hộ khác không vẽ — rescuer chỉ cần thấy chính mình và nạn nhân.
 const KHONG_VE_DOI: RescueTeam[] = []
+// Bản đồ thật bên trong RescueMap — để gắn nút "Vị trí của tôi" lên đúng bản đồ đó.
+const banDoRef = ref<InstanceType<typeof RescueMap> | null>(null)
+const banDo = computed(() => banDoRef.value?.mapInstance ?? null)
 
 const selectedSosId = ref<string | null>(null)
 // Chưa chọn (hoặc nhiệm vụ đang chọn vừa kết thúc) → mặc định nhiệm vụ đầu danh sách.
@@ -326,6 +342,7 @@ function batDauTheoDoiGps(): void {
     (pos) => {
       gpsLoi.value = false
       lastPosition.value = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+      diemGpsMoiNhat.value = diemTuViTriTrinhDuyet(pos)
       kiemTraDocHuongDanRe()
     },
     () => {
@@ -352,6 +369,7 @@ function dungTheoDoiGps(): void {
     sendIntervalId = null
   }
   lastPosition.value = null
+  diemGpsMoiNhat.value = null
   routeThat.value = null
   gpsLoi.value = false
   tuyenThatLoi.value = false
@@ -431,7 +449,9 @@ onUnmounted(() => {
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
         <RouterLink to="/report" class="btn btn-ghost">Báo cáo sạt lở</RouterLink>
-        <span class="rescuer-user">{{ authStore.user?.name }}</span>
+        <RouterLink to="/" class="nav-thoat">Trang chủ</RouterLink>
+        <RouterLink to="/map" class="nav-thoat">Xem bản đồ</RouterLink>
+        <RouterLink to="/ho-so" class="rescuer-user" title="Hồ sơ của tôi">{{ authStore.user?.name }}</RouterLink>
         <button class="btn btn-ghost" @click="authStore.logout()">Đăng xuất</button>
       </div>
     </header>
@@ -446,6 +466,7 @@ onUnmounted(() => {
       <template v-else>
         <div class="rescuer-map">
           <RescueMap
+            ref="banDoRef"
             :sos-list="sosList"
             :teams="KHONG_VE_DOI"
             :selected-sos-id="selectedSos?.id ?? null"
@@ -455,6 +476,7 @@ onUnmounted(() => {
             @select-sos="chonNhiemVu"
             @tile-error="onTileError"
           />
+          <ViTriCuaToi :map="banDo" :nguon-ngoai="diemGpsMoiNhat" />
         </div>
         <p class="map-hint">{{ hintBanDo() }}</p>
 
@@ -488,6 +510,7 @@ onUnmounted(() => {
             <div v-if="quangDuong(sos)" class="sos-meta">{{ quangDuong(sos) }}</div>
             <div class="sos-meta">Gửi lúc {{ formatTime(sos.created_at) }}</div>
             <p v-if="sos.description" class="sos-desc">{{ sos.description }}</p>
+            <AnhHienTruong v-if="sos.image_url" :sos-id="sos.id" />
 
             <button
               v-if="NEXT_ACTION[sos.status]"
@@ -533,15 +556,40 @@ onUnmounted(() => {
 .rescuer-top h1 {
   font-size: 18px;
 }
+/* wrap: thêm 2 liên kết có nhãn nên header dài hơn — màn hẹp xuống dòng thay vì tràn ngang. */
+.rescuer-top {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
 .rescuer-top-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 12px;
+}
+@media (max-width: 480px) {
+  .rescuer-top {
+    padding: 10px 12px;
+  }
 }
 .rescuer-user {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 14px;
   color: var(--pine-deep);
   font-weight: 500;
+}
+/* F-UI-01: tên là lối vào trang hồ sơ. */
+.rescuer-user {
+  text-decoration: none;
+}
+.rescuer-user:hover {
+  text-decoration: underline;
+}
+.rescuer-user:focus-visible {
+  outline: 3px solid var(--pine-deep);
+  outline-offset: 2px;
 }
 /* Class name riêng (không phải .socket-status) để tránh kế thừa style pill nổi
    (position: fixed, background trắng, box-shadow...) từ map-style.css — file đó định
@@ -551,7 +599,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
 }
 .realtime-status .dot {
@@ -575,7 +623,7 @@ onUnmounted(() => {
   padding: 40px 20px;
   text-align: center;
   color: rgba(42, 42, 36, 0.55);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* position+z-index tạo stacking context riêng: các pane của Leaflet có z-index 400+, nếu
@@ -583,15 +631,22 @@ onUnmounted(() => {
 .rescuer-map {
   position: relative;
   z-index: 0;
-  height: 42vh;
-  min-height: 260px;
+  /* 42vh/min 260px cũ quá thấp để vừa thấy đường chim bay vừa thấy vùng quanh nạn nhân. */
+  height: clamp(360px, 60vh, 720px);
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
 }
+/* Điện thoại dọc: 360px tối thiểu chiếm gần hết màn thấp → theo tỉ lệ màn hình, chừa chỗ
+   cho thẻ nhiệm vụ đầu tiên lộ ra bên dưới. */
+@media (max-width: 480px) {
+  .rescuer-map {
+    height: 55vh;
+  }
+}
 .map-hint {
   margin: 8px 2px 14px;
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
 }
 
@@ -628,23 +683,23 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 .sos-badge {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--pine-deep);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .sos-status-badge {
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.6);
 }
 .sos-victim {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   margin-bottom: 6px;
 }
 .sos-location-warn {
-  font-size: 12px;
+  font-size: 13px;
   color: #b45309;
   background: #fef3c7;
   border-radius: 6px;
@@ -652,7 +707,7 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 .sos-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(42, 42, 36, 0.55);
   margin-bottom: 2px;
 }
@@ -661,7 +716,7 @@ onUnmounted(() => {
 }
 .sos-desc {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(42, 42, 36, 0.75);
 }
 .sos-card .btn {

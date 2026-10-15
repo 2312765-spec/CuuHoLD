@@ -16,12 +16,16 @@ import type { MapLayerKey } from '@/types'
 import MapTopBar from '@/components/map/MapTopBar.vue'
 import MapStats from '@/components/map/MapStats.vue'
 import MapLegend from '@/components/map/MapLegend.vue'
+import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
 import SosButton from '@/components/sos/SosButton.vue'
 import SosConfirmDialog from '@/components/sos/SosConfirmDialog.vue'
 import SosTrackerPanel from '@/components/sos/SosTrackerPanel.vue'
 import AuthModal from '@/components/AuthModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSos } from '@/composables/useSos'
+import { dinhKemAnhSos } from '@/services/sosService'
+import { useGhimViTri } from '@/composables/useGhimViTri'
+import { useVetGpsStore } from '@/stores/vetGps.store'
 import { SOS_STATUS_LABEL } from '@/constants/sosLabels'
 import type { SosType } from '@/types'
 import type { SosUpdatedPayload } from '@/shared/socket-events.types'
@@ -49,7 +53,12 @@ const sos = useSos()
 // .map-page — nút chiếm nguyên góc dưới phải nên các huy hiệu ở đó phải nhường chỗ, và chỉ
 // nhường đúng lúc nút thật sự có mặt (xem map-style.css).
 const coNutSos = computed(
-  () => laVictim.value && !sos.dangHoatDong.value && !sos.dangGui.value && !dangLayViTri.value
+  () =>
+    laVictim.value &&
+    !sos.dangHoatDong.value &&
+    !sos.dangGui.value &&
+    !dangLayViTri.value &&
+    !dangGhimBaoHo.value
 )
 
 // Trạng thái chờ GPS khoá vệ tinh (enableHighAccuracy có thể mất tới ~15s, xem
@@ -97,12 +106,46 @@ async function xacNhanHuySos(reason: 'mistake' | 'resolved_myself' | 'other') {
 }
 
 // ---------- Luồng gửi SOS thật (nối SosButton → useSos) ----------
+const vetGps = useVetGpsStore()
 const isSosDialogOpen = ref(false)
 function moSosDialog() {
   isSosDialogOpen.value = true
 }
-async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
+
+// ---------- F-SOS-07: báo SOS hộ người khác (ghim vị trí bằng tay) ----------
+// Người báo thường KHÔNG đứng tại chỗ người gặp nạn (thấy từ xa, được gọi điện nhờ...), nên
+// dùng GPS máy mình là sai chỗ. Luồng: bấm "Báo hộ" → ghim trên bản đồ → dialog xác nhận
+// sẵn có (chọn loại, ảnh, đếm ngược) → gửi với toạ độ đã ghim.
+const dangGhimBaoHo = ref(false)
+const guiBaoHo = ref(false)
+function batDauBaoHo() {
+  dangGhimBaoHo.value = true
+}
+function huyBaoHo() {
+  dangGhimBaoHo.value = false
+  guiBaoHo.value = false
+}
+function tiepTucBaoHo() {
+  if (!ghim.viTriGhim.value) return
+  guiBaoHo.value = true
+  isSosDialogOpen.value = true
+}
+function dongSosDialog() {
   isSosDialogOpen.value = false
+  // Đóng dialog lúc đang báo hộ → quay lại bước ghim (giữ nguyên ghim), không thoát hẳn.
+  guiBaoHo.value = false
+}
+async function xacNhanGuiSos(payload: { type: SosType; description: string; anh?: Blob }) {
+  isSosDialogOpen.value = false
+  if (guiBaoHo.value && ghim.viTriGhim.value) {
+    const { lat, lng } = ghim.viTriGhim.value
+    const moTa = `[Báo hộ — vị trí do người báo ghim trên bản đồ] ${payload.description}`.trim()
+    huyBaoHo()
+    // Ghim tay luôn là vị trí ƯỚC LƯỢNG (người báo chọn bằng mắt trên bản đồ) — gắn cờ để
+    // rescuer/commander thấy cảnh báo "vị trí ước tính", cùng nguyên tắc P0 ở CLAUDE.md 15.6.
+    await guiSosVoiViTri({ lat, lng, uocLuong: true }, { ...payload, description: moTa })
+    return
+  }
   // Lấy vị trí hiện tại của người dùng qua trình duyệt; nếu từ chối/timeout, dùng tâm tỉnh
   // làm ước tính TẠM (uocLuong=true) — KHÔNG được âm thầm gửi toạ độ giả mà không báo (từng
   // là lỗi P0 an toàn thật, xem CLAUDE.md Mục 15: dialog xác nhận nói "vị trí hiện tại của
@@ -114,12 +157,37 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
     // uocLuong giờ bật cho CẢ 2 case: GPS lỗi hẳn (dùng tâm tỉnh) LẪN GPS trả toạ độ thật
     // nhưng sai số quá lớn (xem utils/geolocation.ts) — câu chữ không được khẳng định cứng
     // "tâm tỉnh" vì ở case sau toạ độ gửi đi vẫn là vị trí thật, chỉ là kém tin cậy.
+    // Trang mở qua http:// (VD: http://192.168.x.x khi test trên điện thoại cùng Wi-Fi) thì
+    // trình duyệt CHẶN HẲN Geolocation API dù máy đã bật GPS — báo đúng nguyên nhân thay vì
+    // câu chung chung khiến người dùng tưởng GPS hỏng.
     toastStore.showToast(
-      'Không xác định được vị trí GPS chính xác — đã gửi kèm cảnh báo vị trí ước tính. Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm nếu có thể.'
+      window.isSecureContext
+        ? 'Không xác định được vị trí GPS chính xác — đã gửi kèm cảnh báo vị trí ước tính. Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm nếu có thể.'
+        : 'Trình duyệt chặn định vị vì trang không mở bằng https:// — đã gửi kèm cảnh báo vị trí ước tính. Hãy mô tả rõ vị trí thật hoặc gọi trực tiếp trung tâm.'
     )
   }
+  // SOS của CHÍNH MÌNH → gửi kèm vết GPS gần nhất (F-PWA-04) nếu có. Báo hộ (ở trên) thì không:
+  // vết là đường đi của người báo, không phải của người gặp nạn.
+  await guiSosVoiViTri(viTri, { ...payload, description: await ghepVetGpsVaoMoTa(payload.description) })
+}
+
+// Đọc IndexedDB rất nhanh, nhưng vẫn không được để lỗi ở đây chặn SOS — lỗi thì gửi mô tả gốc.
+async function ghepVetGpsVaoMoTa(moTa: string): Promise<string> {
   try {
-    await sos.guiYeuCauSos({
+    const vet = await vetGps.tomTatChoSos()
+    if (!vet) return moTa
+    return moTa ? `${moTa}\n${vet}` : vet
+  } catch {
+    return moTa
+  }
+}
+
+async function guiSosVoiViTri(
+  viTri: { lat: number; lng: number; uocLuong: boolean },
+  payload: { type: SosType; description: string; anh?: Blob }
+) {
+  try {
+    const daTao = await sos.guiYeuCauSos({
       lat: viTri.lat,
       lng: viTri.lng,
       type: payload.type,
@@ -128,6 +196,9 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
     })
     phongToToiSosCuaMinh(viTri.lat, viTri.lng)
     toastStore.showToast('Đã gửi tín hiệu cứu trợ. Đội điều phối sẽ liên hệ sớm.')
+    // F-SOS-06: ảnh gửi SAU, không await — SOS đã tới trung tâm rồi, ảnh chậm/lỗi không được
+    // giữ chân hay làm hỏng luồng chính (CLAUDE.md Mục 15.21).
+    if (payload.anh) void guiAnhSauSos(daTao.id, payload.anh)
   } catch (err) {
     if (isAxiosError(err) && !err.response) {
       // Mất mạng thật sự (không phải lỗi nghiệp vụ như rate-limit 429/400) — lưu lại để
@@ -146,9 +217,24 @@ async function xacNhanGuiSos(payload: { type: SosType; description: string }) {
       })
       sos.datSosChoGui({ localId, lat: viTri.lat, lng: viTri.lng, type: payload.type, locationEstimated: viTri.uocLuong })
       phongToToiSosCuaMinh(viTri.lat, viTri.lng)
-      toastStore.showToast('Không có mạng — đã lưu yêu cầu, sẽ tự gửi ngay khi có mạng trở lại.')
+      // Hàng đợi offline chỉ giữ SOS (IndexedDB giữ ảnh vài trăm KB cho mỗi SOS chờ là không
+      // đáng rủi ro đầy bộ nhớ máy yếu) — nói thẳng là ảnh không đi kèm, đừng hứa suông.
+      toastStore.showToast(
+        payload.anh
+          ? 'Không có mạng — đã lưu yêu cầu (không kèm ảnh), sẽ tự gửi ngay khi có mạng trở lại.'
+          : 'Không có mạng — đã lưu yêu cầu, sẽ tự gửi ngay khi có mạng trở lại.'
+      )
     }
     // Lỗi nghiệp vụ khác (VD: vượt 5 SOS/giờ) đã có toast riêng từ interceptor http.ts.
+  }
+}
+async function guiAnhSauSos(sosId: string, anh: Blob) {
+  try {
+    await dinhKemAnhSos(sosId, anh)
+    toastStore.showToast('Đã gửi kèm ảnh hiện trường.')
+  } catch {
+    // http.ts đã hiện toast lý do lỗi; nhắc thêm rằng SOS vẫn an toàn để người dùng khỏi hoảng.
+    toastStore.showToast('Tín hiệu SOS đã gửi thành công — chỉ riêng ảnh chưa gửi được.')
   }
 }
 const route = useRoute()
@@ -169,8 +255,10 @@ const {
   capNhatMarkerDoiCuuHo,
   phongToToiSosCuaMinh,
   capNhatCanhBaoDuong,
+  layKhungTinh,
   destroyMap
 } = useLeafletMap()
+const ghim = useGhimViTri(mapInstance, dangGhimBaoHo, layKhungTinh)
 
 watch(boundaryError, (msg) => {
   if (msg) toastStore.showToast(msg)
@@ -191,6 +279,7 @@ function apDungMarkerSos(): void {
       lat: active.lat,
       lng: active.lng,
       status: active.status,
+      type: active.type,
       label: SOS_STATUS_LABEL[active.status]
     }
   )
@@ -351,10 +440,12 @@ watch(activeLayer, (layer) => {
 </script>
 
 <template>
-  <div class="map-page" :class="{ 'co-nut-sos': coNutSos }">
+  <div class="map-page" :class="{ 'co-nut-sos': coNutSos, 'co-nut-bao-cao': authStore.isLoggedIn }">
     <MapTopBar @open-auth="isAuthOpen = true" />
     <MapStats />
     <div id="map"></div>
+    <!-- Mọi vai trò (kể cả khách): xem mình đang ở đâu, không gửi gì đi. -->
+    <ViTriCuaToi :map="mapInstance" />
     <MapLegend />
     <!-- Báo cáo sạt lở / chặn đường từ hiện trường — mọi người dùng đã đăng nhập (người dân,
          tình nguyện viên). Cần đăng nhập vì báo cáo gắn với người gửi để quản trị viên xác minh. -->
@@ -366,11 +457,33 @@ watch(activeLayer, (layer) => {
          đóng ngay lúc bấm "Gửi ngay" nhưng dangHoatDong chỉ true SAU khi API trả về, nên
          trong lúc mạng chậm nút SOS hiện lại được và bấm gửi trùng lần 2. -->
     <div v-if="coNutSos" class="sos-fab">
+      <button type="button" class="bao-ho-btn" @click="batDauBaoHo">Báo hộ người khác</button>
       <SosButton @open="moSosDialog" />
     </div>
+    <!-- F-SOS-07: thanh hướng dẫn trong lúc ghim vị trí báo hộ -->
+    <section v-if="dangGhimBaoHo && !isSosDialogOpen" class="bao-ho-panel" aria-labelledby="bao-ho-title">
+      <div class="bao-ho-panel__head">
+        <h2 id="bao-ho-title">Báo SOS hộ người khác</h2>
+        <button type="button" class="bao-ho-panel__dong" aria-label="Thoát chế độ báo hộ" @click="huyBaoHo">✕</button>
+      </div>
+      <p v-if="!ghim.viTriGhim.value" class="bao-ho-panel__huong-dan">
+        Chạm vào bản đồ tại nơi người cần cứu đang ở. Có thể kéo ghim để chỉnh lại.
+      </p>
+      <p v-else class="bao-ho-panel__huong-dan">
+        Đã ghim: {{ ghim.viTriGhim.value.lat.toFixed(5) }}, {{ ghim.viTriGhim.value.lng.toFixed(5) }}
+      </p>
+      <p v-if="ghim.loiGhim.value" class="bao-ho-panel__loi" role="alert">{{ ghim.loiGhim.value }}</p>
+      <div class="bao-ho-panel__nut">
+        <button type="button" class="btn btn-ghost" @click="ghim.ghimTaiTamBanDo">Ghim tại tâm bản đồ</button>
+        <button type="button" class="btn sos-confirm-btn" :disabled="!ghim.viTriGhim.value" @click="tiepTucBaoHo">
+          Tiếp tục
+        </button>
+      </div>
+    </section>
     <SosConfirmDialog
       :is-open="isSosDialogOpen"
-      @cancel="isSosDialogOpen = false"
+      :bao-ho="guiBaoHo"
+      @cancel="dongSosDialog"
       @confirm="xacNhanGuiSos"
     />
 

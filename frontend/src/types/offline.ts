@@ -28,3 +28,23 @@ export interface QueuedSos {
   locationEstimated: boolean
   taoLuc: string // ISO timestamp
 }
+
+// F-PWA-04 — 1 điểm trong vết GPS (ghi mỗi 2 phút khi người dùng bật). userId để trên máy dùng
+// chung, người sau không xem/gửi kèm vết của người trước.
+export interface DiemVetGps {
+  id?: number
+  userId: string
+  lat: number
+  lng: number
+  doChinhXac: number // mét
+  luc: string // ISO
+}
+
+// F-PWA-02 — phiên để service worker tự gửi SOS nền (xem utils/offlineQueue.ts, store
+// 'phien-dong-bo'). apiBaseUrl là URL TUYỆT ĐỐI: service worker không biết cấu hình Vite.
+export interface PhienDongBo {
+  victimId: string
+  accessToken: string
+  apiBaseUrl: string
+  luuLuc: string // ISO
+}

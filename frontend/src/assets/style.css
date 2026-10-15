@@ -54,7 +54,7 @@
   .nav-links a:hover{opacity:1;}
   .nav-user{font-size:14px; color:var(--pine-deep); font-weight:500; white-space:nowrap;}
   .nav-cta{display:flex; gap:10px;}
-  .menu-btn{display:none; background:none; border:none; cursor:pointer;}
+  .menu-btn{display:none; background:none; border:none; cursor:pointer; color:var(--ink); min-width:40px; min-height:40px;}
 
   /* hero */
   .hero{
@@ -149,6 +149,9 @@
   .coverage .wrap{display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:center;}
   .coverage-figures{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
   .cov-card{border-left:2px solid var(--clay); padding-left:16px;}
+  /* Trước đây màu này viết cứng trong style="" của HomeView — dark mode không ghi đè được, chữ
+     tối nằm trên nền tối gần như biến mất. Đưa ra class để các khối theme bên dưới áp được. */
+  .coverage-mo-ta{color:rgba(42,42,36,0.68); max-width:440px;}
   .cov-card b{font-family:'Fraunces',serif; font-size:32px; display:block; color:var(--pine-deep);}
   .cov-card span{font-size:13px; color:rgba(42,42,36,0.6);}
 
@@ -235,6 +238,7 @@ section{ padding:56px 0; }
   font-size:13px; z-index:3000; opacity:0; pointer-events:none; transition:all .25s ease;
 }
 .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
 /* ============================================================
    F-UI-05 — Chế độ tối. CÁCH LÀM (bản sửa): KHÔNG remap các token
    thương hiệu (--fog, --pine-deep... vốn dùng cho CẢ nền lẫn chữ,
@@ -263,13 +267,39 @@ section{ padding:56px 0; }
 :root[data-theme="dark"] .feat-card p,
 :root[data-theme="dark"] .feat2-card p,
 :root[data-theme="dark"] .cov-card span,
+:root[data-theme="dark"] .coverage-mo-ta,
 :root[data-theme="dark"] footer .fine{ color:rgba(236,231,217,0.68); }
 
 /* Nút viền (.btn-ghost) đang chữ + viền tối → sáng để đọc được trên hero tối */
 :root[data-theme="dark"] .btn-ghost{ color:#ece7d9; border-color:rgba(236,231,217,0.28); }
 
 /* Header kính mờ (đang nền sáng rgba fog) → nền tối */
-:root[data-theme="dark"] header{ background:rgba(15,26,21,0.88); }
+:root[data-theme="dark"] header.site-header{ background:rgba(15,26,21,0.88); }
+/* ⚠️ Chỉ header trang chủ (AppHeader). Trước đây selector là `header` trơn → tô tối luôn header
+   của Dashboard/Rescuer/Lịch sử/Hồ sơ (vốn nền sáng, chữ tối) → chữ + nút quay lại chìm mất.
+   Thanh bản đồ (.map-top) có rule dark riêng bên dưới. */
+
+/* Các trang + hộp CỐ Ý luôn nền sáng (--fog/trắng, color-scheme light) kể cả khi bật dark mode.
+   Các rule dark toàn cục ở trên (h1–h3 sáng, .btn-ghost chữ sáng) viết cho nền TỐI của trang chủ;
+   áp vào những chỗ này là chữ sáng trên nền sáng → biến mất. Đã gặp thật: "SOS theo loại" ở
+   Dashboard, tiêu đề hộp xác nhận SOS, "Quay lại" ở hướng dẫn lần đầu, "Huỷ SOS"/"Đóng" ở bảng
+   theo dõi SOS, các nút lý do huỷ. Thêm hộp nền sáng MỚI thì thêm class của nó vào 2 danh sách. */
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) :is(h1, h2, h3){ color:var(--pine-deep); }
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
+/* Chữ GỐC của chính các vùng đó: body đổi chữ sang kem sáng ở dark mode, phần tử không tự khai
+   báo màu (VD tên nạn nhân .sos-victim) kế thừa chữ kem trên thẻ trắng → ~1.3:1, gần như vô
+   hình. Trả về --ink như chế độ sáng; color-scheme light để ô nhập/thanh cuộn gốc cũng sáng.
+   Khoá bằng src/views/tuongPhanChu.spec.ts. */
+:root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker){ color:var(--ink); color-scheme:light; }
+
+/* Nút menu (hamburger/✕) + nút ⚙ Cài đặt hiển thị (ThemeToggle) nằm trên header TỐI của trang chủ:
+   trước đây chữ/nét màu --ink cố định → gần như vô hình. */
+:root[data-theme="dark"] .menu-btn{ color:#ece7d9; }
+:root[data-theme="dark"] .tt-btn{ color:#ece7d9; border-color:rgba(236,231,217,0.28); }
+:root[data-theme="dark"] .tt-btn:hover{ border-color:#ece7d9; }
 
 /* Hero: gradient sáng → gradient tối (đây là chỗ khiến chữ trước đây chìm) */
 :root[data-theme="dark"] .hero{ background:linear-gradient(180deg,#14231b 0%,#0f1a15 100%); }
@@ -284,3 +314,150 @@ section{ padding:56px 0; }
 :root[data-theme="dark"] .nav-links.open{
   background:#14231b; border-bottom-color:rgba(236,231,217,0.14);
 }
+
+/* ------------------------------------------------------------
+   Dark mode cho KHU VỰC BẢN ĐỒ (MapTopBar / tab lớp / chú thích).
+   Các control này định nghĩa trong map-style.css, dùng --ink (chữ
+   tối) + nền sáng → trên nền tối bị chìm. Ghi đè có [data-theme=dark]
+   nên chỉ tác động ở chế độ tối, không đụng giao diện sáng.
+   ------------------------------------------------------------ */
+:root[data-theme="dark"] .map-top{
+  background:rgba(15,26,21,0.92); border-bottom-color:rgba(236,231,217,0.14);
+}
+:root[data-theme="dark"] .map-back,
+:root[data-theme="dark"] .map-user,
+:root[data-theme="dark"] .layer-tabs a{ color:#ece7d9; }
+:root[data-theme="dark"] .layer-tabs a:hover{ border-color:rgba(236,231,217,0.28); }
+/* Tab đang chọn: xanh sáng hơn --pine-deep để nổi rõ trên nền tối */
+:root[data-theme="dark"] .layer-tabs a.active{ background:#2f5741; color:#f3efe3; }
+/* Bảng chú thích nổi (nền trắng) → tối */
+:root[data-theme="dark"] .map-legend-panel{
+  background:rgba(22,36,29,0.94); color:#ece7d9;
+}
+
+
+/* ============================================================
+   F-UI-06 — CỠ CHỮ LỚN (data-font="large") & TƯƠNG PHẢN CAO
+   (data-contrast="high"). CSS dự án dùng px là chính nên phải
+   phóng chữ TRỰC TIẾP trên từng thành phần cho rõ (root % gần
+   như vô tác dụng). Thêm ở cuối, không sửa rule gốc.
+   ============================================================ */
+
+/* ---------- CỠ CHỮ LỚN ---------- */
+:root[data-font="large"]{ font-size:112%; }
+:root[data-font="large"] .brand{ font-size:21px; }
+:root[data-font="large"] .nav-links,
+:root[data-font="large"] .nav-links a,
+:root[data-font="large"] .nav-user{ font-size:16px; }
+:root[data-font="large"] .btn{ font-size:16px; }
+:root[data-font="large"] .hero h1{ font-size:clamp(46px,7.4vw,76px); }
+:root[data-font="large"] .hero p{ font-size:21px; }
+:root[data-font="large"] .hero-map-link{ font-size:16px; }
+:root[data-font="large"] .head h2{ font-size:clamp(32px,4.6vw,46px); }
+:root[data-font="large"] .head p{ font-size:18px; }
+:root[data-font="large"] .feat-card h3{ font-size:22px; }
+:root[data-font="large"] .feat-card p,
+:root[data-font="large"] .feat2-card p{ font-size:16px; }
+:root[data-font="large"] .step h3{ font-size:21px; }
+:root[data-font="large"] .step p{ font-size:16px; }
+/* .sos-victim tách riêng: nó là tên nạn nhân (chữ chính, 15–16px ở chế độ thường) — để chung với
+   nhóm 14px thì BẬT cỡ chữ lớn lại làm tên nhỏ đi. Các nhóm còn lại ≥13px ở chế độ thường. */
+:root[data-font="large"] .sos-victim{ font-size:18px; }
+:root[data-font="large"] .sos-meta,
+:root[data-font="large"] .sos-badge,
+:root[data-font="large"] .sos-status-badge{ font-size:14px; }
+
+/* ---------- TƯƠNG PHẢN CAO ---------- */
+/* Nền sáng: chữ phụ mờ → đặc; viền đậm; link bỏ mờ. */
+:root[data-contrast="high"]{ --line:rgba(42,42,36,0.5); }
+:root[data-contrast="high"] .hero p,
+:root[data-contrast="high"] .head p,
+:root[data-contrast="high"] .feat-card p,
+:root[data-contrast="high"] .feat2-card p,
+:root[data-contrast="high"] .cov-card span,
+:root[data-contrast="high"] .coverage-mo-ta,
+:root[data-contrast="high"] footer .fine{ color:var(--ink) !important; }
+:root[data-contrast="high"] .hero-map-link{ opacity:1; }
+:root[data-contrast="high"] .btn-ghost{ border-color:var(--ink); }
+
+/* Nền tối: chữ phụ + tab bản đồ dùng tông sáng ĐẶC; viền sáng rõ. */
+:root[data-theme="dark"][data-contrast="high"]{ --line:rgba(236,231,217,0.55); }
+:root[data-theme="dark"][data-contrast="high"] .hero p,
+:root[data-theme="dark"][data-contrast="high"] .head p,
+:root[data-theme="dark"][data-contrast="high"] .feat-card p,
+:root[data-theme="dark"][data-contrast="high"] .feat2-card p,
+:root[data-theme="dark"][data-contrast="high"] .step p,
+:root[data-theme="dark"][data-contrast="high"] .cov-card span,
+:root[data-theme="dark"][data-contrast="high"] .coverage-mo-ta,
+:root[data-theme="dark"][data-contrast="high"] footer .fine,
+:root[data-theme="dark"][data-contrast="high"] .layer-tabs a{ color:#f7f3e8 !important; }
+
+/* F-UI-03 — Trung tâm thông báo: panel dùng nền sáng (--fog), theme tối chỉnh riêng. */
+:root[data-theme="dark"] .noti-panel,
+:root[data-theme="dark"] .noti-head{ background:#16241d; }
+:root[data-theme="dark"] .noti-title,
+:root[data-theme="dark"] .noti-head{ color:#ece7d9; }
+:root[data-theme="dark"] .noti-desc{ color:rgba(236,231,217,0.72); }
+:root[data-theme="dark"] .noti-time,
+:root[data-theme="dark"] .noti-empty{ color:rgba(236,231,217,0.5); }
+:root[data-theme="dark"] .noti-item:hover{ background:rgba(236,231,217,0.06); }
+:root[data-theme="dark"] .noti-item.unread{ background:rgba(217,116,79,0.14); }
+
+/* Chống "mất chữ" ở dropdown khi HỆ THỐNG (điện thoại) đang dark mode. Không ép color-scheme
+   toàn cục để không phá dark mode của app — chỉ đảm bảo <option> luôn đọc được. */
+option{ color:#2a2a24; background:#fff; }
+
+/* ------------------------------------------------------------
+   Header — căn lại để KHÔNG rớt dòng khi thêm nút chuông/giao diện:
+   nới bề ngang, cấm brand & link xuống hàng, gom control bên phải.
+   ------------------------------------------------------------ */
+.nav{ max-width:1280px; gap:18px; }
+.nav-links{ gap:24px; }
+.nav-links a{ white-space:nowrap; }
+.nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+@media (min-width:1024px){
+  .brand{ white-space:nowrap; flex-shrink:0; }
+}
+
+/* Header trên MOBILE (<1024px): tránh dồn chật làm brand vỡ mỗi chữ một dòng.
+   Giữ logo, ẩn chữ dài; ẩn cụm nút giao diện (dark mode vẫn theo hệ thống); thu gọn CTA. */
+@media (max-width: 1023px){
+  .nav{ gap:10px; }
+  .brand-text{ display:none; }
+  .nav-cta .btn{ padding:9px 14px; font-size:13px; }
+  .nav-right{ gap:8px; }
+}
+
+/* Bảng chú thích bản đồ trên MOBILE: thu gọn còn 3 dòng màu, ẩn đoạn giải thích dài cho
+   đỡ chiếm màn hình. Dùng :root để thắng độ ưu tiên map-style.css mà không cần sửa file đó.
+   PC (>=1024px) giữ nguyên đầy đủ. */
+@media (max-width: 1023px){
+  :root .map-legend-panel{
+    left:10px; bottom:54px; padding:8px 11px; font-size:11px;
+    max-width:56vw; border-radius:9px;
+  }
+  :root .map-legend-panel .legend-note,
+  :root .map-legend-panel p{ display:none; }
+  :root .map-legend-panel .legend-row{ margin:3px 0; gap:7px; }
+}
+
+/* Điện thoại: tab bar cao 54px (đặt trong MapTopBar) → kéo thanh thống kê lên sát, hết khe
+   hở lộ bản đồ giữa tab bar và thanh thống kê. */
+@media (max-width: 720px){
+  :root .map-stats{ top:54px; }
+  /* Nút SOS ngang hàng đáy với bảng chú thích (cùng bottom:54px), một trái một phải. */
+  :root .sos-fab{ bottom:54px; right:16px; }
+}
+
+/* Liên kết "thoát ra" ở header các màn làm việc (Hồ sơ, Nhiệm vụ, Điều phối): có NHÃN chữ, cao
+   tối thiểu 44px để chạm được trên điện thoại. Chỉ dùng biến màu sẵn có — các trang này luôn
+   nền sáng nên --pine-deep/--line đúng cả khi bật dark mode và tương phản cao (--line đậm lên). */
+.nav-thoat{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:44px; min-width:44px; padding:0 14px;
+  border:1px solid var(--line); border-radius:999px;
+  color:var(--pine-deep); background:transparent;
+  font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap;
+}
+.nav-thoat:hover{ border-color:var(--pine-deep); }
+.nav-thoat:focus-visible{ outline:3px solid var(--pine-deep); outline-offset:2px; }

@@ -95,7 +95,9 @@ const khoangCachDoi = computed(() => {
 .sos-tracker {
   position: fixed;
   right: 16px;
-  top: 150px;
+  /* Nằm DƯỚI nút zoom (+/−) cùng góc phải: zoom ở 142px → ~224px trên màn hẹp (map-style.css).
+     Số cũ 150px (và 112px trên desktop) làm bảng che mất nút zoom. */
+  top: 236px;
   z-index: 960;
   width: min(280px, calc(100vw - 32px));
   background: rgba(255, 255, 255, 0.96);
@@ -155,7 +157,8 @@ const khoangCachDoi = computed(() => {
 
 @media (min-width: 1024px) {
   .sos-tracker {
-    top: 112px;
+    /* Desktop: nút zoom ở 106px → ~188px. */
+    top: 200px;
   }
 }
 </style>

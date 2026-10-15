@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SosController } from './sos.controller';
 import { SosService } from './sos.service';
+import { SosImagesService } from './sos-images.service';
 import { SosGateway } from './sos.gateway';
 import { SosRequest } from './sos.entity';
 import { AuthModule } from '../auth/auth.module';
@@ -21,7 +22,7 @@ import { RoutingModule } from '../routing/routing.module';
     forwardRef(() => RoutingModule),
   ],
   controllers: [SosController],
-  providers: [SosService, SosGateway],
+  providers: [SosService, SosImagesService, SosGateway],
   exports: [SosGateway],
 })
 export class SosModule {}
