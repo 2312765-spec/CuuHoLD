@@ -49,7 +49,9 @@ web app for Lâm Đồng province, Vietnam. Stack: NestJS (backend) + Vue 3 (fro
 ### BANNED:
 - this.$emit or this.$props (Options API patterns)
 - defineComponent() without script setup
-- any localStorage usage (not supported in artifacts)
+- Web Storage (localStorage/sessionStorage) for passwords or PII. Allowed only: session tokens in
+  sessionStorage (auth.store.ts) and UI preferences (theme, font size, onboarding) via
+  utils/khoLuuTru.ts (try/catch) — see CLAUDE.md Mục 15.4, 15.23
 - Direct DOM manipulation (use Vue refs instead)
 
 ## POSTGIS RULES (Critical)

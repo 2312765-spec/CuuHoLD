@@ -10,7 +10,7 @@ Ranh giới **123 xã/phường/đặc khu** của tỉnh Lâm Đồng sau sáp 
 | **Nguồn gốc** | **gis.vn** (trường `name` của file gốc ghi `"gis.vn"`) |
 | **Lấy qua** | [github.com/2314283-MVQuang/website-cuu-tro](https://github.com/2314283-MVQuang/website-cuu-tro) — file `public/data/lam_dong_data.json` |
 | **Hệ toạ độ** | WGS84 (EPSG:4326), thứ tự `[kinh độ, vĩ độ]` chuẩn GeoJSON |
-| **Kiểu hình học** | MultiPolygon, 123 feature |
+| **Kiểu hình học** | MultiPolygon, 124 feature (123 từ gis.vn + Đam Rông 2 vá từ nguồn thứ 2, xem dưới) |
 | **Thuộc tính** | `ma_xa`, `ten_xa`, `loai`, `sap_nhap`, `dtich_km2`, `dan_so` |
 
 **KHÔNG sửa file này bằng tay.** Nó được sinh ra bởi:

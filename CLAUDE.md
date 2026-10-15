@@ -20,7 +20,7 @@ Người dân nhấn SOS → tọa độ GPS gửi lên server → WebSocket ph�
 rescue-gis-lamdong/          ← Monorepo
 ├── backend/                 ← NestJS (Thành viên B)
 ├── frontend/                ← Vue 3 (Thành viên A)
-└── gis/queries.sql          ← PostGIS SQL (Thành viên C)
+└── gis/                     ← SQL migration chạy tay trên Supabase (Thành viên C)
 ```
 
 | Tầng | Công nghệ | Người phụ trách |
@@ -28,7 +28,7 @@ rescue-gis-lamdong/          ← Monorepo
 | Frontend | Vue 3 + TypeScript + Leaflet.js + Vite + PWA | A |
 | Backend | NestJS v10 + TypeScript + Socket.io | B |
 | Database | PostgreSQL 15 + PostGIS (Supabase) | B + C |
-| GIS Queries | PostGIS SQL (viết trong `gis/queries.sql`) | C |
+| GIS Queries | PostGIS SQL — schema/migration ở `gis/*.sql`; truy vấn có tham số viết thẳng trong `*.service.ts` (không có `gis/queries.sql`) | C |
 | SMS | eSMS.vn REST API (không dùng SDK, dùng axios) | B |
 | Routing | OpenRouteService (openrouteservice.org, free tier, dựa trên OSM) — dẫn đường thật cho RescuerView, không gọi Google Maps API. Xem Mục 15.13 | B |
 | Deploy | Vercel (FE) + Render.com (BE) + Supabase (DB) | B |
@@ -154,7 +154,9 @@ web app for Lâm Đồng province, Vietnam. Stack: NestJS (backend) + Vue 3 (fro
 ### BANNED:
 - this.$emit or this.$props (Options API patterns)
 - defineComponent() without script setup
-- any localStorage usage (not supported in artifacts)
+- Web Storage (localStorage/sessionStorage) for passwords or PII. Allowed only: session tokens in
+  sessionStorage (auth.store.ts) and UI preferences (theme, font size, onboarding) via
+  utils/khoLuuTru.ts (try/catch) — see CLAUDE.md Mục 15.4, 15.23
 - Direct DOM manipulation (use Vue refs instead)
 
 ## POSTGIS RULES (Critical)
@@ -211,115 +213,57 @@ ST_DWithin(col::geography, ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography
 
 ## 5. Cấu trúc thư mục đầy đủ
 
+> Cập nhật 2026-10-15 theo code thật (trước đó mục này là bản kế hoạch ban đầu, lệch nhiều —
+> xem Mục 15.3). Chỉ liệt kê file chính; mỗi file `*.ts` thường có `*.spec.ts` đi kèm.
+
 ```
 rescue-gis-lamdong/
 ├── CLAUDE.md                          ← file này
+├── SRS-Rescue-GIS-LamdDong.md         ← Đặc tả yêu cầu (SRS) — bản 1.1 khớp code
 ├── .github/
-│   └── copilot-instructions.md        ← Mục 4 ở trên (VS Code đọc tự động)
-├── .gitignore
-├── README.md
-│
-├── shared/
-│   └── socket-events.types.ts         ← Types chung A và B đều import
-│
+│   ├── copilot-instructions.md        ← Mục 4 ở trên (VS Code đọc tự động)
+│   └── workflows/ci.yml               ← lint + test + build cho backend và frontend
+├── shared/socket-events.types.ts      ← bản gốc type socket; có 2 bản sao phải sửa đồng bộ:
+│                                         backend/src/common/ và frontend/src/shared/
 ├── docs/
-│   ├── api-contract.md                ← REST API contract (B viết, A review)
-│   └── SOCKET_EVENTS.md               ← WebSocket contract
+│   ├── api-contract.md                ← REST API contract (nguồn chi tiết nhất cho từng route)
+│   └── HOSTING.md                     ← hướng dẫn deploy frontend
+├── gis/                               ← chạy tay trên Supabase SQL Editor, theo thứ tự số
+│   ├── 01-schema-wards.sql … 03-migrate-existing-tables.sql   ← wards + chuyển district→ward
+│   ├── 04-create-rescue-teams.sql      05-add-account-flag.sql
+│   ├── 06-seed-demo-users.sql          07-add-location-estimated.sql
+│   ├── 08-fix-stuck-team-data.sql      09-add-dam-rong-2.sql  09-create-road-hazards.sql
+│   ├── 10-hazard-reports-and-severity.sql   11-hazard-reports-dedupe.sql
+│   └── 12-create-sos-images.sql        13-create-push-subscriptions.sql
+│      (KHÔNG có gis/queries.sql — SQL PostGIS viết thẳng trong các *.service.ts, có tham số)
 │
-├── gis/
-│   ├── 01-schema-wards.sql             ← Bảng wards (xã/phường) + RLS + GiST index
-│   ├── 02-seed-wards.sql               ← 123/124 xã/phường Lâm Đồng mới (thiếu Đam Rông 2,
-│   │                                      xem frontend/public/data/README.md)
-│   ├── 03-migrate-existing-tables.sql  ← users/sos_requests: district_code → ward_code
-│   └── queries.sql                     ← PostGIS queries khác (C viết, B dùng)
+├── backend/src/                       ← NestJS, mỗi thư mục 1 module
+│   ├── main.ts / app.module.ts / app.controller.ts (GET /api/health)
+│   ├── config/env.validation.ts       ← Joi: thiếu biến bắt buộc → crash lúc boot
+│   ├── common/                        ← socket-events.types.ts, image-validation.ts, guards/
+│   ├── auth/        users/ (users.controller = quản trị, profile.controller = /users/me)
+│   ├── sos/         (sos.service, sos.gateway = Socket.IO, sos-images.service = ảnh hiện trường)
+│   ├── gis/         (nearest-teams, sos-heatmap, stats)
+│   ├── rescue-teams/  routing/ (OpenRouteService)  hazards/ (cảnh báo/chặn đường)
+│   ├── hazard-reports/ (báo cáo cộng đồng)  push/ (Web Push)  system/ (trạng thái + nhật ký)
+│   └── notifications/ (SMS eSMS, công tắc SMS_DRY_RUN)
 │
-├── backend/                           ← NestJS
-│   ├── src/
-│   │   ├── main.ts                    ← helmet, CORS, Swagger, ValidationPipe
-│   │   ├── app.module.ts              ← TypeORM + ConfigModule
-│   │   ├── auth/
-│   │   │   ├── auth.module.ts
-│   │   │   ├── auth.controller.ts     ← /api/auth/*
-│   │   │   ├── auth.service.ts
-│   │   │   ├── dto/register.dto.ts
-│   │   │   ├── dto/login.dto.ts
-│   │   │   ├── strategies/jwt.strategy.ts
-│   │   │   └── guards/
-│   │   │       ├── jwt-auth.guard.ts
-│   │   │       └── roles.guard.ts
-│   │   ├── users/
-│   │   │   ├── users.module.ts
-│   │   │   ├── users.service.ts
-│   │   │   └── user.entity.ts
-│   │   ├── sos/
-│   │   │   ├── sos.module.ts
-│   │   │   ├── sos.controller.ts      ← /api/sos/*
-│   │   │   ├── sos.service.ts
-│   │   │   ├── sos.gateway.ts         ← Socket.io WebSocket
-│   │   │   ├── sos.entity.ts
-│   │   │   └── dto/
-│   │   │       ├── create-sos.dto.ts
-│   │   │       └── update-sos-status.dto.ts
-│   │   ├── rescue-teams/
-│   │   │   ├── rescue-teams.module.ts
-│   │   │   ├── rescue-teams.controller.ts
-│   │   │   ├── rescue-teams.service.ts
-│   │   │   └── rescue-team.entity.ts
-│   │   ├── gis/
-│   │   │   ├── gis.module.ts
-│   │   │   ├── gis.service.ts         ← Wrap SQL từ gis/queries.sql
-│   │   │   └── gis.controller.ts      ← /api/gis/*
-│   │   └── notifications/
-│   │       ├── notifications.module.ts
-│   │       └── notifications.service.ts ← eSMS REST API
-│   ├── postman/
-│   │   └── rescue-api.postman_collection.json
-│   ├── .env                           ← KHÔNG commit
-│   ├── .env.example                   ← COMMIT cái này
-│   └── package.json
-│
-└── frontend/                          ← Vue 3
-    ├── src/
-    │   ├── main.ts
-    │   ├── App.vue
-    │   ├── router/index.ts            ← lazy-loaded routes
-    │   ├── stores/
-    │   │   ├── auth.store.ts          ← Pinia
-    │   │   ├── sos.store.ts
-    │   │   └── map.store.ts
-    │   ├── views/
-    │   │   ├── HomeView.vue           ← SOS button (victim)
-    │   │   ├── MapView.vue            ← Theo dõi real-time (victim)
-    │   │   ├── DashboardView.vue      ← Bản đồ toàn tỉnh (commander)
-    │   │   ├── RescuerView.vue        ← Danh sách nhiệm vụ (rescuer)
-    │   │   └── AuthView.vue
-    │   ├── components/
-    │   │   ├── map/
-    │   │   │   ├── RescueMap.vue      ← Leaflet.js component chính
-    │   │   │   ├── SosMarker.vue
-    │   │   │   └── RescuerMarker.vue
-    │   │   └── sos/
-    │   │       ├── SosButton.vue      ← Nút đỏ lớn, mobile-first
-    │   │       ├── SosTypeSelector.vue
-    │   │       └── SosConfirmDialog.vue ← Countdown 5 giây
-    │   ├── composables/
-    │   │   ├── useSocket.ts           ← Socket.io client + JWT auth
-    │   │   ├── useGps.ts              ← navigator.geolocation.watchPosition
-    │   │   ├── useSos.ts              ← SOS send/cancel/status
-    │   │   └── useMap.ts              ← Leaflet instance
-    │   ├── services/
-    │   │   ├── api.ts                 ← Axios instance + interceptors
-    │   │   ├── auth.service.ts
-    │   │   └── sos.service.ts
-    │   └── types/
-    │       └── index.ts               ← Re-export từ shared/
-    └── public/data/
-        ├── lamdong-wards.geojson      ← Ranh giới xã/phường (không dùng GADM cũ —
-        │                                  đã lỗi thời sau sáp nhập 2025). KHÔNG sửa tay:
-        │                                  sinh bằng `npm run build:wards`
-        │                                  (frontend/scripts/build-wards-geojson.mjs)
-        └── README.md                  ← Nguồn dữ liệu (gis.vn), ghi công, và ghi chú
-                                           thiếu Xã Đam Rông 2 (123/124 đơn vị)
+└── frontend/src/                      ← Vue 3 + Vite + PWA
+    ├── views/       HomeView (trang chủ) · MapView (victim: bản đồ + SOS + theo dõi)
+    │                DashboardView (commander) · RescuerView (rescuer) · ReportView (báo cáo)
+    │                UsersView · StatsView · SystemView (commander) · HoSoView · LichSuSosView
+    ├── components/  AuthModal (đăng nhập/đăng ký dạng modal — KHÔNG có AuthView)
+    │                map/ (RescueMap, MapTopBar, MapLegend, ViTriCuaToi…)
+    │                sos/ (SosButton, SosConfirmDialog, SosTrackerPanel, AnhHienTruong…)
+    │                report/ (CameraCapture, ReportModerationPanel)
+    ├── composables/ useLeafletMap · useSocket · useSos · useTheme · useThongBaoDay …
+    ├── services/    http.ts (axios + interceptor) · *Service.ts mỗi nhóm API
+    ├── stores/      auth.store · mapData · notifications · offlineQueue · toast · vetGps.store
+    │                (KHÔNG có sos.store/map.store — state SOS nằm ở composable useSos)
+    ├── constants/   sosLabels · hazardLabels · tileProvider · tinhNangBackend (cờ VITE_BAT_*)
+    └── utils/       geo · geolocation · tileLayer · offlineQueue (IndexedDB) · khoLuuTru …
+    public/data/lamdong-wards.geojson   ← KHÔNG sửa tay: `npm run build:wards`
+    public/push-sw.js, sos-sync-sw.js    ← nạp vào service worker (Web Push, gửi SOS nền)
 ```
 
 ---
@@ -393,63 +337,136 @@ note TEXT
 created_at TIMESTAMPTZ
 ```
 
+### Cột bổ sung về sau (2026-09 → 10)
+```sql
+users.late_cancel_count INTEGER DEFAULT 0        -- gis/05: huỷ trễ, ≥3 lần → is_flagged
+users.is_flagged BOOLEAN DEFAULT false           -- gis/05: chỉ cảnh báo, KHÔNG chặn SOS
+sos_requests.location_estimated BOOLEAN DEFAULT false  -- gis/07: GPS lỗi/kém/báo hộ ghim tay
+road_hazards.severity VARCHAR(10) DEFAULT 'blocked'    -- gis/10: 'blocked' (đỏ, tuyến né) | 'caution' (vàng)
+hazard_reports.duplicate_of UUID → hazard_reports.id   -- gis/11: gộp báo cáo trùng ≤100m
+```
+
+### Bảng mới (2026-09 → 10)
+```sql
+-- road_hazards (gis/09): cảnh báo/chặn đường do commander đánh dấu — hình tròn quanh 1 điểm
+id, type ('landslide','fallen_tree','flood','danger','other'), description,
+location GEOMETRY(Point,4326), radius_meters (1–5000), severity, ward_code (trigger),
+created_by → users, is_active, created_at, resolved_at
+
+-- hazard_reports (gis/10, 11): báo cáo cộng đồng chờ commander duyệt
+id, reporter_id → users, type, description, location, accuracy_m, location_estimated,
+image_data BYTEA + image_mime (ảnh lưu thẳng DB), status ('pending','approved','rejected'),
+reviewed_by, reviewed_at, review_note, hazard_id → road_hazards, duplicate_of, ward_code, created_at
+
+-- sos_images (gis/12): ảnh hiện trường SOS, 1 ảnh/SOS, ≤ 2MB, jpeg/png/webp
+sos_id PK → sos_requests ON DELETE CASCADE, mime_type, data BYTEA, size_bytes, created_at
+
+-- push_subscriptions (gis/13): thiết bị đã bật thông báo đẩy
+id, user_id → users ON DELETE CASCADE, endpoint TEXT UNIQUE, p256dh, auth, created_at, updated_at
+```
+Mọi bảng mới bật RLS và **không** có policy → chỉ backend (DATABASE_URL) truy cập được.
+
 ---
 
 ## 7. API Endpoints
 
+> Cập nhật 2026-10-15 theo đúng 43 route trong code. Chi tiết request/response: `docs/api-contract.md`.
+> "JWT" = mọi role đã đăng nhập.
+
 ```
-POST   /api/auth/register        — Đăng ký (public)
-POST   /api/auth/login           — Đăng nhập → JWT (public)
-POST   /api/auth/refresh         — Làm mới token (public)
-GET    /api/auth/me              — Thông tin user (JWT required)
+GET    /api/health                       — Kiểm tra server + DB sống (public, cho Render)
 
-POST   /api/sos                  — Gửi SOS (role: victim)
-GET    /api/sos                  — Danh sách SOS (role: rescuer/commander)
-GET    /api/sos/mine/active      — SOS đang hoạt động của tôi (role: victim, khôi phục UI sau F5)
-GET    /api/sos/:id              — Chi tiết SOS + timeline (JWT required)
-PATCH  /api/sos/:id/cancel       — Victim hủy SOS (role: victim)
-PATCH  /api/sos/:id/assign       — Phân công đội (role: commander)
-PATCH  /api/sos/:id/status       — Cập nhật tiến độ (role: rescuer)
+POST   /api/auth/register                — Đăng ký (public, LUÔN tạo victim — không nhận role)
+POST   /api/auth/login                   — Đăng nhập → JWT (public)
+POST   /api/auth/refresh                 — Đổi refreshToken lấy accessToken (public; FE cố ý chưa gọi, Mục 15.22)
+GET    /api/auth/me                      — Thông tin user (JWT)
 
-GET    /api/gis/nearest-teams    — Đội gần nhất PostGIS (role: commander)
-GET    /api/gis/sos-heatmap      — Heatmap sự cố (role: commander)
+PATCH  /api/users/me                     — Tự sửa tên (JWT)
+PATCH  /api/users/me/password            — Đổi mật khẩu (JWT)
+GET    /api/users                        — Danh sách người dùng (commander)
+POST   /api/users                        — Tạo tài khoản, chọn role (commander)
+PATCH  /api/users/:id/role               — Đổi vai trò (commander)
+PATCH  /api/users/:id/status             — Khoá/mở khoá (commander)
 
-GET    /api/rescue-teams         — Danh sách đội (role: commander)
-PATCH  /api/rescue-teams/:id/location — Cập nhật GPS (role: rescuer)
-PATCH  /api/rescue-teams/:id/status  — Cập nhật trạng thái (role: rescuer)
+POST   /api/sos                          — Gửi SOS (victim)
+GET    /api/sos                          — Danh sách SOS (rescuer/commander)
+GET    /api/sos/mine/active              — SOS đang hoạt động của tôi (victim, khôi phục UI sau F5)
+GET    /api/sos/mine/history             — Lịch sử SOS của tôi (victim)
+GET    /api/sos/:id                      — Chi tiết SOS + timeline (JWT, kiểm quyền theo role)
+PATCH  /api/sos/:id/cancel               — Victim huỷ SOS (victim)
+PATCH  /api/sos/:id/assign               — Phân công đội (commander)
+PATCH  /api/sos/:id/status               — Cập nhật tiến độ (rescuer)
+POST   /api/sos/:id/image                — Đính ảnh hiện trường (victim)
+GET    /api/sos/:id/image                — Xem ảnh hiện trường (JWT, cùng quyền với chi tiết SOS)
+
+GET    /api/gis/nearest-teams            — Đội gần nhất PostGIS (commander)
+GET    /api/gis/sos-heatmap              — Số SOS theo xã (commander)
+GET    /api/gis/stats                    — Thống kê tổng quan (commander)
+
+GET    /api/rescue-teams                 — Danh sách đội (rescuer/commander)
+PATCH  /api/rescue-teams/:id/location    — Cập nhật GPS đội, mỗi 30 giây (rescuer)
+PATCH  /api/rescue-teams/:id/status      — Cập nhật trạng thái đội (rescuer)
+
+GET    /api/routing/route                — Tuyến đường bộ OpenRouteService, né cảnh báo đỏ (rescuer)
+
+GET    /api/hazards                      — Cảnh báo đang hoạt động (JWT)
+GET    /api/hazards/all                  — Mọi cảnh báo, gồm đã gỡ (commander)
+POST   /api/hazards                      — Tạo cảnh báo/chặn đường (commander)
+PATCH  /api/hazards/:id/resolve          — Gỡ cảnh báo (commander)
+
+POST   /api/hazard-reports               — Gửi báo cáo cộng đồng kèm ảnh (JWT)
+GET    /api/hazard-reports/mine          — Báo cáo của tôi (JWT)
+GET    /api/hazard-reports               — Hàng đợi/lịch sử duyệt (commander)
+GET    /api/hazard-reports/:id/image     — Ảnh báo cáo (commander hoặc người gửi)
+PATCH  /api/hazard-reports/:id/approve   — Duyệt → tạo cảnh báo (commander)
+PATCH  /api/hazard-reports/:id/reject    — Từ chối (commander)
+
+GET    /api/push/vapid-public-key        — Khoá VAPID (JWT; 503 nếu chưa cấu hình)
+POST   /api/push/subscriptions           — Bật thông báo đẩy cho thiết bị (JWT)
+DELETE /api/push/subscriptions           — Tắt thông báo đẩy (JWT)
+
+GET    /api/system/status                — Trạng thái hệ thống, không lộ secret (commander)
+GET    /api/system/activity              — Nhật ký hoạt động (commander)
 ```
 
 ---
 
 ## 8. WebSocket Events
 
+> Cập nhật 2026-10-15 theo code thật (`backend/src/sos/sos.gateway.ts`).
+
 ### Server → Client
 ```typescript
-'sos:new'              // Payload: SosNewPayload — SOS mới tạo
-'sos:updated'          // Payload: SosUpdatedPayload — Trạng thái SOS đổi
-'team:location-updated'// Payload: TeamLocationPayload — GPS đội cứu hộ
-'notification:system'  // Payload: SystemNotificationPayload — Cảnh báo
-'hazard-report:new'     // Payload: HazardReportNewPayload — báo cáo cộng đồng mới/được gộp (CHỈ room province:lamdong)
-'hazard-report:reviewed'// Payload: HazardReportReviewedPayload — commander vừa duyệt/từ chối (CHỈ room province:lamdong)
+'sos:new'              // SosNewPayload — SOS mới tạo
+'sos:updated'          // SosUpdatedPayload — trạng thái SOS đổi (tạo/tự phân công, phân công tay,
+                       //   rescuer đổi tiến độ, victim HUỶ — Mục 15.26)
+'team:location-updated'// TeamLocationPayload — GPS đội cứu hộ
+'notification:system'  // SystemNotificationPayload — tạo/gỡ cảnh báo chặn đường
+'hazard-report:new'     // HazardReportNewPayload — báo cáo cộng đồng mới/được gộp (CHỈ province:lamdong)
+'hazard-report:reviewed'// HazardReportReviewedPayload — commander vừa duyệt/từ chối (CHỈ province:lamdong)
 ```
 
 ### Client → Server
 ```typescript
-'team:update-location' // Rescuer gửi GPS mỗi 30 giây
-'sos:victim-cancel'    // Victim hủy SOS
-'commander:assign-team'// Commander phân công
-'rescuer:update-status'// Rescuer cập nhật tiến độ
+'team:update-location' // Có handler ở gateway, nhưng frontend KHÔNG dùng: rescuer gửi GPS qua
+                       // REST PATCH /api/rescue-teams/:id/location mỗi 30 giây (Mục 15.22)
 ```
+3 tên `sos:victim-cancel`, `commander:assign-team`, `rescuer:update-status` vẫn nằm trong
+`SOCKET_EVENTS` nhưng **không có handler** — huỷ/phân công/cập nhật tiến độ đều đi qua REST
+(`PATCH /api/sos/:id/cancel|assign|status`). Đừng code client gửi 3 event này.
 
 ### Rooms
 ```
-ward:{ward_code}            — rescuer + commander cùng xã/phường
-province:lamdong            — commander toàn tỉnh
-sos:{sos_id}                — victim + team được phân công
-team:{team_id}               — leader của đội đó (mọi đội leader phụ trách, join lúc connect;
+province:lamdong            — commander (join lúc connect). Mọi sos:new / sos:updated đều tới đây.
+ward:{ward_code}            — mọi user có wardCode (rescuer/commander/victim cùng xã)
+team:{team_id}              — leader của đội đó (mọi đội leader phụ trách, join lúc connect;
                                 xem Mục 15.10 — đội có thể được giao SOS ở xã KHÁC ward của leader,
                                 phân công theo khoảng cách GPS chứ không theo ranh giới xã)
+sos:{sos_id}                — có trong danh sách phòng nhận sos:updated nhưng HIỆN KHÔNG AI JOIN.
+                                Victim theo dõi SOS của mình bằng poll GET /api/sos/:id mỗi 20 giây
+                                (Mục 15.11) — muốn victim nhận qua socket phải thêm join phòng này.
 ```
+Gateway gộp mọi phòng vào **1 lần emit** để ai thuộc nhiều phòng chỉ nhận 1 lần (Mục 15.26).
 
 **⚠️ Import types từ `shared/socket-events.types.ts` — KHÔNG tự định nghĩa lại**
 
@@ -487,6 +504,11 @@ SMS_DRY_RUN=true
 # OpenRouteService (openrouteservice.org/dev/#/signup, free tier — Mục 15.13) — để trống thì
 # /api/routing/route trả 503, frontend tự lùi về đường chim bay, không ảnh hưởng phần khác.
 ORS_API_KEY=
+
+# Web Push (Mục 15.24) — tạo 1 lần: npx.cmd web-push generate-vapid-keys. Để trống thì tắt push.
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:...
 ```
 
 **⛔ Không bao giờ commit `.env`. Chỉ commit `.env.example`.**
@@ -500,17 +522,22 @@ ORS_API_KEY=
 1. Victim nhấn SOS → chọn loại → countdown 5s → confirm
 2. POST /api/sos với {lat, lng, type}
 3. Backend lưu GEOMETRY, đặt cancel_deadline = NOW() + 3 phút
-4. GisService.findNearestTeams() → auto-assign team đầu tiên
-5. Socket emit 'sos:new' → ward room
-6. NotificationsService.sendSosSms() → eSMS (async, không block)
-7. Victim có 3 phút hủy miễn phạt (cancel_deadline chưa qua)
-8. Rescuer cập nhật: assigned → in_progress → arrived → resolved
+4. Tự phân công: GisService.findNearestTeams() lấy đội 'available' gần nhất (10km, 3 đội; không có
+   → 20km, 5 đội); có cảnh báo ĐỎ thì RoutingService chọn đội ĐẾN NHANH NHẤT theo đường bộ (né
+   vùng cảnh báo) — Mục 15.14.1. Không đội nào → giữ 'pending', commander phân công tay.
+5. Socket emit 'sos:new' (+ 'sos:updated' nếu đã tự phân công) → province:lamdong + ward:{xã}
+6. NotificationsService.sendSosSms() → eSMS (không throw; SMS_DRY_RUN=true thì chỉ ghi log)
+   + Web Push: commander nếu chưa có đội, trưởng đội + victim nếu đã có (Mục 15.24)
+7. Victim có 3 phút hủy miễn phạt (cancel_deadline chưa qua); huỷ cũng phát 'sos:updated'
+8. Rescuer cập nhật: assigned → in_progress → arrived → resolved (không nhảy bước)
+9. Ảnh hiện trường gửi SAU qua POST /api/sos/:id/image — ảnh lỗi không làm mất SOS (Mục 15.21)
 ```
 
 ### Quy tắc cancel
 - Hủy TRƯỚC `cancel_deadline` → `status='cancelled'`, `penaltyApplied=false`
 - Hủy SAU `cancel_deadline` → `status='cancelled'`, `penaltyApplied=true`
-- 3 lần `penaltyApplied=true` → tài khoản bị flag (hiện cảnh báo)
+- 3 lần `penaltyApplied=true` → tài khoản bị flag (hiện cảnh báo, KHÔNG chặn gửi SOS)
+- Chỉ 1 SOS chưa kết thúc mỗi victim (409 nếu gửi thêm) — SRS F-SOS-01
 
 ### Rate Limits
 - SOS: 5 lần/giờ/user
@@ -547,7 +574,7 @@ update DB, emit socket 'sos:updated' vào ward room."
 bằng L.geoJSON(). Style: border xanh #2E75B6, fillOpacity 0.05.
 Khi hover: highlight màu đậm hơn. Dùng <script setup lang='ts'>."
 
-"Trong GisService, wrap SQL từ gis/queries.sql (Query 1 — nearest teams).
+"Trong GisService, thêm truy vấn PostGIS tìm đội gần nhất (viết thẳng trong service, có tham số).
 Params: $1=lng, $2=lat, $3=radius_meters, $4=limit.
 Return typed array với interface NearestTeamResult."
 ```
@@ -639,12 +666,12 @@ openssl rand -base64 32
 
 ### 15.3 Tài liệu lệch code thực tế
 - [x] **Mục 7 liệt kê `POST /api/auth/refresh` như route đã có** — thực tế **chưa implement** (`auth.controller.ts` không có route này; `docs/api-contract.md` ghi rõ và dặn **đừng** code silent-refresh). Nên sửa Mục 7 thành `POST /api/auth/refresh — ⚠️ CHƯA CÓ, xem docs/api-contract.md` để agent sau này khỏi tưởng đã tồn tại mà gọi vào. — **Hết lệch (kiểm lại 2026-10-02):** route đã có ở BE (commit `5d845c2`, xem 15.9), Mục 7 giờ đúng. FE vẫn chưa gọi — xem 15.22.
-- [ ] **Mục 5 (cấu trúc thư mục frontend) không khớp thực tế đã triển khai** — ví dụ dự án dùng `stores/mapData.ts`/`toast.ts`/`offlineQueue.ts`/`auth.store.ts` thay vì `sos.store.ts`/`map.store.ts`; không có `AuthView.vue` (dùng `AuthModal.vue` dạng modal); `SosTypeSelector.vue`/`SosMarker.vue`/`RescuerMarker.vue` không tồn tại làm file riêng (logic đã gộp vào nơi khác). Nếu team chấp nhận hướng đi thực tế, cập nhật lại Mục 5 — giữ bản cũ sẽ khiến agent liên tục cố tạo file trùng chức năng.
-- [ ] **`gis/queries.sql` (nhắc ở Mục 2 và Mục 5) không tồn tại** — file thật là `gis/04-create-rescue-teams.sql`. Cập nhật lại đường dẫn trong tài liệu hoặc tạo đúng file `queries.sql` như mô tả.
+- [x] **Mục 5 (cấu trúc thư mục frontend) không khớp thực tế đã triển khai** — ví dụ dự án dùng `stores/mapData.ts`/`toast.ts`/`offlineQueue.ts`/`auth.store.ts` thay vì `sos.store.ts`/`map.store.ts`; không có `AuthView.vue` (dùng `AuthModal.vue` dạng modal); `SosTypeSelector.vue`/`SosMarker.vue`/`RescuerMarker.vue` không tồn tại làm file riêng (logic đã gộp vào nơi khác). Nếu team chấp nhận hướng đi thực tế, cập nhật lại Mục 5 — giữ bản cũ sẽ khiến agent liên tục cố tạo file trùng chức năng. — **Hết lệch (2026-10-15):** Mục 5 viết lại theo code thật (nhánh `docs/khop-srs-tai-lieu`).
+- [x] **`gis/queries.sql` (nhắc ở Mục 2 và Mục 5) không tồn tại** — file thật là `gis/04-create-rescue-teams.sql`. Cập nhật lại đường dẫn trong tài liệu hoặc tạo đúng file `queries.sql` như mô tả. — **Hết lệch (2026-10-15):** Mục 2/5/11 sửa: SQL PostGIS viết thẳng trong `*.service.ts`, `gis/` chỉ chứa migration.
 
 ### 15.4 Bug thật đã sửa — lệch giữa rule Mục 4 và hành vi mong muốn
 - [x] **Đăng nhập xong reload trang (F5) là bị đăng xuất ngay lập tức.** — **Đã xử lý (2026-09-06).** Nguyên nhân: `frontend/src/stores/auth.store.ts` trước đó chỉ giữ `accessToken`/`refreshToken`/`user` trong biến Pinia ở RAM — comment cũ trong file còn ghi rõ chủ đích "mất khi tải lại trang", vì Mục 4 (VUE 3 RULES → BANNED) cấm `any localStorage usage (not supported in artifacts)`. Rule đó copy nguyên từ cursorrules template cho ngữ cảnh Claude Artifacts (sandbox không có `localStorage`) — **không áp dụng cho web app thật deploy Vercel/Render này**, áp y nguyên gây ra đúng bug trên. **Hướng "đúng chuẩn" lâu dài** (chưa làm, xem ghi chú dưới) là refreshToken nằm trong cookie `httpOnly + Secure + SameSite` + endpoint `POST /api/auth/refresh` thật ở BE (JS không đụng vào refreshToken được → an toàn hơn trước XSS) — nhưng route đó hiện **không tồn tại** và `docs/api-contract.md` Mục 1 dặn rõ đừng code silent-refresh, nên chưa đủ điều kiện làm ngay. **Fix tạm đã áp dụng:** lưu phiên vào `sessionStorage` (không phải `localStorage` — tự xoá khi đóng tab/trình duyệt, giảm thời gian sống token nếu dính XSS so với localStorage) trong `auth.store.ts`, khôi phục đồng bộ lúc store khởi tạo (nên `router.beforeEach` ở `router/index.ts` thấy đúng `isLoggedIn` ngay từ lần điều hướng đầu), và gọi `useAuthStore().fetchMe()` một lần ở `main.ts` lúc boot để xác thực lại token khôi phục — token hết hạn/sai sẽ bị interceptor 401 có sẵn trong `services/http.ts` tự `logout()` sạch, không cần thêm logic riêng. Đã kiểm chứng: `vue-tsc --noEmit`, `eslint`, `npm run build` đều sạch. **Còn nợ nếu có thời gian:** nâng cấp lên cookie httpOnly + `/api/auth/refresh` thật thay vì sessionStorage — cần sửa `auth.controller.ts`/`auth.service.ts` (set cookie), `main.ts` BE (`cookie-parser`, `CORS credentials:true`), và cập nhật lại đoạn cấm silent-refresh trong `docs/api-contract.md`.
-- [ ] **Mục 4 (VUE 3 RULES → BANNED) vẫn còn ghi `any localStorage usage (not supported in artifacts)` y nguyên** — dòng audit trên đã giải thích rule này sai ngữ cảnh, nhưng bản thân Mục 4 chưa được sửa lại. Nếu team đồng ý sessionStorage/localStorage được phép dùng có chọn lọc cho việc lưu phiên đăng nhập (không phải PII khác), nên sửa lại rule ở Mục 4 thành dạng rõ ràng hơn (VD: "không lưu password/PII vào Web Storage; token phiên đăng nhập được phép dùng sessionStorage") thay vì cấm tuyệt đối — giữ nguyên như cũ sẽ khiến agent sau này đọc Mục 4 rồi tưởng nhầm `auth.store.ts` đang vi phạm rule.
+- [x] **Mục 4 (VUE 3 RULES → BANNED) vẫn còn ghi `any localStorage usage (not supported in artifacts)` y nguyên** — dòng audit trên đã giải thích rule này sai ngữ cảnh, nhưng bản thân Mục 4 chưa được sửa lại. Nếu team đồng ý sessionStorage/localStorage được phép dùng có chọn lọc cho việc lưu phiên đăng nhập (không phải PII khác), nên sửa lại rule ở Mục 4 thành dạng rõ ràng hơn (VD: "không lưu password/PII vào Web Storage; token phiên đăng nhập được phép dùng sessionStorage") thay vì cấm tuyệt đối — giữ nguyên như cũ sẽ khiến agent sau này đọc Mục 4 rồi tưởng nhầm `auth.store.ts` đang vi phạm rule. — **Hết lệch (2026-10-15):** Mục 4 + `.github/copilot-instructions.md` đổi thành: cấm lưu mật khẩu/PII; cho phép token phiên ở sessionStorage và tuỳ chọn giao diện qua `utils/khoLuuTru.ts`.
 - [x] **Marker/thẻ theo dõi SOS của victim biến mất sau F5 dù bản ghi vẫn còn nguyên trong `sos_requests`.** — **Đã xử lý (2026-09-06).** Cùng họ bug với 2 dòng audit trên (state chỉ sống trong RAM), nhưng nặng hơn: `useSos.ts` → `activeSos` mất sau F5 là do thiếu API để hỏi lại, không chỉ thiếu chỗ lưu — `GET /api/sos` chặn role `victim` (`403`, xem `docs/api-contract.md` Mục 2), còn `GET /api/sos/:id` cần biết trước `id`, đúng cái bị mất lúc reload. Nên phải sửa **cả BE lẫn FE**: (1) BE thêm `GET /api/sos/mine/active` (role `victim`) ở `sos.controller.ts`/`sos.service.ts` — trả SOS chưa kết thúc (`status NOT IN ('resolved','cancelled','false_alarm')`) mới nhất của chính victim gọi, kèm timeline, cùng shape `GET /api/sos/:id` (2 route dùng chung `SOS_DETAIL_SELECT` + `attachTimeline()` để khỏi lặp SQL). Route đặt **trước** `@Get(':id')` trong controller cho an toàn dù về mặt kỹ thuật path 2 đoạn `mine/active` không khớp pattern `:id` 1 đoạn nên thứ tự khai báo không bắt buộc ở đây. **Cố ý phá 1 quy ước chung:** endpoint này trả `data: null` khi không có SOS active — khác quy ước "data không bao giờ null khi success:true" ở `docs/api-contract.md` Mục 0 — vì đây là kết quả hợp lệ (giống "get current cart" rỗng), ép về `404` sẽ khiến interceptor `http.ts` phía FE hiện toast lỗi cho một trạng thái bình thường; đã ghi rõ ngoại lệ này vào `docs/api-contract.md`. (2) FE: `sosService.ts` thêm `xemSosDangHoatDongCuaToi()`, `useSos.ts` thêm `khoiPhucSosDangHoatDong()` (bỏ qua nếu đã có `activeSos` để không ghi đè state mới hơn trong cùng phiên), gọi từ `MapView.vue` `onMounted` — chỉ khi `laVictim` — **trước** đoạn áp lại marker sẵn có, để marker vẽ đúng ngay từ đầu. Đã kiểm chứng: BE thêm 2 test cho `findMyActive` (`sos.service.spec.ts`, tổng 28 test pass), `npm run build`/`eslint` BE sạch; FE `vue-tsc --noEmit`/`eslint`/`npm run build` sạch. **Case 2 (thẻ theo dõi cho SOS queued offline) — Đã xử lý (2026-09-06).** `stores/offlineQueue.ts` thêm `laySosDangChoGuiGanNhat()` (đọc IndexedDB, trả item mới nhất theo `taoLuc`); `MapView.vue onMounted` gọi hàm này ngay sau `khoiPhucSosDangHoatDong()` — CHỈ khi server báo không có SOS active nào (`!sos.activeSos.value`), tránh ghi đè nếu SOS đã thật sự tồn tại trên server. Sửa kèm 1 bug đúng lúc động vào: `useSos.ts` → `datSosChoGui()` trước đó luôn tính `cancelDeadline = now + 3 phút` bất kể gọi lúc nào — nếu dùng để KHÔI PHỤC (không phải lần lưu đầu), gọi lại sau khi đã trôi qua vài phút sẽ vô tình cấp thêm 3 phút miễn phạt mới, sai với hạn huỷ thật tính từ lúc gửi ban đầu. Thêm tham số `taoLuc` optional (mặc định `now` — giữ nguyên hành vi ở lần gọi gốc trong `MapView.vue xacNhanGuiSos`), khi khôi phục truyền đúng `taoLuc` gốc từ `QueuedSos` (đã có sẵn field này). Đã kiểm chứng: thêm 2 test (`useSos.spec.ts` — tổng 10 test FE pass), `vue-tsc --noEmit`/`eslint`/`npm run build` sạch.
 
 **Bug liên quan phát hiện thêm lúc sửa Case 2 — Đã xử lý (2026-09-06).** `offlineQueueStore.khoiTao()` trước đây chỉ tự gửi hàng đợi khi bắt được sự kiện DOM `'online'` — nếu victim đóng hẳn tab lúc mất mạng rồi mở lại app khi ĐÃ có mạng sẵn (không có pha chuyển offline→online nào xảy ra trong phiên mới), hàng đợi im lặng nằm yên trong IndexedDB vô thời hạn tới lần mất-rồi-có-mạng kế tiếp. Đã tách phần xử lý ra hàm `guiLaiHangDoiNeuCoMang()` dùng chung cho cả 2 chỗ, và gọi ngay 1 lần lúc `khoiTao()` chạy nếu `navigator.onLine` đã `true` sẵn — không chỉ đăng ký chờ event nữa. `xuLyHangDoiKhiCoMang()`/`xuLyHangDoiSosKhiCoMang()` đã tự return sớm nếu hàng đợi rỗng nên gọi thừa lúc không có gì để gửi vô hại. Đã kiểm chứng: `vue-tsc --noEmit`/`eslint`/`npm run build`/`npm test` (10 test FE) đều sạch.
@@ -654,7 +681,7 @@ openssl rand -base64 32
 
 ### 15.5 Vận hành
 - [x] **Chưa có health-check endpoint** (`GET /api/health`). — **Đã xử lý (2026-10-05)**, xem Mục 15.15. Deploy lên Render.com (Mục 2) mà thiếu endpoint này thì platform không có cách xác định server còn sống hay đã treo để tự restart.
-- [ ] **`frontend/.env` bị root `.gitignore` (`**/.env`) chặn**, trong khi comment ở `frontend/.gitignore` khẳng định ngược lại ("không phải secret, commit để cả nhóm dùng chung cấu hình chuẩn"). Hai file `.gitignore` đang mâu thuẫn — cần thêm exception `!frontend/.env` ở root hoặc sửa lại comment sai.
+- [x] **`frontend/.env` bị root `.gitignore` (`**/.env`) chặn**, trong khi comment ở `frontend/.gitignore` khẳng định ngược lại ("không phải secret, commit để cả nhóm dùng chung cấu hình chuẩn"). Hai file `.gitignore` đang mâu thuẫn — cần thêm exception `!frontend/.env` ở root hoặc sửa lại comment sai. — **Hết lệch (2026-10-15):** giữ `frontend/.env` bị ignore (mỗi máy khác nhau), sửa comment sai trong `frontend/.gitignore`; cấu hình chung ở `frontend/.env.example`.
 - [ ] **Trước khi coi một phiên làm việc là "xong": luôn chạy `git status` ở cả `backend/` và `frontend/`.** Từng xảy ra thật: toàn bộ `frontend/` chưa commit lần nào dù đã có nhiều tính năng hoàn chỉnh — dễ mất việc nếu máy hỏng/branch bị xoá nhầm.
 
 ### 15.6 Audit senior 2026-09-06 — bảo mật + an toàn nghiệp vụ (rà độc lập với 15.1-15.5)
@@ -670,7 +697,7 @@ openssl rand -base64 32
 - [x] **`docs/api-contract.md` Mục 6 vẫn ghi "`false_alarm_count`/auto-flag CHƯA cập nhật" và "rate limit CHƯA implement"** — **Đã xử lý (2026-09-06).** Cả 2 dòng đều lỗi thời (đã làm xong từ trước, xem Mục 15.1) — xoá khỏi Mục 6, thêm dòng "đã sửa khỏi danh sách" liệt kê rõ 3 việc từng ghi nhầm là chưa làm (rate limit, false_alarm_count/auto-flag, và giờ thêm auto-assign). Tiện thể sửa luôn ví dụ response `PATCH /:id/cancel` ở Mục 2 (thiếu field `accountFlagged` trong JSON mẫu — response thật đã trả từ 2026-09-06).
 
 **P2 — trung bình, CHƯA xử lý (biết để không mất thời gian sau này):**
-- [ ] **Mục 8 liệt kê 3 socket event client→server (`sos:victim-cancel`, `commander:assign-team`, `rescuer:update-status`) không tồn tại trong `sos.gateway.ts`** — chỉ có `team:update-location` là thật, 3 việc kia frontend đúng khi dùng REST thay thế. Tài liệu vẽ ra mô hình chưa từng được xây, agent sau đọc Mục 8 dễ tưởng lầm.
+- [x] **Mục 8 liệt kê 3 socket event client→server (`sos:victim-cancel`, `commander:assign-team`, `rescuer:update-status`) không tồn tại trong `sos.gateway.ts`** — chỉ có `team:update-location` là thật, 3 việc kia frontend đúng khi dùng REST thay thế. Tài liệu vẽ ra mô hình chưa từng được xây, agent sau đọc Mục 8 dễ tưởng lầm. — **Hết lệch (2026-10-15):** Mục 8 viết lại: ghi rõ 3 event đó không có handler, chỉ `team:update-location` có (FE không dùng), và phòng `sos:{id}` hiện không ai join.
 - [x] **`GET /api/gis/sos-heatmap` có sẵn ở BE + khai báo URL ở FE (`config.ts`) nhưng không nơi nào gọi** — `DashboardView.vue` chưa có heatmap. Kể cả nối dây xong, SQL `GROUP BY location` (toạ độ tuyệt đối) thay vì gom theo vùng/ward khiến `incident_count` gần như luôn = 1 (GPS hiếm khi trùng y hệt) — cần sửa cách gom nhóm trước khi tính năng này có ý nghĩa. — **Đã nối dây (2026-09-28, xem Mục 15.20).** Đính chính nhận định "cần sửa gom nhóm trước khi có ý nghĩa": `leaflet.heat` tự cộng dồn các điểm nằm gần nhau khi vẽ, nên nhiều SOS mỗi điểm trọng số 1 vẫn ra đúng vùng dày/thưa — `incident_count = 1` không làm bản đồ nhiệt sai, chỉ là SQL không gộp được bớt số dòng. **Không sửa SQL backend** (không cần cho tính năng chạy đúng; nếu sau này dữ liệu lớn làm response nặng thì mới gom theo lưới, VD `ST_SnapToGrid`). **Cập nhật khi merge với main (2026-10-15):** backend main đã đổi SQL sang gom theo XÃ (toạ độ trung bình + `ward_name`, PR #4) — bản đồ nhiệt giờ có độ mịn cấp xã; `layHeatmapSos` dùng chung `layThongKeSosTheoXa`.
 - [x] **`CreateSosDto.imageUrl` chỉ `@IsString()`, không `@IsUrl()`** — chấp nhận cả chuỗi `javascript:...`. Chưa ai render field này ra `<a>`/`<img>` nên chưa khai thác được, nhưng nên siết trước khi có UI "xem ảnh" cho rescuer/commander. — **Đã xử lý (2026-09-28, Mục 15.21):** `@IsUrl({ protocols: ['https'], require_protocol: true })` + `@MaxLength(500)`, có `create-sos.dto.spec.ts`.
 - [x] **`accountFlagged` backend trả từ lâu nhưng frontend bỏ qua hoàn toàn.** — **Đã xử lý (2026-09-06).** `types/index.ts` → `CancelSosResult` thêm field `accountFlagged: boolean`; `MapView.vue xacNhanHuySos()` hiện thêm 1 toast cảnh báo riêng khi `result.accountFlagged === true` (tận dụng `toastStore` đã có hàng đợi từ trước — gọi `showToast()` 2 lần liên tiếp không mất toast nào). `useSos.ts huyYeuCauSos()` không cần sửa vì đã trả nguyên `result` từ server, không transform field nào — `accountFlagged` tự lan qua sẵn. Đã kiểm chứng: `vue-tsc --noEmit`/`eslint`/`npm run build`/`npm test` (11 test FE) đều sạch.
@@ -774,8 +801,8 @@ openssl rand -base64 32
 - [ ] **F-PWA-04: GPS breadcrumb mỗi 2 phút kể cả offline (SRS 3.5) — hoàn toàn chưa tồn tại.** Không tìm thấy logic nào lưu tọa độ định kỳ vào IndexedDB cho mục đích này ở bất kỳ đâu trong `frontend/src`. `watchPosition` hiện có ở `RescuerView.vue`/`MapView.vue` chỉ phục vụ gửi GPS đội cứu hộ mỗi 30s khi có nhiệm vụ active (F-RT-01), không phải breadcrumb liên tục cho ca mất tích/trekking mà SRS mô tả. Nếu team quyết định bỏ tính năng này (ít giá trị demo, nhiều công), nên sửa SRS 3.5/8.2 ghi rõ "ngoài phạm vi MVP" thay vì để lệch âm thầm. — **[x] Đã có ở FE (kiểm lại 2026-10-02, commit `61f8d27`).** Lệnh: `head -40 frontend/src/stores/vetGps.store.ts`, `ls frontend/src/stores/vetGps.store.spec.ts frontend/src/utils/vetGpsDb.spec.ts`. `vetGps.store.ts`: `CHU_KY_GHI_MS = 2 phút`, ghi IndexedDB trên máy (chạy được offline), xoá điểm > 48 giờ, 5 điểm gần nhất ghép vào mô tả khi gửi SOS. **Lệch SRS có chủ đích:** người dùng tự bật ở trang Hồ sơ (mặc định tắt — dữ liệu vị trí nhạy cảm), và trình duyệt chỉ cho lấy GPS khi app **đang mở** — đóng app/khoá màn hình lâu thì ngừng ghi. Chưa kiểm chứng trên điện thoại thật trong lần kiểm này.
 
 **Chưa làm — lệch nhỏ so với SRS, ưu tiên thấp hơn:**
-- [ ] **F-AUTH-02: tài khoản bị khóa trả sai mã lỗi.** `auth.service.ts:28-29` trả `UnauthorizedException` (401) khi `user.isActive === false`, trong khi SRS 3.1.2 quy định 403 riêng cho "tài khoản bị khóa" (401 dành cho sai mật khẩu). Sửa bằng `ForbiddenException` cho case này. — **[x] Đã xử lý (kiểm lại 2026-10-02, commit `5d845c2`).** Lệnh: `grep -n "isActive\|Forbidden\|Unauthorized" backend/src/auth/auth.service.ts` → `ForbiddenException('Tài khoản đã bị khóa')` ở cả `login()` (dòng ~39) và `refresh()` (dòng ~67); sai mật khẩu vẫn 401.
-- [ ] **NF-MAINTAIN: "mọi API endpoint có Swagger đầy đủ" (SRS 4.5) chưa đạt 100%.** Đếm được 17 route (`@Get/@Post/@Patch/@Put/@Delete`) trong `backend/src/**/*.controller.ts` nhưng chỉ 15 `@ApiOperation` — thiếu 2 route. Cần chạy lại phép đếm để xác định chính xác route nào thiếu rồi bổ sung `@ApiOperation()`.
+- [x] **F-AUTH-02: tài khoản bị khóa trả sai mã lỗi.** `auth.service.ts:28-29` trả `UnauthorizedException` (401) khi `user.isActive === false`, trong khi SRS 3.1.2 quy định 403 riêng cho "tài khoản bị khóa" (401 dành cho sai mật khẩu). Sửa bằng `ForbiddenException` cho case này. — **[x] Đã xử lý (kiểm lại 2026-10-02, commit `5d845c2`).** Lệnh: `grep -n "isActive\|Forbidden\|Unauthorized" backend/src/auth/auth.service.ts` → `ForbiddenException('Tài khoản đã bị khóa')` ở cả `login()` (dòng ~39) và `refresh()` (dòng ~67); sai mật khẩu vẫn 401. — **Hết lệch (2026-10-15):** kiểm lại `auth.service.ts` — đã trả `ForbiddenException` (403) cả ở login lẫn refresh.
+- [x] **NF-MAINTAIN: "mọi API endpoint có Swagger đầy đủ" (SRS 4.5) chưa đạt 100%.** Đếm được 17 route (`@Get/@Post/@Patch/@Put/@Delete`) trong `backend/src/**/*.controller.ts` nhưng chỉ 15 `@ApiOperation` — thiếu 2 route. Cần chạy lại phép đếm để xác định chính xác route nào thiếu rồi bổ sung `@ApiOperation()`. — **Hết lệch (2026-10-15):** đếm lại: 42/42 route trong các controller đều có `@ApiOperation` (phép đếm cũ sai).
 - [ ] **NF-PERF-05 (50 WebSocket đồng thời, đo bằng Artillery.io — SRS 4.1) chưa từng được đo.** Không có config Artillery nào trong repo. NF-PERF-01→04 (độ trễ WS, tải trang, API response time, PostGIS query) cũng chỉ là chỉ tiêu trong SRS, chưa có bằng chứng đo lưu lại (Lighthouse report, `EXPLAIN ANALYZE` output...) trong repo.
 
 **Bộ 15 test case SRS Chương 7 (TC-01→TC-15) — thiếu bằng chứng test tự động thật:**
@@ -790,8 +817,8 @@ openssl rand -base64 32
 - [x] `CreateSosDto.imageUrl` chỉ `@IsString()` không `@IsUrl()`, và **frontend chưa có tính năng chụp/tải ảnh thực địa nào** dùng field này — SRS 3.2.1 liệt `imageUrl` là input hợp lệ của F-SOS-01 nhưng chưa có UI thật (xem 15.6 P2). — **Đã xử lý (2026-09-28), xem Mục 15.21.**
 
 **Không phải lỗi — SRS lỗi thời, nên cập nhật tài liệu trước khi bảo vệ (để hội đồng khỏi thắc mắc sai chỗ):**
-- [ ] SRS Chương 5 (Mô hình dữ liệu) mô tả `district_code` (12 huyện/TP) ở cả 3 bảng `users`/`sos_requests`/`rescue_teams` — thực tế đã migrate hẳn sang `ward_code` (123 xã/phường) từ sau sáp nhập hành chính 2025-08-24 (xem Mục 6, `gis/03-migrate-existing-tables.sql`). Code đúng theo thực tế hành chính hiện hành; SRS mới là bên lỗi thời, cần sửa lại SRS chứ không phải code.
-- [ ] SRS 3.1.1 mô tả đăng ký có input "Vai trò" (role) — thực tế đã **cố ý bỏ hẳn** field `role` khỏi `RegisterDto` ([register.dto.ts](backend/src/auth/dto/register.dto.ts)) để vá lỗ hổng leo thang đặc quyền (xem Mục 15.6 P0). Hệ thống hiện an toàn hơn SRS mô tả — cần chuẩn bị giải thích lý do lệch có chủ đích này khi bảo vệ, và nên cập nhật lại SRS 3.1.1 cho khớp.
+- [x] SRS Chương 5 (Mô hình dữ liệu) mô tả `district_code` (12 huyện/TP) ở cả 3 bảng `users`/`sos_requests`/`rescue_teams` — thực tế đã migrate hẳn sang `ward_code` (123 xã/phường) từ sau sáp nhập hành chính 2025-08-24 (xem Mục 6, `gis/03-migrate-existing-tables.sql`). Code đúng theo thực tế hành chính hiện hành; SRS mới là bên lỗi thời, cần sửa lại SRS chứ không phải code. — **Hết lệch (2026-10-15):** SRS cập nhật lên bản 1.1.0 (`SRS-Rescue-GIS-LamdDong.md`).
+- [x] SRS 3.1.1 mô tả đăng ký có input "Vai trò" (role) — thực tế đã **cố ý bỏ hẳn** field `role` khỏi `RegisterDto` ([register.dto.ts](backend/src/auth/dto/register.dto.ts)) để vá lỗ hổng leo thang đặc quyền (xem Mục 15.6 P0). Hệ thống hiện an toàn hơn SRS mô tả — cần chuẩn bị giải thích lý do lệch có chủ đích này khi bảo vệ, và nên cập nhật lại SRS 3.1.1 cho khớp. — **Hết lệch (2026-10-15):** SRS 1.1.0 sửa 3.1.1 + TC-01, ghi rõ lý do bảo mật.
 
 ### 15.10 Bug thật đã sửa (2026-09-11) — leader không thấy nhiệm vụ được auto-assign ở xã khác
 
@@ -1473,8 +1500,32 @@ code mới: đúng 1 lần, người ngoài cuộc không nhận. BE 213/213 uni
 **Còn biết:** `emitTeamLocationUpdated()` vẫn emit riêng `ward:*` và `province:lamdong` → commander có xã
 nhận vị trí đội 2 lần/30 giây. Vô hại (cập nhật cùng toạ độ) nên chưa sửa.
 
+### 15.27 Đối chiếu SRS ↔ code ↔ tài liệu (2026-10-15) — sửa tài liệu cho khớp
+
+Nhánh `docs/khop-srs-tai-lieu`. **Không phải sửa dòng code nào:** rà lại các điểm "code lệch SRS"
+còn mở thì đều đã được sửa từ trước hoặc phép đếm cũ sai — F-AUTH-02 đã trả 403; **42/42** route có
+`@ApiOperation` (dòng nợ cũ ghi "thiếu 2" là đếm sai). Phần còn lệch đều là code CỐ Ý làm khác hoặc
+tốt hơn SRS → sửa tài liệu:
+- **SRS lên 1.1.0** (`SRS-Rescue-GIS-LamdDong.md`): 12 huyện → 124 xã/phường; `district_code` →
+  `ward_code`; đăng ký không chọn vai trò (lý do bảo mật) + TC-01/02/15, thêm TC-16; trùng SĐT trả
+  409 (không phải 400); tự phân công theo đường bộ né cảnh báo; ảnh gửi sau SOS; GPS đội qua REST;
+  tile offline z8–10; thêm **mục 3.6** (12 chức năng mới: F-SOS-06/07, F-NAV-01, F-HAZ-01, F-REP-01,
+  F-MAP-03/05, F-UI-01/02, F-ADM-01/02/03) và F-PWA-05; mục 5 thêm cột + **5.1.5** bảng mới; mục 6.1
+  màn hình thật; phụ lục A sự kiện socket thật; mục 8 rủi ro/giới hạn mới. Mỗi chỗ đổi ghi "(v1.1)".
+- **CLAUDE.md:** viết lại Mục 5 (cấu trúc thư mục thật), 6 (thêm cột/bảng mới), 7 (đủ 43 route), 8
+  (socket thật — 3 event client→server không có handler; phòng `sos:{id}` hiện KHÔNG ai join, victim
+  theo dõi bằng poll 20s), 9 (VAPID), 10 (luồng SOS thật); Mục 2/11 bỏ `gis/queries.sql` (không tồn
+  tại); Mục 4 + `.github/copilot-instructions.md` sửa luật localStorage. Đánh dấu 9 dòng nợ ở 15.3,
+  15.4, 15.5, 15.6, 15.9 là "Hết lệch".
+- `frontend/.gitignore`: sửa comment sai (`frontend/.env` thực tế BỊ ignore, cố ý); README dữ liệu
+  bản đồ: 123 → 124 feature.
+
+**Còn mở (cần quyết định, không phải lệch tài liệu):** victim chưa nhận `sos:updated` qua socket (phòng
+`sos:{id}` không ai join) — đang dùng poll 20s, chạy được; muốn real-time thì thêm join.
+
 ---
 
+*Phiên bản: 2.19.0 — Cập nhật: 2026-10-15 (Mục 15.27 — SRS 1.1.0 và CLAUDE.md Mục 2/4/5/6/7/8/9/10/11 cập nhật cho khớp code; không sửa code)*
 *Phiên bản: 2.18.0 — Cập nhật: 2026-10-15 (thêm Mục 15.26 — commander không nhận sos:updated: cancel() không phát + thiếu phòng province:lamdong; sos:new trùng 2 lần)*
 *Phiên bản: 2.17.0 — Cập nhật: 2026-10-15 (thêm Mục 15.25 — công tắc `SMS_DRY_RUN` tắt SMS thật khi chạy thử)*
 *Phiên bản: 2.16.0 — Cập nhật: 2026-10-15 (thêm Mục 15.24 — backend lịch sử SOS, sửa tên/đổi mật khẩu, thông báo đẩy Web Push; migration `gis/13-create-push-subscriptions.sql`)*

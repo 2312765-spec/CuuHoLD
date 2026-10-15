@@ -21,5 +21,6 @@ vite.config.d.ts
 *.log
 npm-debug.log*
 
-# Lưu ý: .env ở đây KHÔNG bị chặn vì chỉ chứa cấu hình đường dẫn (/api, /),
-# không có secret — commit để cả nhóm dùng chung cấu hình chuẩn.
+# Lưu ý: frontend/.env BỊ CHẶN bởi `**/.env` ở .gitignore gốc — cố ý: mỗi máy cấu hình khác nhau
+# (ngrok, bật/tắt cờ VITE_BAT_*). Cấu hình chung của nhóm nằm ở frontend/.env.example (có commit):
+# chép thành .env rồi sửa. Comment cũ ở đây ghi ngược lại (CLAUDE.md Mục 15.5).
