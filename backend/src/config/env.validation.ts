@@ -30,4 +30,14 @@ export const envValidationSchema = Joi.object({
   // OpenRouteService (CLAUDE.md Mục 15.13) — không bắt buộc, giống eSMS: RoutingService tự
   // trả 503 khi thiếu, không được chặn boot của cả server vì Quang có thể chưa đăng ký key.
   ORS_API_KEY: Joi.string().allow('').optional(),
+
+  // Web Push (F-PWA-05) — không bắt buộc, giống ESMS: thiếu thì PushService tắt thông báo đẩy,
+  // server vẫn khởi động. Tạo cặp khoá: npx web-push generate-vapid-keys
+  VAPID_PUBLIC_KEY: Joi.string().allow('').optional(),
+  VAPID_PRIVATE_KEY: Joi.string().allow('').optional(),
+  // Bắt buộc dạng mailto: hoặc https: theo chuẩn VAPID (dịch vụ push dùng để liên hệ khi lạm dụng).
+  VAPID_SUBJECT: Joi.string()
+    .pattern(/^(mailto:|https:\/\/)/)
+    .allow('')
+    .optional(),
 });

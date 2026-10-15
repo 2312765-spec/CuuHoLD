@@ -1313,7 +1313,7 @@ là biến môi trường (`.env`) của máy chủ nên sửa qua web vừa vô
 - **F-RT-01 — rescuer gửi GPS qua REST, không qua socket.** SRS/Mục 8 mô tả event `team:update-location`; FE gọi `PATCH /api/rescue-teams/:id/location` mỗi 30s (`grep -n "location" frontend/src/services/rescueTeamsService.ts frontend/src/views/RescuerView.vue`). Gateway vẫn có handler `@SubscribeMessage(TEAM_UPDATE_LOCATION)` (`sos.gateway.ts:121`) nhưng FE không dùng. Server vẫn phát `team:location-updated` cho commander (Mục 15.11).
 - **F-PWA-03 — tile offline chỉ z8–10, không phải z8–14.** `OFFLINE_TILE_MIN_ZOOM = 8`, `OFFLINE_TILE_MAX_ZOOM = 10` (`grep -n OFFLINE_TILE frontend/src/constants/tileProvider.ts`); lý do ghi trong file đó. Zoom sâu hơn cần mạng (Mục 15.7 #5).
 
-**Phụ thuộc backend — FE đã gọi, BE trong repo CHƯA có** (lệnh: `grep -rn "mine/history\|users/me\|push" backend/src --include=*.ts` → không có route nào; chỉ có `@Get('me')` của auth). Trên BE hiện tại các màn hình này sẽ nhận 404:
+**Phụ thuộc backend — FE đã gọi, BE trong repo CHƯA có** *(⚠️ cập nhật 2026-10-15: cả 4 dòng bảng dưới ĐÃ có backend — xem Mục 15.24)* (lệnh: `grep -rn "mine/history\|users/me\|push" backend/src --include=*.ts` → không có route nào; chỉ có `@Get('me')` của auth). Trên BE hiện tại các màn hình này sẽ nhận 404:
 
 | Endpoint | FE gọi ở | Đặc tả cho B |
 |---|---|---|
@@ -1380,8 +1380,52 @@ chế độ Mật độ ẩn marker và giữ cảnh báo, 0 lỗi console; `/ma
 - [ ] Mật khẩu 3 tài khoản demo (Mục 12) trên DB thật đã khác `demo1234` — cập nhật Mục 12 hoặc chạy lại `gis/06`.
 - [ ] Header Dashboard giờ có 10 nút/liên kết nên xuống 2 dòng ở 1366px (cao ~162px) — cân nhắc gom vào menu.
 
+### 15.24 Backend cho 3 tính năng frontend đang ẩn (2026-10-15) — lịch sử SOS, hồ sơ, thông báo đẩy
+
+Nhánh `feature/backend-ho-so-lich-su-push` (tách từ `merge/pr5-vao-main`). Làm theo TDD: **viết test
+trước, chạy thấy đỏ, rồi mới viết code** — mỗi tính năng 1 commit. Đóng 4 dòng của bảng "phụ thuộc
+backend" ở Mục 15.22.
+
+- **F-UI-02 `GET /api/sos/mine/history`** — lấy lại backend tác giả PR #5 đã viết ở `8902fa3` rồi
+  gỡ ra ở `53645f6` ("chuyển cho B"). Chỉ SOS của chính victim, mọi trạng thái, mới nhất trước,
+  phân trang (`page ≥ 1`, `limit` 1–50, sai → 400); không trả tên/SĐT/toạ độ đội.
+- **F-UI-01 `PATCH /api/users/me` + `/me/password`** — `ProfileController` RIÊNG vì
+  `UsersController` gắn `@Roles('commander')` ở cấp class. Mọi vai trò; luôn dùng `req.user.id`.
+  Chỉ sửa được tên (trim, 2–100); body có `phone`/`wardCode`/`role` → 400. Đổi mật khẩu bắt buộc
+  đúng mật khẩu hiện tại — **sai → 400, KHÔNG 401** (frontend gặp 401 tự đăng xuất); mới 8–72 ký tự
+  (bcrypt chỉ dùng 72 byte đầu), bcrypt cost 12, rate limit 5/15 phút/user.
+  ⚠️ JWT không trạng thái: token cấp trước khi đổi mật khẩu vẫn dùng được tới khi hết hạn.
+- **F-PWA-05 thông báo đẩy** — module `backend/src/push/`, thư viện `web-push@3.6.7`, bảng
+  `push_subscriptions` (**`gis/13-create-push-subscriptions.sql` — cần tự chạy trên Supabase, SAU 12**).
+  `GET /api/push/vapid-public-key`, `POST`/`DELETE /api/push/subscriptions` khớp đúng
+  `frontend/src/services/pushService.ts`. Gửi khi: SOS mới không tự phân công được → mọi commander;
+  được phân công (tự động hoặc tay) → trưởng đội + nạn nhân; `arrived`/`resolved` → nạn nhân.
+  `PushService` tự tìm người nhận theo `sosId` nên `SosService` chỉ thêm 1 dòng mỗi chỗ, không đổi
+  SQL (trừ `assign()` lấy thêm cột `type`). Không `await`, nuốt lỗi 2 lớp — push lỗi KHÔNG làm hỏng
+  hay làm chậm luồng SOS. Thiết bị trả 404/410 → tự xoá đăng ký. Nội dung KHÔNG chứa tên/SĐT/toạ độ
+  (có test khoá). Thiếu khoá VAPID → server vẫn chạy, push tắt, `/vapid-public-key` trả 503.
+
+**Bật ở frontend:** `frontend/.env.example` giờ để `VITE_BAT_SUA_HO_SO=true`, `VITE_BAT_LICH_SU_SOS=true`;
+`VITE_BAT_THONG_BAO_DAY` để `false` tới khi `backend/.env` có khoá (`npx web-push generate-vapid-keys`).
+Mặc định trong code vẫn TẮT (bản frontend chạy với backend cũ không bị 404).
+
+**Kiểm chứng:** BE eslint sạch, **187/187 unit**, **20/20 e2e** (history 3, profile 7, push 5, ảnh 5),
+build sạch; boot thật `node dist/main.js` → 6 route mới được map, gọi không token → 401.
+`test/app.e2e-spec.ts` (scaffold Nest mặc định, cần DB) **đỏ sẵn từ trước** — đã kiểm bằng
+`git stash`, không do đợt này.
+
+**Còn nợ:**
+- [ ] Chạy `gis/13` trên Supabase; tạo khoá VAPID, điền `backend/.env` (+ biến môi trường trên Render).
+- [ ] Chưa thử push THẬT trên điện thoại (cần HTTPS — ngrok/Vercel; iPhone phải thêm app ra Màn
+  hình chính, iOS ≥ 16.4). Mới có unit + e2e với `web-push` giả lập.
+- [ ] Chưa báo trưởng đội khi nạn nhân **huỷ** SOS đang được giao (socket đã báo nếu đang mở app).
+- [ ] Không giới hạn số thiết bị/người trong `push_subscriptions`.
+- [ ] `npm audit` báo 10 lỗ hổng (axios, multer, express...) — **có sẵn từ trước**, không cái nào
+  từ `web-push`.
+
 ---
 
+*Phiên bản: 2.16.0 — Cập nhật: 2026-10-15 (thêm Mục 15.24 — backend lịch sử SOS, sửa tên/đổi mật khẩu, thông báo đẩy Web Push; migration `gis/13-create-push-subscriptions.sql`)*
 *Phiên bản: 2.15.0 — Cập nhật: 2026-10-15 (merge PR #5 giữ cả hai phía: thêm Mục 15.23; mục của PR đổi số 15.13–15.15 → 15.20–15.22; migration ảnh SOS đổi `gis/10` → `gis/12`; ẩn tính năng chờ backend bằng cờ `VITE_BAT_*`)*
 *Phiên bản: 2.14.0 — Cập nhật: 2026-10-07 (merge PR #4; mục bug marker/tự zoom SOS đổi số 15.13 → 15.19; bỏ `GET /api/health` trùng của SystemController)*
 *Phiên bản: 2.13.1 — Cập nhật: 2026-10-06 (thêm Mục 15.18 — link Google Maps trên màn hình rescuer chỉ hiện khi đường bộ trong app không dùng được; ghi lại kết quả đo: tuyến ORS mặc định là tuyến NHANH nhất, không phải ngắn nhất theo km)*

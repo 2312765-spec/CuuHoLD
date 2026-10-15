@@ -9,6 +9,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RescueTeamsModule } from '../rescue-teams/rescue-teams.module';
 import { GisModule } from '../gis/gis.module';
+import { PushModule } from '../push/push.module';
 import { RoutingModule } from '../routing/routing.module';
 
 @Module({
@@ -20,6 +21,8 @@ import { RoutingModule } from '../routing/routing.module';
     GisModule,
     // Chọn đội theo đường bộ thật, né vùng cảnh báo (xem SosService.tryAutoAssignNearestTeam).
     forwardRef(() => RoutingModule),
+    // F-PWA-05: thông báo đẩy khi trạng thái SOS đổi.
+    PushModule,
   ],
   controllers: [SosController],
   providers: [SosService, SosImagesService, SosGateway],

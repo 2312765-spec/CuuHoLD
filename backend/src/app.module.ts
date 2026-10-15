@@ -15,6 +15,7 @@ import { RoutingModule } from './routing/routing.module';
 import { HazardsModule } from './hazards/hazards.module';
 import { SystemModule } from './system/system.module';
 import { HazardReportsModule } from './hazard-reports/hazard-reports.module';
+import { PushModule } from './push/push.module';
 import { envValidationSchema } from './config/env.validation';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 
@@ -62,6 +63,7 @@ import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
     SystemModule,
 
     HazardReportsModule,
+    PushModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: UserThrottlerGuard }],

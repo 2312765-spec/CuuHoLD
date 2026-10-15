@@ -11,6 +11,7 @@ import { SosRequest } from './sos.entity';
 import { SosGateway } from './sos.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GisService } from '../gis/gis.service';
+import { PushService } from '../push/push.service';
 import { RoutingService } from '../routing/routing.service';
 import { User } from '../users/user.entity';
 
@@ -38,6 +39,11 @@ describe('SosService', () => {
   let notifications: { sendSosSms: jest.Mock };
   let gisService: { findNearestTeams: jest.Mock };
   let routingService: { pickBestTeamByRoad: jest.Mock };
+  let push: {
+    baoSosMoiChuaCoDoi: jest.Mock;
+    baoDoiDuocGiao: jest.Mock;
+    baoNanNhan: jest.Mock;
+  };
 
   beforeEach(() => {
     dataSource = { query: jest.fn() };
@@ -61,6 +67,11 @@ describe('SosService', () => {
         ),
       ),
     };
+    push = {
+      baoSosMoiChuaCoDoi: jest.fn().mockResolvedValue(undefined),
+      baoDoiDuocGiao: jest.fn().mockResolvedValue(undefined),
+      baoNanNhan: jest.fn().mockResolvedValue(undefined),
+    };
     service = new SosService(
       {} as unknown as Repository<SosRequest>,
       dataSource as unknown as DataSource,
@@ -68,6 +79,7 @@ describe('SosService', () => {
       notifications as unknown as NotificationsService,
       gisService as unknown as GisService,
       routingService as unknown as RoutingService,
+      push as unknown as PushService,
     );
   });
 
@@ -968,6 +980,128 @@ describe('SosService', () => {
       const [sql] = dataSource.query.mock.calls[0] as [string, unknown[]];
       expect(sql).not.toContain('victim_phone');
       expect(sql).not.toContain('current_location');
+    });
+  });
+
+  // F-PWA-05 — thông báo đẩy khi trạng thái SOS đổi. PushService tự tìm người nhận theo sosId;
+  // ở đây chỉ kiểm SosService gọi ĐÚNG LÚC, và lỗi push KHÔNG BAO GIỜ làm hỏng luồng cứu hộ.
+  describe('thông báo đẩy', () => {
+    const victim = buildUser({ id: 'victim-1' });
+    const commander = buildUser({ id: 'cmd-1', role: 'commander' });
+    const rescuer = buildUser({ id: 'rescuer-1', role: 'rescuer' });
+    const sosMoi = {
+      id: 'sos-9',
+      type: 'medical',
+      status: 'pending',
+      ward_code: '24781',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      cancel_deadline: new Date('2026-01-01T00:03:00Z'),
+      location_estimated: false,
+    };
+
+    it('tạo SOS không có đội nhận → báo commander, KHÔNG báo đội/nạn nhân', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([sosMoi]);
+
+      await service.create(
+        { lat: 11.94, lng: 108.44, type: 'medical' },
+        victim,
+      );
+
+      expect(push.baoSosMoiChuaCoDoi).toHaveBeenCalledWith('sos-9', 'medical');
+      expect(push.baoDoiDuocGiao).not.toHaveBeenCalled();
+      expect(push.baoNanNhan).not.toHaveBeenCalled();
+    });
+
+    it('tạo SOS được tự động phân công → báo trưởng đội + nạn nhân, KHÔNG báo commander', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([sosMoi])
+        .mockResolvedValue(undefined);
+      gisService.findNearestTeams.mockResolvedValueOnce([
+        { id: 'team-1', name: 'Đội 1' },
+      ]);
+
+      await service.create(
+        { lat: 11.94, lng: 108.44, type: 'medical' },
+        victim,
+      );
+
+      expect(push.baoDoiDuocGiao).toHaveBeenCalledWith(
+        'sos-9',
+        'team-1',
+        'medical',
+      );
+      expect(push.baoNanNhan).toHaveBeenCalledWith('sos-9', 'assigned');
+      expect(push.baoSosMoiChuaCoDoi).not.toHaveBeenCalled();
+    });
+
+    it('push lỗi (reject) → tạo SOS vẫn thành công', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([sosMoi]);
+      push.baoSosMoiChuaCoDoi.mockRejectedValueOnce(new Error('push down'));
+
+      await expect(
+        service.create({ lat: 11.94, lng: 108.44, type: 'medical' }, victim),
+      ).resolves.toEqual(expect.objectContaining({ id: 'sos-9' }));
+    });
+
+    it('commander phân công tay → báo trưởng đội + nạn nhân', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            status: 'pending',
+            ward_code: '24781',
+            assigned_team_id: null,
+            type: 'fire',
+          },
+        ])
+        .mockResolvedValueOnce([{ status: 'available' }])
+        .mockResolvedValueOnce([[{ updated_at: new Date() }], 1])
+        .mockResolvedValue(undefined);
+
+      await service.assign('sos-1', 'team-1', commander);
+
+      expect(push.baoDoiDuocGiao).toHaveBeenCalledWith(
+        'sos-1',
+        'team-1',
+        'fire',
+      );
+      expect(push.baoNanNhan).toHaveBeenCalledWith('sos-1', 'assigned');
+    });
+
+    it.each(['arrived', 'resolved'] as const)(
+      'rescuer cập nhật sang %s → báo nạn nhân',
+      async (moi) => {
+        const truoc = moi === 'arrived' ? 'in_progress' : 'arrived';
+        dataSource.query
+          .mockResolvedValueOnce([
+            { status: truoc, ward_code: '24781', assigned_team_id: 't1' },
+          ])
+          .mockResolvedValueOnce([{ id: 't1' }])
+          .mockResolvedValueOnce([[{ updated_at: new Date() }], 1])
+          .mockResolvedValue(undefined);
+
+        await service.updateStatus('sos-1', moi, null, rescuer);
+
+        expect(push.baoNanNhan).toHaveBeenCalledWith('sos-1', moi);
+      },
+    );
+
+    it('rescuer cập nhật sang in_progress → không báo (SRS chỉ báo phân công/tới nơi/hoàn tất)', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { status: 'assigned', ward_code: '24781', assigned_team_id: 't1' },
+        ])
+        .mockResolvedValueOnce([{ id: 't1' }])
+        .mockResolvedValueOnce([[{ updated_at: new Date() }], 1])
+        .mockResolvedValue(undefined);
+
+      await service.updateStatus('sos-1', 'in_progress', null, rescuer);
+
+      expect(push.baoNanNhan).not.toHaveBeenCalled();
     });
   });
 });

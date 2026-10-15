@@ -680,6 +680,39 @@ Role: `rescuer`, phải là leader của đội đó.
 
 ---
 
+## 4b. Thông báo đẩy (`/api/push`) 🔒 — mọi role đã đăng nhập (F-PWA-05)
+
+Cần bảng `push_subscriptions` (`gis/13-create-push-subscriptions.sql`) và khoá VAPID trong
+`backend/.env` (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`). Thiếu khoá → server vẫn
+chạy, thông báo đẩy tắt, `GET /vapid-public-key` trả `503`.
+
+### GET /api/push/vapid-public-key
+**200 OK**: `data` = `{ "publicKey": "B..." }` (base64url). `503` khi chưa cấu hình VAPID.
+
+### POST /api/push/subscriptions
+**Body**: nguyên `PushSubscription.toJSON()` của trình duyệt —
+`{ "endpoint": "https://...", "expirationTime": null, "keys": { "p256dh": "...", "auth": "..." } }`.
+`endpoint` phải là `https`. Upsert theo `endpoint` và **gán lại `user_id` cho người đang gọi** (đổi
+tài khoản trên cùng máy thì người trước không nhận tin nữa). **201**, `data: null`.
+
+### DELETE /api/push/subscriptions
+**Body**: `{ "endpoint": "https://..." }` (trong body, không phải query). Chỉ xoá đăng ký **của
+chính người gọi**. **200**, `data: null`.
+
+### Khi nào backend gửi
+| Sự kiện | Người nhận | `url` mở khi bấm |
+|---|---|---|
+| SOS mới, không tự phân công được đội | mọi commander đang hoạt động | `/dashboard` |
+| SOS được phân công (tự động hoặc commander) | trưởng đội được giao | `/rescuer` |
+| SOS được phân công / đội tới nơi (`arrived`) / hoàn tất (`resolved`) | nạn nhân | `/map` |
+
+Nội dung `{ title, body, url, tag }` (`tag = sos-<id>`: tin mới thay tin cũ cùng SOS). **Không**
+chứa tên, số điện thoại hay toạ độ nạn nhân — tin đi qua dịch vụ push bên thứ 3 và hiện trên màn
+hình khoá. Thiết bị trả `404/410` → backend tự xoá đăng ký. Lỗi gửi push không bao giờ làm hỏng
+hay làm chậm luồng SOS.
+
+---
+
 ## 5. Socket.IO — thông tin cần cho frontend (chi tiết event xem CLAUDE.md Mục 8)
 
 Backend chỉ có **1 gateway**, chạy chung port với HTTP (`http://localhost:3000`, không
