@@ -91,25 +91,32 @@ export class SosGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // Gọi từ SosService sau khi lưu SOS
-  emitNewSos(wardCode: string, data: SosNewPayload): void {
-    this.server.to(`ward:${wardCode}`).emit(SOCKET_EVENTS.SOS_NEW, data);
-    this.server.to('province:lamdong').emit(SOCKET_EVENTS.SOS_NEW, data);
+  // Gộp mọi phòng vào MỘT lần emit: Socket.IO tự loại trùng người nhận giữa các phòng trong cùng
+  // 1 lần emit. Emit riêng từng phòng thì ai ở nhiều phòng (commander có xã: ward:* + province)
+  // nhận 2 lần — Dashboard thêm trùng SOS.
+  private phongSos(wardCode: string, ...them: string[]): string[] {
+    const phong = ['province:lamdong', ...them];
+    if (wardCode) phong.push(`ward:${wardCode}`);
+    return phong;
   }
 
+  emitNewSos(wardCode: string, data: SosNewPayload): void {
+    this.server.to(this.phongSos(wardCode)).emit(SOCKET_EVENTS.SOS_NEW, data);
+  }
+
+  // Bắn vào: province:lamdong (commander toàn tỉnh — KHÔNG có wardCode nên chỉ ở phòng này; thiếu
+  // phòng này từng làm Dashboard không tự cập nhật khi huỷ/đổi tiến độ, phải F5), sos:{id} (nạn
+  // nhân), ward:{xã}, và team:{đội} — đội có thể ở xã khác SOS vì phân công theo GPS.
   emitSosUpdated(
     sosId: string,
     wardCode: string,
     data: SosUpdatedPayload,
   ): void {
-    this.server.to(`sos:${sosId}`).emit(SOCKET_EVENTS.SOS_UPDATED, data);
-    this.server.to(`ward:${wardCode}`).emit(SOCKET_EVENTS.SOS_UPDATED, data);
-    // Đội được giao có thể ở khác xã với SOS (phân công theo GPS) — room ward:* ở trên
-    // không phủ tới leader đội đó, nên bắn thêm vào room riêng theo đội.
-    if (data.assignedTeamId) {
-      this.server
-        .to(`team:${data.assignedTeamId}`)
-        .emit(SOCKET_EVENTS.SOS_UPDATED, data);
-    }
+    const them = [`sos:${sosId}`];
+    if (data.assignedTeamId) them.push(`team:${data.assignedTeamId}`);
+    this.server
+      .to(this.phongSos(wardCode, ...them))
+      .emit(SOCKET_EVENTS.SOS_UPDATED, data);
   }
 
   emitTeamLocationUpdated(wardCode: string, data: TeamLocationPayload): void {

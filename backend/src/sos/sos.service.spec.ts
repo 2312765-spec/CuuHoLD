@@ -535,6 +535,74 @@ describe('SosService', () => {
       expect(params).toEqual(['victim-1', 3]);
     });
 
+    // Lỗi thật: cancel() chưa từng phát socket — commander/rescuer chỉ thấy SOS bị huỷ sau khi F5.
+    it('phát sos:updated (cancelled + penaltyApplied + đội + xã) để Dashboard/Rescuer cập nhật ngay', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            id: 'sos-1',
+            victim_id: victim.id,
+            status: 'assigned',
+            assigned_team_id: 'team-1',
+            ward_code: '24781',
+            cancel_deadline: new Date(Date.now() + 60_000),
+          },
+        ])
+        .mockResolvedValue(undefined);
+
+      await service.cancel('sos-1', victim);
+
+      expect(gateway.emitSosUpdated).toHaveBeenCalledWith(
+        'sos-1',
+        '24781',
+        expect.objectContaining({
+          sosId: 'sos-1',
+          status: 'cancelled',
+          wardCode: '24781',
+          assignedTeamId: 'team-1',
+          penaltyApplied: false,
+        }),
+      );
+    });
+
+    it('SOS chưa có đội/chưa suy ra xã vẫn phát (commander vẫn cần thấy), không gửi assignedTeamId', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            id: 'sos-2',
+            victim_id: victim.id,
+            status: 'pending',
+            assigned_team_id: null,
+            ward_code: null,
+            cancel_deadline: new Date(Date.now() + 60_000),
+          },
+        ])
+        .mockResolvedValue(undefined);
+
+      await service.cancel('sos-2', victim);
+
+      expect(gateway.emitSosUpdated).toHaveBeenCalledTimes(1);
+      const [id, xa, payload] = gateway.emitSosUpdated.mock.calls[0] as [
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      expect(id).toBe('sos-2');
+      expect(xa).toBe('');
+      expect(payload.status).toBe('cancelled');
+      expect(payload).not.toHaveProperty('assignedTeamId');
+    });
+
+    it('lỗi nghiệp vụ (không phải chủ SOS) → KHÔNG phát gì', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'sos-1', victim_id: 'nguoi-khac', status: 'pending' },
+      ]);
+      await expect(service.cancel('sos-1', victim)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(gateway.emitSosUpdated).not.toHaveBeenCalled();
+    });
+
     it('huỷ SOS đã được phân công đội → giải phóng đội về available (tránh kẹt busy vĩnh viễn)', async () => {
       dataSource.query
         .mockResolvedValueOnce([

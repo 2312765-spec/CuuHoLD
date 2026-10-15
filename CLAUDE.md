@@ -1445,8 +1445,37 @@ trình duyệt. Nhánh `feature/sms-dry-run`, TDD (test viết trước, đỏ 7
 **Kiểm chứng:** `notifications.service.spec.ts` (mới — trước đây service này không có test nào, 15 test)
 + `env.validation.spec.ts` (6 test). BE 207/207 test, lint/build sạch; boot thật thấy WARN.
 
+### 15.26 Bug thật đã sửa (2026-10-15) — Dashboard commander phải F5 mới thấy SOS bị huỷ / đổi tiến độ
+
+Người dùng báo: nạn nhân huỷ SOS, tab của chỉ huy không cập nhật, phải F5. Nhánh `fix/socket-huy-sos`.
+
+**2 nguyên nhân gốc, đều ở backend (frontend không cần sửa):**
+1. **`SosService.cancel()` chưa từng phát socket** — `git log -S` không thấy lần nào có. Comment trong
+   `RescuerView.vue` ("backend cancel() emit từ 2026-09-29") mô tả hành vi KHÔNG tồn tại.
+2. **Nặng hơn: `SosGateway.emitSosUpdated()` không bắn vào phòng `province:lamdong`.** Commander toàn
+   tỉnh không có `wardCode` nên CHỈ ở phòng đó → commander không nhận BẤT KỲ `sos:updated` nào: huỷ,
+   tự động phân công, rescuer đổi tiến độ (đang di chuyển / đã tới / hoàn tất). Dashboard chỉ đổi khi
+   chính commander bấm phân công (cập nhật cục bộ). Lỗi tồn tại từ khi có Dashboard.
+3. Kèm theo: `emitNewSos()` emit riêng từng phòng → commander có xã (ở cả `ward:*` lẫn
+   `province:lamdong`) nhận **2 lần** mỗi SOS mới, Dashboard thêm trùng.
+
+**Sửa:** `cancel()` phát `sos:updated` (`cancelled`, `penaltyApplied`, `assignedTeamId` nếu có).
+`emitNewSos`/`emitSosUpdated` gộp mọi phòng (`province:lamdong`, `sos:{id}`, `ward:{xã}` nếu có,
+`team:{đội}` nếu có) vào **MỘT lần emit** — Socket.IO tự loại trùng người nhận giữa các phòng trong 1
+lần emit. Bỏ luôn phòng rỗng `ward:` khi SOS chưa suy ra được xã.
+
+**Kiểm chứng (TDD, đỏ → xanh):** unit gateway (3) + `cancel()` (3); **`test/sos-socket.e2e-spec.ts`
+chạy Socket.IO THẬT** (server + client localhost, thêm devDependency `socket.io-client@4.8.3` cùng bản
+frontend). Chạy test đó trên code CŨ: commander nhận **0** lần khi huỷ, nhận **2** lần mỗi SOS mới;
+code mới: đúng 1 lần, người ngoài cuộc không nhận. BE 213/213 unit, 22/22 e2e, lint/build sạch.
+**Chưa thử trên trình duyệt** (cần tạo SOS thật trên DB — làm được nhờ `SMS_DRY_RUN`, Mục 15.25).
+
+**Còn biết:** `emitTeamLocationUpdated()` vẫn emit riêng `ward:*` và `province:lamdong` → commander có xã
+nhận vị trí đội 2 lần/30 giây. Vô hại (cập nhật cùng toạ độ) nên chưa sửa.
+
 ---
 
+*Phiên bản: 2.18.0 — Cập nhật: 2026-10-15 (thêm Mục 15.26 — commander không nhận sos:updated: cancel() không phát + thiếu phòng province:lamdong; sos:new trùng 2 lần)*
 *Phiên bản: 2.17.0 — Cập nhật: 2026-10-15 (thêm Mục 15.25 — công tắc `SMS_DRY_RUN` tắt SMS thật khi chạy thử)*
 *Phiên bản: 2.16.0 — Cập nhật: 2026-10-15 (thêm Mục 15.24 — backend lịch sử SOS, sửa tên/đổi mật khẩu, thông báo đẩy Web Push; migration `gis/13-create-push-subscriptions.sql`)*
 *Phiên bản: 2.15.0 — Cập nhật: 2026-10-15 (merge PR #5 giữ cả hai phía: thêm Mục 15.23; mục của PR đổi số 15.13–15.15 → 15.20–15.22; migration ảnh SOS đổi `gis/10` → `gis/12`; ẩn tính năng chờ backend bằng cờ `VITE_BAT_*`)*

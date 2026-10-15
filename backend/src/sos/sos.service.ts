@@ -495,6 +495,20 @@ export class SosService {
       accountFlagged = updated[0].is_flagged;
     }
 
+    // Báo ngay cho commander (Dashboard), đội được giao (RescuerView hiện toast "nạn nhân đã huỷ")
+    // và các tab khác của nạn nhân — trước đây cancel() không phát gì, phải F5 mới thấy.
+    const wardCode = rows[0].ward_code ?? '';
+    const payload: SosUpdatedPayload = {
+      sosId,
+      status: 'cancelled',
+      wardCode,
+      penaltyApplied,
+      updatedAt: new Date().toISOString(),
+    };
+    if (rows[0].assigned_team_id)
+      payload.assignedTeamId = rows[0].assigned_team_id;
+    this.sosGateway.emitSosUpdated(sosId, wardCode, payload);
+
     return { sosId, status: 'cancelled', penaltyApplied, accountFlagged };
   }
 
