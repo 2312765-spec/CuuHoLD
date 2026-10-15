@@ -146,7 +146,7 @@ onMounted(() => {
         <div class="reveal" v-reveal>
           <div class="eyebrow">Phạm vi</div>
           <h2 style="font-size:clamp(26px,3.6vw,36px); margin-bottom:18px;">Toàn bộ tỉnh Lâm Đồng sau sáp nhập</h2>
-          <p style="color:rgba(42,42,36,0.68); max-width:440px;">Hợp nhất từ Lâm Đồng, Đắk Nông và Bình Thuận cũ — trải dài từ cao nguyên Lang Biang đến duyên hải Phan Thiết, quản lý theo mô hình chính quyền hai cấp.</p>
+          <p class="coverage-mo-ta">Hợp nhất từ Lâm Đồng, Đắk Nông và Bình Thuận cũ — trải dài từ cao nguyên Lang Biang đến duyên hải Phan Thiết, quản lý theo mô hình chính quyền hai cấp.</p>
         </div>
         <div class="coverage-figures reveal" v-reveal>
           <div class="cov-card"><b class="mono">124</b><span>Xã, phường, đặc khu</span></div>

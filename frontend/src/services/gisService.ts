@@ -34,3 +34,12 @@ export async function layThongKeTongQuan(from: Date, to: Date): Promise<StatsRes
   })
   return data.data as StatsResult
 }
+
+// F-MAP-03 (bản đồ nhiệt leaflet.heat) — cùng endpoint với layThongKeSosTheoXa, đổi sang dạng
+// [lat, lng, trọng số]. ⚠️ Backend gom theo XÃ (toạ độ trung bình các SOS trong xã, xem
+// GisService.getSosHeatmap) nên mỗi xã là 1 điểm có trọng số = số vụ — độ mịn của bản đồ nhiệt
+// là cấp xã, không phải từng SOS.
+export async function layHeatmapSos(from: Date, to: Date): Promise<[number, number, number][]> {
+  const ds = await layThongKeSosTheoXa(from, to)
+  return ds.map((d) => [Number(d.lat), Number(d.lng), d.incident_count])
+}

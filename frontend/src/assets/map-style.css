@@ -92,6 +92,8 @@
   box-sizing:border-box;
 }
 .marker-pin svg{ width:15px; height:15px; transform:rotate(45deg); }
+/* Biểu tượng loại SOS (F-MAP-01): xoay ngược 45° như svg để đứng thẳng trong ghim. */
+.marker-pin__bieu-tuong{ transform:rotate(45deg); font-size:14px; line-height:1; }
 
 /* vòng nhấp nháy cảnh báo cho báo cáo mức Khẩn cấp — hiệu ứng CSS này KHÔNG làm được
    với circleMarker cũ vì circleMarker không phải phần tử HTML thật. */
@@ -205,7 +207,9 @@
   border-radius:999px; background:#fff; color:#92400e; font-size:13px; font-weight:600;
   text-decoration:none; border:2px solid #eab308; box-shadow:0 2px 10px rgba(0,0,0,.18);
 }
-.map-page.co-nut-sos .report-fab{ bottom:158px; }
+/* Có nút SOS: nằm NGAY TRÊN cụm .sos-fab (nút SOS + "Báo hộ người khác", cao tới 194px từ đáy —
+   xem khối .co-nut-sos bên dưới). Số cũ 158px là trước khi có nút Báo hộ (merge PR #5) → đè lên nó. */
+.map-page.co-nut-sos .report-fab{ bottom:204px; }
 .report-fab:hover{ background:#fef9c3; }
 
 /* ---------- biểu tượng cảnh báo trên bản đồ chung (đỏ = chặn đường, vàng = cẩn trọng) ---------- */
@@ -218,11 +222,17 @@
 .hz-icon--do{ background:#dc2626; }
 .hz-icon--vang{ background:#eab308; color:#422006; }
 
-/* Nút zoom Leaflet đặt góc phải TRÊN (position:'topright' trong useLeafletMap.ts).
-   Đẩy xuống dưới thanh MapStats (~96px từ đỉnh) để không bị thanh trên che. */
+/* Nút zoom Leaflet (+ / −) đặt góc phải TRÊN (position:'topright' trong useLeafletMap.ts).
+   ⚠️ GIỮ nút này: SRS mục 3.3 liệt kê "Zoom in/out" là tính năng bản đồ bắt buộc, và nó là cách
+   phóng to/thu nhỏ duy nhất cho người dùng bàn phím / chuột không có con lăn.
+   Đẩy xuống dưới thanh MapStats (desktop: thanh kết thúc ~96px từ đỉnh) để không bị che. */
 .leaflet-top.leaflet-right .leaflet-control-zoom{
   margin-top:106px; margin-right:16px;
 }
+/* Nút "Vị trí của tôi" (ViTriCuaToi.vue) ở góc trên TRÁI của trang /map: góc phải đã có zoom +
+   thẻ theo dõi SOS. Cùng mức đẩy xuống dưới thanh MapStats như nút zoom. Chỉ #map (trang /map) —
+   bản đồ Dashboard/Rescuer không có thanh trên nên giữ mặc định, nằm ngay dưới nút zoom. */
+#map .leaflet-top.leaflet-left .vi-tri-control{ margin-top:106px; }
 
 /* ---------- phần bên phải thanh topbar bản đồ (nút + user) ---------- */
 .map-top-right{ display:flex; align-items:center; gap:8px; }
@@ -254,9 +264,35 @@
 .offline-badge--sos .dot{ background:var(--clay); }
 
 /* Nút SOS chiếm góc dưới phải (24px + 120px cao) → đẩy cả 3 huy hiệu lên trên nó. */
-.co-nut-sos .socket-status{ bottom:164px; }
-.co-nut-sos .offline-badge{ bottom:204px; }
-.co-nut-sos .offline-badge--sos{ bottom:244px; }
+/* Cụm .sos-fab giờ gồm nút SOS (120px) + nút "Báo hộ người khác" (40px, cách 10px) phía trên
+   (F-SOS-07) → cao tới 24 + 120 + 10 + 40 = 194px từ đáy. Số cũ (164px, chỉ tính nút SOS) làm huy
+   hiệu "Cập nhật thời gian thực" đè lên nút Báo hộ. */
+.co-nut-sos .socket-status{ bottom:204px; }
+.co-nut-sos .offline-badge{ bottom:244px; }
+.co-nut-sos .offline-badge--sos{ bottom:284px; }
+/* Đã đăng nhập → có thêm nút "Báo cáo sạt lở / chặn đường" (.report-fab, cao 44px) ở góc dưới phải:
+   huy hiệu lùi lên trên nó thêm 54px (44 + 10 khoảng cách). Thứ tự từ đáy lên: cụm SOS → nút báo
+   cáo → huy hiệu. Thiếu khối này thì huy hiệu "Cập nhật thời gian thực" đè lên nút báo cáo. */
+.co-nut-bao-cao .socket-status{ bottom:78px; }
+.co-nut-bao-cao .offline-badge{ bottom:118px; }
+.co-nut-bao-cao .offline-badge--sos{ bottom:154px; }
+.co-nut-sos.co-nut-bao-cao .socket-status{ bottom:258px; }
+.co-nut-sos.co-nut-bao-cao .offline-badge{ bottom:298px; }
+.co-nut-sos.co-nut-bao-cao .offline-badge--sos{ bottom:338px; }
+@media (max-width:1023px){
+  /* Màn hẹp: .sos-fab ở bottom:54px (style.css), nút SOS 92px → cụm cao tới 54+92+10+40 = 196px. */
+  .co-nut-sos .socket-status{ bottom:206px; }
+  .co-nut-sos .offline-badge{ bottom:246px; }
+  .co-nut-sos .offline-badge--sos{ bottom:286px; }
+  .map-page.co-nut-sos .report-fab{ bottom:206px; }
+  .co-nut-sos.co-nut-bao-cao .socket-status{ bottom:260px; }
+  .co-nut-sos.co-nut-bao-cao .offline-badge{ bottom:300px; }
+  .co-nut-sos.co-nut-bao-cao .offline-badge--sos{ bottom:340px; }
+  /* Màn hẹp: thanh trên xuống dòng → MapStats nằm 96–132px. Để margin 106px của desktop thì nút
+     zoom đè lên thanh thống kê. */
+  .leaflet-top.leaflet-right .leaflet-control-zoom{ margin-top:142px; }
+  #map .leaflet-top.leaflet-left .vi-tri-control{ margin-top:142px; }
+}
 /* Tooltip marker trên RescueMap (commander/rescuer) — canh chữ đẹp, không dính viền
    như tooltip mặc định Leaflet. Không scoped vì Leaflet render tooltip ngoài component. */
 .rescue-tooltip {
@@ -272,3 +308,33 @@
   white-space: nowrap;
 }
 .rescue-tooltip::before { display: none; } /* bỏ mũi nhọn mặc định cho gọn */
+/* ---------- F-SOS-07: báo SOS hộ người khác ---------- */
+.sos-fab{ display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.bao-ho-btn{
+  min-height:40px; padding:0 14px; border-radius:999px; border:1.5px solid var(--clay);
+  background:var(--fog); color:var(--clay); font:600 13px/1 'Inter',sans-serif; cursor:pointer;
+  box-shadow:0 4px 12px rgba(0,0,0,0.18);
+}
+.bao-ho-btn:focus-visible{ outline:3px solid var(--pine-deep); outline-offset:2px; }
+.leaflet-container.dang-ghim{ cursor:crosshair; }
+.ghim-bao-ho{ background:transparent; border:0; }
+.ghim-bao-ho__dau{
+  position:absolute; left:3px; top:0; width:24px; height:24px;
+  border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+  background:#dc2626; border:3px solid #ffffff; box-shadow:0 2px 6px rgba(0,0,0,0.35);
+}
+.bao-ho-panel{
+  position:fixed; left:12px; right:12px; bottom:16px; z-index:960; max-width:440px; margin:0 auto;
+  display:grid; gap:8px; padding:14px 16px; border-radius:14px;
+  background:var(--fog); color:#2a2a24; color-scheme:light; box-shadow:0 -4px 20px rgba(0,0,0,0.22);
+}
+.bao-ho-panel__head{ display:flex; align-items:center; justify-content:space-between; }
+.bao-ho-panel__head h2{ font-size:17px; margin:0; color:var(--pine-deep); }
+.bao-ho-panel__dong{ width:40px; height:40px; border:0; border-radius:50%; background:transparent; color:#2a2a24; font-size:16px; cursor:pointer; }
+.bao-ho-panel__huong-dan{ margin:0; font-size:14px; }
+.bao-ho-panel__loi{ margin:0; font-size:13px; color:#b91c1c; }
+.bao-ho-panel__nut{ display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+/* Panel luôn nền sáng — giữ chữ tối cho nút viền kể cả khi bật dark mode (xem SosConfirmDialog). */
+.bao-ho-panel .btn-ghost{ color:#2a2a24; border:1.5px solid rgba(42,42,36,0.4); }
+.bao-ho-panel .sos-confirm-btn{ background:var(--clay); color:var(--fog); }
+.bao-ho-panel .sos-confirm-btn:disabled{ opacity:0.5; cursor:not-allowed; }

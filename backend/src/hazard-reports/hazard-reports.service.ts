@@ -13,8 +13,8 @@ import type { HazardResult } from '../hazards/hazards.service';
 import { SosGateway } from '../sos/sos.gateway';
 import type { HazardSeverity, HazardType } from '../hazards/hazard.types';
 import type { HazardReportStatus } from '../common/socket-events.types';
-import { MAX_IMAGE_BYTES, detectImageMime } from './image-validation';
-import type { AllowedImageMime } from './image-validation';
+import { MAX_IMAGE_BYTES, detectImageMime } from '../common/image-validation';
+import type { AllowedImageMime } from '../common/image-validation';
 
 export type ReportStatus = HazardReportStatus;
 

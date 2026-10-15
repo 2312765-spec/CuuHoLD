@@ -15,12 +15,16 @@ const ICON_SVG: Record<MarkerKind, string> = {
     '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3L22 20H2L12 3Z" stroke="white" stroke-width="1.6" stroke-linejoin="round"/></svg>'
 }
 
-export function taoIconMarker(mau: string, kind: MarkerKind): L.DivIcon {
+// bieuTuong (tuỳ chọn): emoji thay cho hình SVG theo kind — dùng cho marker SOS để hiện đúng
+// LOẠI sự cố (SRS F-MAP-01 "custom icon theo loại SOS"), màu nền pin vẫn là trạng thái.
+export function taoIconMarker(mau: string, kind: MarkerKind, bieuTuong?: string): L.DivIcon {
   return L.divIcon({
     // Modifier '--khan' bật vòng nhấp nháy cảnh báo trong map-style.css. Trước đây CSS có
     // sẵn hiệu ứng đó nhưng không ai gắn class, nên sự cố Khẩn cấp trông y hệt sự cố thường.
     className: 'custom-marker-icon' + (kind === 'khan-cap' ? ' custom-marker-icon--khan' : ''),
-    html: `<div class="marker-pin" style="background:${mau}">${ICON_SVG[kind]}</div>`,
+    html: `<div class="marker-pin" style="background:${mau}">${
+      bieuTuong ? `<span class="marker-pin__bieu-tuong" aria-hidden="true">${bieuTuong}</span>` : ICON_SVG[kind]
+    }</div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 32],
     popupAnchor: [0, -30]

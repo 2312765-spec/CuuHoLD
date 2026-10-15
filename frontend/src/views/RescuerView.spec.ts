@@ -1,228 +1,233 @@
-// Màn hình rescuer: link Google Maps chỉ là phương án DỰ PHÒNG. Khi tuyến đường bộ thật đã vẽ được
-// trên bản đồ của app thì KHÔNG hiện link (rescuer không bị đẩy sang app khác); link chỉ hiện khi
-// đường bộ trong app không dùng được — ORS lỗi/thiếu key, hoặc không lấy được GPS — vì lúc đó app
-// chỉ còn đường chim bay, không dẫn đường được. Toạ độ nạn nhân luôn hiện dạng chữ.
-
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { createPinia } from 'pinia'
+// Khoá hành vi RescuerView (SRS 6.1, CLAUDE.md Mục 8): danh sách nhiệm vụ của đội mình, đổi
+// tiến độ từng bước, báo lỗi tiếng Việt, và gửi GPS đội mỗi 30 giây (dừng khi rời trang).
+// Đi qua http.ts THẬT (interceptor + thongBaoLoi) bằng adapter axios giả — để kiểm "lỗi API
+// hiện thông báo" đúng như người dùng thấy, thay vì mock service rồi tự tin nhầm.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
+
+vi.mock('@/composables/useSocket', () => ({
+  useSocket: () => ({ connect: vi.fn(), disconnect: vi.fn(), isConnected: { value: true } })
+}))
+
+import { http } from '@/services/http'
+import { useAuthStore } from '@/stores/auth.store'
+import { useToastStore } from '@/stores/toast'
 import RescuerView from './RescuerView.vue'
-import RescueMap from '@/components/map/RescueMap.vue'
-import * as sosService from '@/services/sosService'
-import * as rescueTeamsService from '@/services/rescueTeamsService'
-import * as routingService from '@/services/routingService'
-import * as hazardsService from '@/services/hazardsService'
-import type { RescueTeam, RouteResult, SosListItem, SosRequest } from '@/types'
 
-vi.mock('@/services/sosService', () => ({
-  layDanhSachSos: vi.fn(),
-  xemChiTietSos: vi.fn(),
-  capNhatTienDo: vi.fn()
-}))
-vi.mock('@/services/rescueTeamsService', () => ({
-  fetchRescueTeams: vi.fn(),
-  capNhatViTriDoi: vi.fn()
-}))
-vi.mock('@/services/routingService', () => ({ layTuyenDuongThat: vi.fn() }))
-vi.mock('@/services/hazardsService', () => ({ layCanhBaoDangHoatDong: vi.fn() }))
-vi.mock('@/composables/useSocket', async () => {
-  const { ref } = await import('vue')
-  return { useSocket: () => ({ isConnected: ref(false), connect: vi.fn() }) }
-})
-vi.mock('@/stores/auth.store', () => ({
-  useAuthStore: () => ({ user: { id: 'leader-1', name: 'Trưởng đội thử' }, logout: vi.fn() })
-}))
+const USER_ID = 'user-leader'
+const TEAM_ID = 'team-1'
 
-const DOI: RescueTeam = {
-  id: 'team-1',
-  name: 'Đội thử',
-  status: 'busy',
-  specialties: [],
-  ward_code: '24781',
-  lat: 12.0091,
-  lng: 108.422,
-  leader_id: 'leader-1',
-  leader_name: 'Trưởng đội thử',
-  leader_phone: '0900000222'
+interface LoiGia {
+  status: number
+  data: unknown
 }
 
-const SOS: SosRequest = {
-  id: 'sos-1',
-  victim_id: 'victim-1',
-  type: 'medical',
-  status: 'assigned',
-  description: null,
-  image_url: null,
-  ward_code: '24781',
-  cancel_deadline: '2026-01-01T00:03:00.000Z',
-  location_estimated: false,
-  created_at: '2026-01-01T00:00:00.000Z',
-  updated_at: '2026-01-01T00:00:00.000Z',
-  resolved_at: null,
-  lat: 11.9465,
-  lng: 108.4419,
-  assigned_team_id: 'team-1',
-  victim_name: 'Nạn nhân thử',
-  victim_phone: '0900000001'
-}
+let cuocGoi: { method: string; url: string; body: unknown }[]
+let trangThaiTheoSos: Record<string, string>
+let loiKhiDoiTienDo: LoiGia | null
 
-const TUYEN: RouteResult = {
-  distance_meters: 10090,
-  duration_seconds: 732,
-  geometry: [
-    [12.0091, 108.422],
-    [11.9465, 108.4419]
-  ],
-  instructions: [{ text: 'Rẽ phải', distance_meters: 500, lat: 12.0, lng: 108.43 }]
-}
-
-const LINK_GOOGLE = 'https://www.google.com/maps/dir/?api=1&destination=11.9465,108.4419'
-
-// ---- GPS giả: test tự bắn kết quả/lỗi qua đúng callback mà component đã đăng ký cho watchPosition ----
-let baoViTri: (pos: GeolocationPosition) => void
-let baoLoiViTri: (err: GeolocationPositionError) => void
-const watchPosition = vi.fn(
-  (
-    ok: (pos: GeolocationPosition) => void,
-    err: (e: GeolocationPositionError) => void
-  ): number => {
-    baoViTri = ok
-    baoLoiViTri = err
-    return 1
+function chiTietSos(id: string, status: string) {
+  return {
+    id, type: 'flood', status, description: null, image_url: null, ward_code: '24778',
+    location_estimated: false, created_at: '2026-10-02T08:00:00Z', lat: 11.9, lng: 108.4,
+    assigned_team_id: TEAM_ID, victim_name: `Nạn nhân ${id}`, victim_phone: '0900000001'
   }
-)
-const clearWatch = vi.fn()
-
-function datGeolocation(value: unknown): void {
-  Object.defineProperty(navigator, 'geolocation', { configurable: true, value })
 }
 
-async function coViTri(lat: number, lng: number): Promise<void> {
-  baoViTri({ coords: { latitude: lat, longitude: lng } } as GeolocationPosition)
+// Adapter thay cho mạng: định tuyến theo method + url, ghi lại mọi cuộc gọi.
+const adapterGia: AxiosAdapter = async (config: InternalAxiosRequestConfig) => {
+  const method = (config.method ?? 'get').toLowerCase()
+  const url = config.url ?? ''
+  const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+  cuocGoi.push({ method, url, body })
+  const ok = (data: unknown) => ({ data: { success: true, data, message: 'OK' }, status: 200, statusText: 'OK', headers: {}, config })
+
+  if (method === 'get' && url === '/rescue-teams') {
+    return ok([{ id: TEAM_ID, name: 'Đội 1', status: 'busy', leader_id: USER_ID }])
+  }
+  if (method === 'get' && url === '/sos') {
+    return ok(Object.keys(trangThaiTheoSos).map((id) => ({ id, status: trangThaiTheoSos[id] })))
+  }
+  const chiTiet = url.match(/^\/sos\/([^/]+)$/)
+  if (method === 'get' && chiTiet) return ok(chiTietSos(chiTiet[1], trangThaiTheoSos[chiTiet[1]]))
+  const tienDo = url.match(/^\/sos\/([^/]+)\/status$/)
+  if (method === 'patch' && tienDo) {
+    if (loiKhiDoiTienDo) {
+      const response = { data: loiKhiDoiTienDo.data, status: loiKhiDoiTienDo.status, statusText: '', headers: {}, config }
+      throw new AxiosError('loi', 'ERR_BAD_RESPONSE', config, null, response)
+    }
+    return ok({ sosId: tienDo[1], status: (body as { status: string }).status, updatedAt: '2026-10-02T09:00:00Z' })
+  }
+  if (method === 'patch' && url === `/rescue-teams/${TEAM_ID}/location`) {
+    return ok({ teamId: TEAM_ID, wardCode: '24778', ...(body as object), updatedAt: '2026-10-02T09:00:00Z' })
+  }
+  // Main (merge PR #5) thêm 2 request cho bản đồ nhiệm vụ: cảnh báo đường (rỗng) và tuyến đường
+  // bộ ORS — trả 503 như lúc thiếu ORS_API_KEY; routingService tự nuốt lỗi, không toast.
+  if (method === 'get' && url === '/hazards') return ok([])
+  if (method === 'get' && url === '/routing/route') {
+    const response = { data: { statusCode: 503 }, status: 503, statusText: '', headers: {}, config }
+    throw new AxiosError('loi', 'ERR_BAD_RESPONSE', config, null, response)
+  }
+  throw new Error(`Adapter giả: chưa định tuyến ${method} ${url}`)
+}
+
+const geo = {
+  watchPosition: vi.fn(),
+  clearWatch: vi.fn()
+}
+
+async function gan(sos: Record<string, string>): Promise<VueWrapper> {
+  trangThaiTheoSos = sos
+  const w = mount(RescuerView, {
+    global: { stubs: { RescueMap: true, AnhHienTruong: true, RouterLink: { template: '<a><slot /></a>' } } }
+  })
   await flushPromises()
+  return w
 }
 
-let wrapper: VueWrapper | null = null
+const nutTienDo = (w: VueWrapper) => w.findAll('.sos-card .btn-primary')
+const locationCalls = () => cuocGoi.filter((c) => c.url === `/rescue-teams/${TEAM_ID}/location`)
 
-async function mountManHinh(): Promise<VueWrapper> {
-  vi.mocked(rescueTeamsService.fetchRescueTeams).mockResolvedValue([DOI])
-  vi.mocked(sosService.layDanhSachSos).mockResolvedValue([{ id: SOS.id } as SosListItem])
-  vi.mocked(sosService.xemChiTietSos).mockResolvedValue(SOS)
-  vi.mocked(hazardsService.layCanhBaoDangHoatDong).mockResolvedValue([])
-  wrapper = mount(RescuerView, {
-    global: { plugins: [createPinia()], stubs: { RescueMap: true, RouterLink: true } }
+beforeEach(() => {
+  setActivePinia(createPinia())
+  cuocGoi = []
+  loiKhiDoiTienDo = null
+  http.defaults.adapter = adapterGia
+  // Chỉ giả setInterval: toast store + flushPromises vẫn dùng timer thật.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  geo.watchPosition.mockReset()
+  geo.clearWatch.mockReset()
+  geo.watchPosition.mockImplementation((ok: (p: unknown) => void) => {
+    ok({ coords: { latitude: 11.95, longitude: 108.45 } })
+    return 7
   })
-  await flushPromises()
-  return wrapper
-}
-
-function linkGoogle(w: VueWrapper) {
-  return w.findAll('a').filter((a) => (a.attributes('href') ?? '').includes('google.com/maps'))
-}
-
-describe('RescuerView — link Google Maps chỉ là dự phòng', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    datGeolocation({ watchPosition, clearWatch })
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: geo })
+  useAuthStore().setAuth({
+    accessToken: 't', refreshToken: 'r',
+    user: { id: USER_ID, phone: '0900000002', name: 'Trưởng đội', role: 'rescuer', wardCode: '24778', isActive: true, createdAt: '', updatedAt: '' }
   })
+})
 
-  afterEach(() => {
-    wrapper?.unmount() // dừng watchPosition + interval 30s, tránh rò rỉ giữa các test
-    wrapper = null
-    vi.useRealTimers()
-  })
+afterEach(() => {
+  vi.useRealTimers()
+})
 
-  it('chưa có GPS lần đầu → chưa hiện link (tránh hiện rồi biến mất khi đường bộ về tới)', async () => {
-    const w = await mountManHinh()
+describe('RescuerView — danh sách nhiệm vụ', () => {
+  it('hiện đúng nhiệm vụ được giao cho đội mình, kèm nhãn trạng thái tiếng Việt', async () => {
+    const w = await gan({ a: 'assigned', b: 'in_progress' })
 
-    expect(watchPosition).toHaveBeenCalledTimes(1)
-    expect(linkGoogle(w)).toHaveLength(0)
-    expect(w.get('.map-hint').text()).toContain('Đang chờ vị trí GPS')
-  })
-
-  it('đường bộ thật vẽ được trên bản đồ của app → KHÔNG hiện link Google Maps, vẫn hiện toạ độ', async () => {
-    vi.mocked(routingService.layTuyenDuongThat).mockResolvedValue(TUYEN)
-    const w = await mountManHinh()
-
-    await coViTri(12.0091, 108.422)
-
-    expect(routingService.layTuyenDuongThat).toHaveBeenCalledWith(
-      { lat: 12.0091, lng: 108.422 },
-      { lat: 11.9465, lng: 108.4419 }
-    )
-    // Tuyến được đưa vào bản đồ của app (Leaflet) — không phải mở app khác.
-    expect(w.findComponent(RescueMap).props('routeThat')).toEqual(TUYEN)
-    expect(linkGoogle(w)).toHaveLength(0)
-    expect(w.text()).toContain('11.94650, 108.44190')
-    expect(w.get('.map-hint').text()).toContain('Đường liền')
+    const the = w.findAll('.sos-card')
+    expect(the).toHaveLength(2)
+    expect(the[0].text()).toContain('Nạn nhân a')
+    expect(the[0].text()).toContain('Đã phân công')
+    expect(the[1].text()).toContain('Đang thực hiện')
+    // Chỉ hỏi các trạng thái đang hoạt động — không kéo SOS đã kết thúc về.
+    const hoi = cuocGoi.find((c) => c.url === '/sos')
+    expect(hoi).toBeDefined()
   })
 
-  it('ORS lỗi/thiếu key (trả null) → hiện link Google Maps dự phòng và nói rõ đó là dự phòng', async () => {
-    vi.mocked(routingService.layTuyenDuongThat).mockResolvedValue(null)
-    const w = await mountManHinh()
+  it('không có nhiệm vụ → báo rõ, không có thẻ nào', async () => {
+    const w = await gan({})
+    expect(w.findAll('.sos-card')).toHaveLength(0)
+    expect(w.text()).toContain('Chưa có nhiệm vụ nào được phân công.')
+  })
+})
 
-    await coViTri(12.0091, 108.422)
+describe('RescuerView — đổi tiến độ', () => {
+  it('đi đủ assigned → in_progress → arrived → resolved, mỗi bước gọi đúng API, resolved thì thẻ biến mất', async () => {
+    const w = await gan({ a: 'assigned' })
+    const buoc = ['in_progress', 'arrived', 'resolved']
+    const nhan = ['Bắt đầu di chuyển', 'Đã đến nơi', 'Hoàn thành cứu hộ']
 
-    const links = linkGoogle(w)
-    expect(links).toHaveLength(1)
-    expect(links[0].attributes('href')).toBe(LINK_GOOGLE)
-    expect(links[0].text()).toContain('dự phòng')
-    expect(w.get('.map-hint').text()).toContain('Google Maps (dự phòng)')
-    expect(w.findComponent(RescueMap).props('routeThat')).toBeNull()
+    for (let i = 0; i < buoc.length; i++) {
+      const nut = nutTienDo(w)
+      expect(nut).toHaveLength(1)
+      expect(nut[0].text()).toBe(nhan[i])
+      await nut[0].trigger('click')
+      await flushPromises()
+      const goi = cuocGoi.filter((c) => c.method === 'patch' && c.url === '/sos/a/status')
+      expect(goi[goi.length - 1].body).toMatchObject({ status: buoc[i] })
+    }
+    expect(w.findAll('.sos-card')).toHaveLength(0)
   })
 
-  it('GPS bị từ chối/không lấy được → hiện link dự phòng (app không có điểm xuất phát để vẽ đường)', async () => {
-    const w = await mountManHinh()
+  it('không nhảy bước: thẻ "assigned" chỉ có nút bước kế tiếp, không có nút "Hoàn thành cứu hộ"', async () => {
+    const w = await gan({ a: 'assigned' })
+    expect(w.text()).not.toContain('Hoàn thành cứu hộ')
+    expect(w.text()).not.toContain('Đã đến nơi')
+    expect(nutTienDo(w)[0].text()).toBe('Bắt đầu di chuyển')
+  })
 
-    baoLoiViTri({ code: 1, message: 'denied' } as GeolocationPositionError)
+  it('lỗi 403 từ server → hiện đúng câu tiếng Việt của server, trạng thái thẻ giữ nguyên, nút bấm lại được', async () => {
+    const w = await gan({ a: 'assigned' })
+    loiKhiDoiTienDo = { status: 403, data: { statusCode: 403, message: 'SOS chưa được phân công đội cứu hộ' } }
+
+    await nutTienDo(w)[0].trigger('click')
     await flushPromises()
 
-    const links = linkGoogle(w)
-    expect(links).toHaveLength(1)
-    expect(links[0].text()).toContain('dự phòng')
-    expect(w.get('.map-hint').text()).toContain('Không lấy được vị trí GPS')
-    expect(routingService.layTuyenDuongThat).not.toHaveBeenCalled()
+    expect(useToastStore().message).toBe('SOS chưa được phân công đội cứu hộ')
+    expect(w.find('.sos-card').text()).toContain('Đã phân công')
+    const nut = nutTienDo(w)[0]
+    expect(nut.text()).toBe('Bắt đầu di chuyển')
+    expect(nut.attributes('disabled')).toBeUndefined()
   })
 
-  it('trình duyệt không hỗ trợ định vị → hiện link dự phòng', async () => {
-    datGeolocation(undefined)
-    const w = await mountManHinh()
+  it('lỗi 500 → câu "máy chủ gặp sự cố" bằng tiếng Việt, không lộ lỗi kỹ thuật', async () => {
+    const w = await gan({ a: 'assigned' })
+    loiKhiDoiTienDo = { status: 500, data: { statusCode: 500, message: 'Internal server error' } }
 
-    expect(watchPosition).not.toHaveBeenCalled()
-    const links = linkGoogle(w)
-    expect(links).toHaveLength(1)
-    expect(links[0].text()).toContain('dự phòng')
-  })
-
-  it('đường bộ lỗi rồi phục hồi ở lần làm mới 30 giây kế tiếp → link tự biến mất', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }) // chỉ giả interval, flushPromises vẫn chạy
-    vi.mocked(routingService.layTuyenDuongThat).mockResolvedValue(null)
-    const w = await mountManHinh()
-    await coViTri(12.0091, 108.422)
-    expect(linkGoogle(w)).toHaveLength(1)
-
-    vi.mocked(routingService.layTuyenDuongThat).mockResolvedValue(TUYEN)
-    vi.advanceTimersByTime(30000)
+    await nutTienDo(w)[0].trigger('click')
     await flushPromises()
 
-    expect(linkGoogle(w)).toHaveLength(0)
-    expect(w.findComponent(RescueMap).props('routeThat')).toEqual(TUYEN)
+    expect(useToastStore().message).toBe('Máy chủ đang gặp sự cố, vui lòng thử lại sau.')
+  })
+})
+
+describe('RescuerView — gửi GPS đội mỗi 30 giây', () => {
+  it('có nhiệm vụ active → sau 30 giây gọi PATCH /rescue-teams/:id/location với toạ độ mới nhất', async () => {
+    await gan({ a: 'assigned' })
+    expect(geo.watchPosition).toHaveBeenCalledTimes(1)
+    expect(locationCalls()).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(29_000)
+    expect(locationCalls()).toHaveLength(0)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(locationCalls()).toHaveLength(1)
+    expect(locationCalls()[0].body).toEqual({ lat: 11.95, lng: 108.45 })
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(locationCalls()).toHaveLength(2)
   })
 
-  it('đang làm mới đường bộ mà lần trước đã lỗi → link KHÔNG nháy tắt rồi bật lại mỗi 30 giây', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    vi.mocked(routingService.layTuyenDuongThat).mockResolvedValue(null)
-    const w = await mountManHinh()
-    await coViTri(12.0091, 108.422)
-    expect(linkGoogle(w)[0].text()).toContain('dự phòng')
+  it('không có nhiệm vụ active → không theo dõi GPS, không gửi gì', async () => {
+    await gan({})
+    expect(geo.watchPosition).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(locationCalls()).toHaveLength(0)
+  })
 
-    // Lần làm mới kế tiếp treo (chưa có kết quả) — link vẫn phải còn đó.
-    vi.mocked(routingService.layTuyenDuongThat).mockReturnValue(new Promise(() => undefined))
-    vi.advanceTimersByTime(30000)
+  it('rời trang (unmount) → clearWatch + dừng hẳn việc gửi', async () => {
+    const w = await gan({ a: 'assigned' })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(locationCalls()).toHaveLength(1)
+
+    w.unmount()
+    expect(geo.clearWatch).toHaveBeenCalledWith(7)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(locationCalls()).toHaveLength(1)
+  })
+
+  it('làm xong nhiệm vụ cuối (resolved) → tự dừng theo dõi GPS', async () => {
+    const w = await gan({ a: 'arrived' })
+    await nutTienDo(w)[0].trigger('click')
     await flushPromises()
 
-    const links = linkGoogle(w)
-    expect(links).toHaveLength(1)
-    expect(links[0].text()).toContain('dự phòng')
+    expect(geo.clearWatch).toHaveBeenCalledWith(7)
+    const truoc = locationCalls().length
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(locationCalls()).toHaveLength(truoc)
   })
 })

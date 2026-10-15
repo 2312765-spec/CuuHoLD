@@ -1,3 +1,4 @@
+// Dùng chung cho ảnh báo cáo cộng đồng (hazard-reports) và ảnh hiện trường SOS (sos-images).
 // Ảnh minh chứng do người dùng tải lên là dữ liệu KHÔNG đáng tin: không tin Content-Type/tên
 // file client gửi (đổi được tuỳ ý), mà đọc chính các byte đầu (magic bytes) để biết đó có thật là
 // jpeg/png/webp không. Chỉ ba định dạng ảnh raster phổ biến được chấp nhận — SVG/HTML bị loại

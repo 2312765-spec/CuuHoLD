@@ -24,6 +24,9 @@ const phone = ref('')
 const password = ref('')
 const name = ref('')
 const dangGui = ref(false)
+// Nút hiện/ẩn mật khẩu tự làm — trước đây chỉ có nút "con mắt" riêng của Edge, vốn tự biến mất
+// khi trình duyệt điền sẵn mật khẩu hoặc ô đã mất focus, và Chrome/Firefox/Safari không có.
+const hienMatKhau = ref(false)
 
 // Modal này CỐ Ý không điều hướng sau khi đăng nhập: đăng nhập chỉ làm mỗi việc đăng
 // nhập, còn đi đâu là do người dùng bấm. Trước đây nó tự đẩy rescuer/commander sang
@@ -116,7 +119,25 @@ function guiForm() {
         <input v-model="phone" type="tel" inputmode="numeric" placeholder="09xxxxxxxx" @keyup.enter="guiForm" />
       </label>
       <label>Mật khẩu
-        <input v-model="password" type="password" placeholder="Tối thiểu 8 ký tự" @keyup.enter="guiForm" />
+        <span class="o-mat-khau">
+          <input
+            v-model="password"
+            :type="hienMatKhau ? 'text' : 'password'"
+            :autocomplete="cheDo === 'login' ? 'current-password' : 'new-password'"
+            placeholder="Tối thiểu 8 ký tự"
+            @keyup.enter="guiForm"
+          />
+          <button
+            type="button"
+            class="nut-hien-mk"
+            data-test="hien-mat-khau"
+            :aria-pressed="hienMatKhau"
+            :aria-label="hienMatKhau ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            @click="hienMatKhau = !hienMatKhau"
+          >
+            {{ hienMatKhau ? 'Ẩn' : 'Hiện' }}
+          </button>
+        </span>
       </label>
       <button class="btn btn-primary auth-submit" :disabled="dangGui" @click="guiForm">
         {{ dangGui ? 'Đang xử lý...' : (cheDo === 'login' ? 'Đăng nhập' : 'Tạo tài khoản') }}
@@ -133,7 +154,7 @@ function guiForm() {
 }
 .auth-overlay.open{ display:flex; }
 .auth-modal{
-  position:relative; width:100%; max-width:390px; background:#fff; border-radius:18px;
+  position:relative; width:100%; max-width:390px; background:#fff; border-radius:18px; color-scheme:light;
   padding:32px 28px; box-shadow:0 24px 60px rgba(0,0,0,0.3);
 }
 .auth-close{
@@ -149,11 +170,29 @@ function guiForm() {
   font-family:'Inter',sans-serif; font-size:14px; font-weight:500; color:rgba(42,42,36,0.6); cursor:pointer; transition:all .15s;
 }
 .auth-tabs button.active{ background:#fff; color:var(--pine-deep); box-shadow:0 1px 3px rgba(0,0,0,0.08); }
-.auth-sub{ font-size:13px; color:rgba(42,42,36,0.6); margin-bottom:22px; }
-.auth-modal label{ display:block; font-size:13px; color:var(--ink); margin-bottom:16px; }
+.auth-sub{ font-size: 14px; color:rgba(42,42,36,0.6); margin-bottom:22px; }
+.auth-modal label{ display:block; font-size: 14px; color:var(--ink); margin-bottom:16px; }
 .auth-modal input{
-  display:block; width:100%; margin-top:6px; padding:11px 13px;
-  border:1px solid var(--line); border-radius:9px; font-family:'Inter',sans-serif; font-size:14px;
+  display:block; width:100%; margin-top:6px; padding:12px 14px;
+  background:#faf8f2; color:#2a2a24;
+  border:1px solid var(--line); border-radius:10px; font-family:'Inter',sans-serif; font-size: 16px;
+  transition:border-color .15s ease, box-shadow .15s ease; color-scheme:light;
+}
+/* Ô mật khẩu + nút Hiện/Ẩn nằm gọn bên phải trong ô. */
+.o-mat-khau{ position:relative; display:block; }
+.o-mat-khau input{ padding-right:64px; }
+.nut-hien-mk{
+  position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  min-width:48px; min-height:36px; padding:0 10px; border:0; border-radius:8px;
+  background:transparent; color:var(--pine-deep); font:600 13px/1 'Inter',sans-serif; cursor:pointer;
+}
+.nut-hien-mk:hover{ background:rgba(20,39,32,0.08); }
+.nut-hien-mk:focus-visible{ outline:3px solid var(--pine-deep); outline-offset:1px; }
+/* Ẩn nút "con mắt" riêng của Edge để không bị 2 nút chồng nhau. */
+.o-mat-khau input::-ms-reveal, .o-mat-khau input::-ms-clear{ display:none; }
+.auth-modal input::placeholder{ color:rgba(42,42,36,0.42); }
+.auth-modal input:focus{
+  outline:none; border-color:var(--pine-deep); box-shadow:0 0 0 3px rgba(31,61,46,0.13);
 }
 .auth-submit{ width:100%; justify-content:center; margin-top:6px; }
 .auth-submit:disabled{ opacity:0.6; cursor:not-allowed; }

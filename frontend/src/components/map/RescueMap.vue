@@ -4,14 +4,16 @@
 // Tách riêng khỏi useLeafletMap vì composable đó gắn với dữ liệu minh hoạ
 // (DiemCuuTro/BaoCaoSuCo) + lớp ranh giới, còn ở đây chỉ cần marker SOS thật.
 
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import '@/utils/leafletPlugins'
 import type {
   SosListItem,
   RescueTeam,
   NearestTeam,
   SosStatus,
+  SosType,
   RouteResult,
   SosHeatmapPoint,
   Hazard,
@@ -20,8 +22,7 @@ import type {
 } from '@/types'
 import { dinhDangKhoangCach, type ToaDo } from '@/utils/geo'
 import { taoLopTileNen } from '@/utils/tileLayer'
-import { SOS_TYPE_LABEL, SOS_STATUS_LABEL, RESCUE_TEAM_STATUS_LABEL } from '@/constants/sosLabels'
-
+import { SOS_TYPE_LABEL, SOS_TYPE_ICON, SOS_STATUS_LABEL, RESCUE_TEAM_STATUS_LABEL } from '@/constants/sosLabels'
 
 // Chỉ các field thật sự dùng để vẽ — nhận được cả SosListItem (GET /api/sos, commander)
 // lẫn SosRequest (GET /api/sos/:id, rescuer — ở đó victim_name là optional).
@@ -41,9 +42,10 @@ const props = defineProps<{
   // khi thiếu ORS_API_KEY hoặc ORS lỗi/không tìm được tuyến; lúc đó `route` (chim bay) là
   // fallback duy nhất còn hiển thị.
   routeThat?: RouteResult | null
-  // Thống kê SOS theo xã (GET /api/gis/sos-heatmap) — undefined/rỗng thì không vẽ gì (DashboardView
-  // chỉ truyền khi commander bật toggle, xem "Thống kê theo xã").
-  heatmap?: SosHeatmapPoint[]
+  // Thống kê SOS theo xã (GET /api/gis/sos-heatmap) — vòng tròn theo xã kèm số vụ, vẽ CHỒNG lên
+  // marker. undefined/rỗng thì không vẽ gì (DashboardView chỉ truyền khi commander bật toggle
+  // "Thống kê theo xã"). Khác `heatmap` bên dưới (chế độ bản đồ nhiệt, ẩn marker SOS).
+  thongKeXa?: SosHeatmapPoint[]
   // Cảnh báo/chặn đường đang hoạt động (GET /api/hazards) — hiện cho MỌI vai trò xem bản đồ,
   // không chỉ commander (an toàn thực địa, xem hazardsService.ts).
   hazards?: Hazard[]
@@ -55,6 +57,12 @@ const props = defineProps<{
   // 'pick-location' thay vì các hành vi khác (không có select-sos nào bị ảnh hưởng, click vẫn
   // luôn nằm trên nền map, không phải trên marker).
   placingHazard?: boolean
+  // F-MAP-05: gom cụm marker SOS — bật ở Dashboard (commander, có thể hàng trăm SOS), tắt ở
+  // RescuerView (vài nhiệm vụ, gom cụm chỉ làm khó bấm).
+  gomCum?: boolean
+  // F-MAP-03: có giá trị (kể cả mảng rỗng) = đang ở chế độ bản đồ nhiệt → ẩn marker SOS,
+  // chỉ vẽ lớp nhiệt. null/undefined = chế độ điểm SOS bình thường.
+  heatmap?: [number, number, number][] | null
 }>()
 
 const emit = defineEmits<{
@@ -89,10 +97,16 @@ const MAU_CANH_BAO = {
 
 const mapContainer = ref<HTMLDivElement | null>(null)
 let map: L.Map | null = null
-let heatmapLayer: L.LayerGroup | null = null
+let thongKeXaLayer: L.LayerGroup | null = null
 let hazardLayer: L.LayerGroup | null = null
 let reportLayer: L.LayerGroup | null = null
+// Cho màn cha gắn thêm control lên chính bản đồ này (nút "Vị trí của tôi") mà không phải sửa
+// RescueMap. shallowRef: không bọc đối tượng Leaflet trong proxy phản ứng.
+const mapInstance = shallowRef<L.Map | null>(null)
+defineExpose({ mapInstance })
+// Là MarkerClusterGroup khi gomCum, LayerGroup thường khi không — cùng API addLayers/clearLayers.
 let sosLayer: L.LayerGroup | null = null
+let heatLayer: L.HeatLayer | null = null
 let teamLayer: L.LayerGroup | null = null
 let routeLayer: L.LayerGroup | null = null
 
@@ -115,10 +129,10 @@ function mauTheoMucDo(tyLe: number): string {
   return `rgb(250, ${Math.max(g, 0)}, ${Math.max(b, 0)})`
 }
 
-function buildHeatmapLayer() {
-  if (!heatmapLayer) return
-  heatmapLayer.clearLayers()
-  const points = props.heatmap ?? []
+function buildThongKeXaLayer() {
+  if (!thongKeXaLayer) return
+  thongKeXaLayer.clearLayers()
+  const points = props.thongKeXa ?? []
   if (points.length === 0) return
   const max = Math.max(...points.map((p) => p.incident_count))
   for (const p of points) {
@@ -131,7 +145,7 @@ function buildHeatmapLayer() {
       fillOpacity: 0.55
     })
       .bindTooltip(`${p.ward_name}: ${p.incident_count} vụ`, { direction: 'top' })
-      .addTo(heatmapLayer)
+      .addTo(thongKeXaLayer)
   }
 }
 
@@ -192,46 +206,216 @@ function buildReportLayer() {
   }
 }
 
+// Mức khẩn cấp để tô màu CỤM theo SOS gấp nhất bên trong: một SOS 'pending' nằm giữa 20 SOS
+// đã xong vẫn làm cả cụm đỏ — gom cụm không được phép giấu ca chưa ai xử lý.
+const MUC_KHAN_CAP: Record<SosStatus, number> = {
+  pending: 6,
+  assigned: 5,
+  in_progress: 4,
+  arrived: 3,
+  resolved: 1,
+  cancelled: 0,
+  false_alarm: 0
+}
+
+// Marker SOS mang kèm id + trạng thái để icon cụm và hienSosTrongCum() đọc lại được.
+type MarkerSos = L.Marker & { sosId: string; sosStatus: SosStatus }
+
+// markercluster chỉ hỗ trợ L.Marker (nó gọi clusterHide/_setPos — CircleMarker không có, xòe
+// cụm sẽ lỗi), nên marker SOS dùng divIcon hình tròn thay cho circleMarker, giữ nguyên màu/cỡ.
+// SRS F-MAP-01 "custom icon theo loại SOS": biểu tượng = LOẠI sự cố, màu viền = TRẠNG THÁI
+// (giữ quy ước màu cũ để commander không phải học lại).
+function taoIconSos(status: SosStatus, type: SosType, dangChon: boolean): L.DivIcon {
+  const d = dangChon ? 36 : 28
+  return L.divIcon({
+    className: 'sos-dot-icon',
+    html: `<span class="sos-dot${dangChon ? ' sos-dot--chon' : ''}" data-loai="${type}" style="border-color:${STATUS_COLOR[status]}"><span aria-hidden="true">${SOS_TYPE_ICON[type]}</span></span>`,
+    iconSize: [d, d]
+  })
+}
+
+function taoIconCum(cum: L.MarkerCluster): L.DivIcon {
+  const con = cum.getAllChildMarkers() as MarkerSos[]
+  let gapNhat: SosStatus = 'false_alarm'
+  let soChoXuLy = 0
+  for (const m of con) {
+    const st = m.sosStatus
+    if (st === 'pending') soChoXuLy++
+    if (MUC_KHAN_CAP[st] > MUC_KHAN_CAP[gapNhat]) gapNhat = st
+  }
+  const tong = cum.getChildCount()
+  const d = tong < 10 ? 34 : tong < 50 ? 42 : 50
+  const huyHieu = soChoXuLy > 0 ? `<span class="sos-cum__cho">${soChoXuLy}</span>` : ''
+  const moTa = `${tong} SOS, gấp nhất: ${SOS_STATUS_LABEL[gapNhat]}${soChoXuLy ? `, ${soChoXuLy} chờ xử lý` : ''}`
+  return L.divIcon({
+    className: `sos-cum${gapNhat === 'pending' ? ' sos-cum--gap' : ''}`,
+    html: `<span class="sos-cum__loi" style="background:${STATUS_COLOR[gapNhat]}" role="img" aria-label="${moTa}">${tong}</span>${huyHieu}`,
+    iconSize: [d, d]
+  })
+}
+
+function taoLopSos(): L.LayerGroup {
+  if (!props.gomCum) return L.layerGroup()
+  const giamChuyenDong = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  return L.markerClusterGroup({
+    chunkedLoading: true,
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    animate: !giamChuyenDong,
+    // Từ zoom 15 (mức đường phố) hiện từng SOS riêng — commander cần thấy vị trí thật.
+    disableClusteringAtZoom: 15,
+    maxClusterRadius: (z: number) => (z <= 9 ? 70 : z <= 12 ? 50 : 35),
+    iconCreateFunction: taoIconCum
+  })
+}
+
+// Bảng id → marker đang vẽ, kèm "chữ ký" những gì ảnh hưởng tới hình dạng marker. Có bảng này
+// mới biết marker nào thật sự đổi để chỉ đụng tới nó — trước đây mỗi lần danh sách SOS đổi
+// (socket bắn liên tục ở Dashboard) là xoá SẠCH rồi dựng lại cả lớp + tính lại cụm, làm cụm
+// commander đang mở bị đóng và tốn CPU tỉ lệ với TỔNG số SOS thay vì số SOS đổi.
+const markerSosTheoId = new Map<string, { marker: MarkerSos; chuKy: string }>()
+
+function chuKySos(sos: SosTrenBanDo, dangChon: boolean): string {
+  return [sos.status, sos.type, sos.lat, sos.lng, sos.victim_name?.trim() ?? '', dangChon ? 1 : 0].join('|')
+}
+
+function taoMarkerSos(sos: SosTrenBanDo, isSelected: boolean): MarkerSos {
+  const marker = L.marker([sos.lat, sos.lng], {
+    icon: taoIconSos(sos.status, sos.type, isSelected),
+    zIndexOffset: isSelected ? 1000 : 0,
+    keyboard: true
+  }) as MarkerSos
+  marker.sosId = sos.id
+  marker.sosStatus = sos.status
+  // Tooltip dùng nhãn tiếng Việt, bỏ dấu gạch thừa khi thiếu tên nạn nhân, có class riêng
+  // để canh chữ đẹp (không dính viền như tooltip mặc định Leaflet).
+  const tenNan = sos.victim_name?.trim()
+  const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`
+  marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
+  marker.on('click', () => emit('select-sos', sos.id))
+  return marker
+}
+
+// Marker đổi trạng thái/loại/vị trí/đang-chọn thì THAY bằng marker mới (gỡ cũ + thêm mới) thay vì
+// sửa tại chỗ: cụm (markercluster) chỉ tính lại màu/badge khi marker rời/vào cụm, nên cách này
+// giữ icon cụm luôn đúng mà không phải gọi API refresh riêng của plugin.
 function buildSosLayer() {
   if (!sosLayer) return
-  sosLayer.clearLayers()
+  const conTrongDs = new Set<string>()
+  const canGo: L.Layer[] = []
+  const canThem: L.Layer[] = []
   for (const sos of props.sosList) {
-    const isSelected = sos.id === props.selectedSosId
-    const marker = L.circleMarker([sos.lat, sos.lng], {
-      radius: isSelected ? 12 : 8,
-      color: isSelected ? '#142720' : '#ffffff',
-      weight: isSelected ? 3 : 2,
-      fillColor: STATUS_COLOR[sos.status],
-      fillOpacity: 0.95
-    })
-    // Tooltip dùng nhãn tiếng Việt, bỏ dấu gạch thừa khi thiếu tên nạn nhân, có class riêng
-    // để canh chữ đẹp (không dính viền như tooltip mặc định Leaflet).
-    const tenNan = sos.victim_name?.trim()
-    const noiDung = `${tenNan ? tenNan + ' · ' : ''}${SOS_TYPE_LABEL[sos.type]} (${SOS_STATUS_LABEL[sos.status]})`
-    marker.bindTooltip(noiDung, { direction: 'top', className: 'rescue-tooltip' })
-    marker.on('click', () => emit('select-sos', sos.id))
-    marker.addTo(sosLayer)
+    conTrongDs.add(sos.id)
+    const dangChon = sos.id === props.selectedSosId
+    const chuKy = chuKySos(sos, dangChon)
+    const cu = markerSosTheoId.get(sos.id)
+    if (cu?.chuKy === chuKy) continue
+    if (cu) canGo.push(cu.marker)
+    const marker = taoMarkerSos(sos, dangChon)
+    markerSosTheoId.set(sos.id, { marker, chuKy })
+    canThem.push(marker)
   }
+  for (const [id, { marker }] of markerSosTheoId) {
+    if (conTrongDs.has(id)) continue
+    canGo.push(marker)
+    markerSosTheoId.delete(id)
+  }
+  // Gỡ trước, thêm sau — và theo lô: MarkerClusterGroup tính cụm 1 lần cho cả lô.
+  if (canGo.length) {
+    if (sosLayer instanceof L.MarkerClusterGroup) sosLayer.removeLayers(canGo as L.Marker[])
+    else canGo.forEach((m) => sosLayer?.removeLayer(m))
+  }
+  if (canThem.length) {
+    if (sosLayer instanceof L.MarkerClusterGroup) sosLayer.addLayers(canThem)
+    else canThem.forEach((m) => m.addTo(sosLayer as L.LayerGroup))
+  }
+}
+
+// F-MAP-03: chế độ bản đồ nhiệt thay cho marker SOS (không vẽ chồng cả hai — rối mắt).
+const NGUONG_DO_TOI_THIEU = 5
+function apDungCheDoHienThi() {
+  if (!map || !sosLayer) return
+  const dangXemNhiet = props.heatmap != null
+  if (dangXemNhiet) {
+    if (map.hasLayer(sosLayer)) map.removeLayer(sosLayer)
+    if (!heatLayer) {
+      heatLayer = L.heatLayer([], {
+        radius: 25,
+        blur: 18,
+        maxZoom: 14,
+        minOpacity: 0.35,
+        gradient: { 0.2: '#2c7bb6', 0.45: '#abd9e9', 0.65: '#fee090', 0.8: '#fdae61', 1: '#d7191c' }
+      })
+    }
+    const diem = props.heatmap ?? []
+    // Ngưỡng tối thiểu 5: chỉ nơi có từ ~5 SOS dồn lại mới lên màu ĐỎ. Trước đây max = trọng số
+    // lớn nhất (thường là 1 khi ít dữ liệu) → một SOS lẻ cũng hiện thành đốm đỏ rực như "điểm
+    // nóng", dễ khiến commander hiểu nhầm là vùng có nhiều sự cố.
+    const max = diem.reduce((m, p) => Math.max(m, p[2]), NGUONG_DO_TOI_THIEU)
+    heatLayer.setOptions({ max })
+    heatLayer.setLatLngs(diem)
+    if (!map.hasLayer(heatLayer)) heatLayer.addTo(map)
+  } else {
+    if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer)
+    if (!map.hasLayer(sosLayer)) sosLayer.addTo(map)
+  }
+}
+
+// Zoom tới 1 SOS kể cả khi nó đang nằm trong cụm (zoomToShowLayer tự mở cụm).
+function hienSosTrongCum(id: string): boolean {
+  if (!(sosLayer instanceof L.MarkerClusterGroup)) return false
+  const m = (sosLayer.getLayers() as MarkerSos[]).find((l) => l.sosId === id)
+  if (!m) return false
+  sosLayer.zoomToShowLayer(m)
+  return true
+}
+
+// Cùng ý với markerSosTheoId: mỗi đội gửi GPS 30 giây/lần nên trước đây cứ mỗi lần là xoá sạch
+// + dựng lại MỌI marker đội. Giờ chỉ đội nào đổi chữ ký (vị trí, trạng thái, tên, khoảng cách/ETA)
+// mới bị dựng lại; marker circleMarker nhẹ nên gỡ/thêm từng cái, không cần theo lô như cụm SOS.
+const markerDoiTheoId = new Map<string, { marker: L.CircleMarker; chuKy: string }>()
+
+function chuKyDoi(team: RescueTeam | NearestTeam): string {
+  const khoangCach = 'distanceToVictim' in team ? team.distanceToVictim : null
+  const eta = 'estimatedArrival' in team ? team.estimatedArrival : null
+  return [team.name, team.status, team.lat, team.lng, khoangCach ?? '', eta ?? ''].join('|')
+}
+
+function taoMarkerDoi(team: RescueTeam | NearestTeam, lat: number, lng: number): L.CircleMarker {
+  const marker = L.circleMarker([lat, lng], {
+    radius: 7,
+    color: '#1e3a8a',
+    weight: 2,
+    fillColor: team.status === 'available' ? '#2563eb' : '#94a3b8',
+    fillOpacity: 0.9
+  })
+  let tooltip = `${team.name} (${RESCUE_TEAM_STATUS_LABEL[team.status]})`
+  if ('distanceToVictim' in team && team.distanceToVictim != null && team.estimatedArrival != null) {
+    tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
+  }
+  marker.bindTooltip(tooltip, { direction: 'top', className: 'rescue-tooltip' })
+  return marker
 }
 
 function buildTeamLayer() {
   if (!teamLayer) return
-  teamLayer.clearLayers()
+  const conTrongDs = new Set<string>()
   for (const team of props.teams) {
     if (team.lat == null || team.lng == null) continue
-    const marker = L.circleMarker([team.lat, team.lng], {
-      radius: 7,
-      color: '#1e3a8a',
-      weight: 2,
-      fillColor: team.status === 'available' ? '#2563eb' : '#94a3b8',
-      fillOpacity: 0.9
-    })
-    let tooltip = `${team.name} (${RESCUE_TEAM_STATUS_LABEL[team.status]})`
-    if ('distanceToVictim' in team && team.distanceToVictim != null && team.estimatedArrival != null) {
-      tooltip += ` — cách nạn nhân ~${dinhDangKhoangCach(team.distanceToVictim)} · ETA ~${team.estimatedArrival} phút`
-    }
-    marker.bindTooltip(tooltip, { direction: 'top', className: 'rescue-tooltip' })
+    conTrongDs.add(team.id)
+    const chuKy = chuKyDoi(team)
+    const cu = markerDoiTheoId.get(team.id)
+    if (cu?.chuKy === chuKy) continue
+    if (cu) teamLayer.removeLayer(cu.marker)
+    const marker = taoMarkerDoi(team, team.lat, team.lng)
     marker.addTo(teamLayer)
+    markerDoiTheoId.set(team.id, { marker, chuKy })
+  }
+  // Đội bị loại khỏi danh sách (hoặc mất toạ độ) thì gỡ marker, đừng để bóng ma trên bản đồ.
+  for (const [id, { marker }] of markerDoiTheoId) {
+    if (conTrongDs.has(id)) continue
+    teamLayer.removeLayer(marker)
+    markerDoiTheoId.delete(id)
   }
 }
 
@@ -325,13 +509,19 @@ function focusSelected() {
     )
     return
   }
-  const sos = props.sosList.find((s) => s.id === props.selectedSosId)
+  const id = props.selectedSosId
+  if (id && props.heatmap == null && hienSosTrongCum(id)) return
+  const sos = props.sosList.find((s) => s.id === id)
   if (sos) map.setView([sos.lat, sos.lng], Math.max(map.getZoom(), 13))
 }
 
 onMounted(() => {
   if (!mapContainer.value) return
-  map = L.map(mapContainer.value, { zoomControl: true }).setView([11.9465, 108.4419], 9)
+  // preferCanvas: marker đội + đường đi (circleMarker/polyline) vẽ trên 1 canvas thay vì
+  // mỗi cái 1 phần tử SVG — nhẹ hơn rõ trên điện thoại yếu. Marker SOS là divIcon (DOM) vì
+  // markercluster cần L.Marker, nhưng gom cụm đã giữ số phần tử DOM ở mức nhỏ.
+  // zoomControl: nút +/− — GIỮ (SRS mục 3.3 "Zoom in/out").
+  map = L.map(mapContainer.value, { zoomControl: true, preferCanvas: true }).setView([11.9465, 108.4419], 9)
   // Cấu hình tile (URL, attribution, crossOrigin, ưu tiên bộ offline z8–10) nằm trong
   // utils/tileLayer.ts — dùng chung với useLeafletMap.ts, xem giải thích đầy đủ ở đó.
   let coLoiTrongDot = false
@@ -347,19 +537,20 @@ onMounted(() => {
     })
     .addTo(map)
 
-  // Thêm heatmapLayer/hazardLayer TRƯỚC sosLayer/teamLayer — thứ tự add quyết định thứ tự vẽ
+  // Thêm thongKeXaLayer/hazardLayer TRƯỚC sosLayer/teamLayer — thứ tự add quyết định thứ tự vẽ
   // (layer thêm sau nằm trên), vòng tròn to/mờ phải nằm DƯỚI marker SOS/đội để không che mất
   // chúng.
-  heatmapLayer = L.layerGroup().addTo(map)
+  thongKeXaLayer = L.layerGroup().addTo(map)
   hazardLayer = L.layerGroup().addTo(map)
   reportLayer = L.layerGroup().addTo(map)
-  sosLayer = L.layerGroup().addTo(map)
+  sosLayer = taoLopSos().addTo(map)
   teamLayer = L.layerGroup().addTo(map)
   routeLayer = L.layerGroup().addTo(map)
-  buildHeatmapLayer()
+  buildThongKeXaLayer()
   buildHazardLayer()
   buildReportLayer()
   buildSosLayer()
+  apDungCheDoHienThi()
   buildTeamLayer()
   buildRouteLayer()
   focusSelected()
@@ -367,24 +558,30 @@ onMounted(() => {
   map.on('click', (e: L.LeafletMouseEvent) => {
     if (props.placingHazard) emit('pick-location', e.latlng.lat, e.latlng.lng)
   })
+  mapInstance.value = map
 })
 
 onBeforeUnmount(() => {
+  mapInstance.value = null
   map?.remove()
   map = null
-  heatmapLayer = null
+  thongKeXaLayer = null
   hazardLayer = null
   reportLayer = null
   sosLayer = null
+  markerSosTheoId.clear()
+  markerDoiTheoId.clear()
+  heatLayer = null
   teamLayer = null
   routeLayer = null
 })
 
-watch(() => props.heatmap, buildHeatmapLayer, { deep: true })
+watch(() => props.thongKeXa, buildThongKeXaLayer, { deep: true })
 watch(() => props.hazards, buildHazardLayer, { deep: true })
 watch(() => [props.pendingReports, props.selectedReportId], buildReportLayer, { deep: true })
 watch(() => props.sosList, buildSosLayer, { deep: true })
 watch(() => props.teams, buildTeamLayer, { deep: true })
+watch(() => props.heatmap, apDungCheDoHienThi)
 watch(
   () => props.selectedSosId,
   (id) => {
@@ -451,5 +648,75 @@ watch(() => props.routeThat, buildRouteLayer)
 }
 .rescue-map :deep(.hz-icon--chon) {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.55);
+}
+</style>
+
+<style>
+/* Marker SOS + cụm (F-MAP-05). Không scoped vì Leaflet tự tạo phần tử ngoài component. */
+.sos-dot-icon {
+  background: transparent;
+  border: 0;
+}
+.sos-dot {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  /* Nền trắng để biểu tượng loại sự cố rõ trên mọi nền bản đồ; màu viền = trạng thái. */
+  background: #ffffff;
+  border: 3px solid;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1;
+}
+.sos-dot--chon {
+  border-width: 4px;
+  font-size: 18px;
+  /* Vòng ngoài tối để SOS đang chọn nổi bật (màu viền trong vẫn là trạng thái). */
+  box-shadow: 0 0 0 3px #142720, 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.sos-cum {
+  background: transparent;
+}
+.sos-cum__loi {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid #ffffff;
+  box-sizing: border-box;
+  color: #ffffff;
+  font: 600 13px/1 'Inter', sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.sos-cum__cho {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #dc2626;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  box-sizing: border-box;
+  font: 600 11px/16px 'Inter', sans-serif;
+  text-align: center;
+}
+/* Cụm còn SOS chưa ai nhận: vòng lan toả để commander chú ý. */
+.sos-cum--gap .sos-cum__loi {
+  animation: sos-cum-lan 1.6s ease-out infinite;
+}
+@keyframes sos-cum-lan {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6); }
+  100% { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sos-cum--gap .sos-cum__loi { animation: none; }
 }
 </style>

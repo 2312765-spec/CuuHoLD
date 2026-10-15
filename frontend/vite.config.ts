@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 // File này CHỈ được chứa hằng số thuần (không import.meta.env) — xem comment đầu file
@@ -7,9 +7,36 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Node của vite.config.ts, import nhầm file có dùng nó sẽ làm vỡ ngay lúc build/dev.
 import { TILE_HOST_PATTERN } from './src/constants/tileProvider'
 
+// Đo được: /data/lamdong-wards.geojson (file nặng nhất khi mở /map) đi NGUYÊN 1,1 MB qua
+// `vite preview` — trong khi gzip chỉ còn ~270 KB. Nguyên nhân (đã kiểm chứng bằng curl và đọc
+// source Vite 5.4): preview gửi Content-Type 'application/geo+json', mà bộ nén của nó chỉ nén
+// loại khớp /text|javascript|\/json|xml/ — '+json' không khớp '/json'. Đổi sang
+// 'application/json' (GeoJSON là JSON hợp lệ, fetch().json() xử lý y hệt) → được nén.
+// Rất đáng kể khi test trên điện thoại qua ngrok. Chỉ ảnh hưởng server của Vite; `npm run dev`
+// vốn KHÔNG nén gì (nên test điện thoại bằng build + preview), còn nơi deploy (Vercel) tự quyết
+// Content-Type/nén theo cấu hình riêng.
+function geojsonContentType(): Plugin {
+  const gan = (req: { url?: string }, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    if (req.url?.split('?')[0].endsWith('.geojson')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    }
+    next()
+  }
+  return {
+    name: 'geojson-content-type',
+    configureServer(server) {
+      server.middlewares.use(gan)
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(gan)
+    }
+  }
+}
+
 export default defineConfig({
   plugins: [
     vue(),
+    geojsonContentType(),
     VitePWA({
       // 'autoUpdate': tự tải bản Service Worker mới khi có, không bắt người dùng
       // xoá cache tay — phù hợp với web tra cứu, khác 'prompt' (hỏi trước khi cập nhật).
@@ -53,6 +80,13 @@ export default defineConfig({
         // `npm run build:tiles` và commit vào public/tiles/ — SRS F-PWA-03. Xem lý do chọn
         // z8–10 thay vì z8–14 trong src/constants/tileProvider.ts.
         globPatterns: ['**/*.{js,wasm,css,html}', 'tiles/**/*.png'],
+
+        // F-PWA-05: nạp thêm public/push-sw.js (xử lý sự kiện 'push' + 'notificationclick')
+        // vào service worker Workbox sinh ra — không phải chuyển sang injectManifest, phần
+        // precache/offline ở trên giữ nguyên. Xem CLAUDE.md Mục 15.22.
+        // F-PWA-02: public/sos-sync-sw.js — tự gửi SOS trong hàng đợi offline bằng Background
+        // Sync, kể cả khi app đã đóng (trình duyệt hỗ trợ: Chrome/Edge/Android).
+        importScripts: ['/push-sw.js', '/sos-sync-sw.js'],
 
         // Chiến lược cache riêng cho từng loại dữ liệu — xem giải thích trong hội thoại:
         // tile bản đồ & dữ liệu ranh giới không nên xử lý giống nhau.

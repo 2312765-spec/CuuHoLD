@@ -12,6 +12,8 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { User } from '@/types/auth'
 import { login as apiLogin, getMe as apiGetMe } from '@/services/auth.service'
+import { huyThongBaoDayTrenMay } from '@/composables/useThongBaoDay'
+import { xoaPhienDongBo } from '@/utils/offlineQueue'
 
 const STORAGE_KEY = 'rescue-gis-auth'
 
@@ -77,6 +79,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    // F-PWA-05: huỷ đăng ký thông báo đẩy TRÊN MÁY (không gọi API — logout() cũng chạy lúc
+    // token đã hết hạn/401). Không huỷ thì người đăng nhập kế tiếp trên cùng máy nhận thông
+    // báo SOS của tài khoản này. Không await: đăng xuất phải xong ngay, bước này best-effort.
+    void huyThongBaoDayTrenMay()
+    // F-PWA-02: xoá token bản sao mà service worker dùng để gửi SOS nền — người dùng đã chủ
+    // động đăng xuất thì token không được nằm lại trong IndexedDB. SOS còn chờ vẫn nằm trong
+    // hàng đợi, tự gửi khi đúng người đó đăng nhập lại (như trước). Best-effort, không chặn.
+    const idDangXuat = user.value?.id
+    if (idDangXuat) xoaPhienDongBo(idDangXuat).catch(() => undefined)
     accessToken.value = null
     refreshToken.value = null
     user.value = null
@@ -89,5 +100,11 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data.user
   }
 
-  return { accessToken, refreshToken, user, isLoggedIn, role, login, fetchMe, logout, setAuth }
+  // F-UI-01: backend trả user mới sau PATCH /users/me — thay tại chỗ, token giữ nguyên.
+  // watch ở trên tự ghi xuống sessionStorage nên F5 vẫn thấy tên mới.
+  function capNhatUser(moi: User) {
+    user.value = moi
+  }
+
+  return { accessToken, refreshToken, user, isLoggedIn, role, login, fetchMe, logout, setAuth, capNhatUser }
 })
