@@ -480,6 +480,9 @@ ESMS_SMS_TYPE=2
 # "Brand name code is not exist".
 ESMS_BRANDNAME=
 RESCUE_CENTER_PHONE=0901234567
+# Chạy thử: true = KHÔNG gửi SMS thật khi tạo SOS, chỉ ghi log mã SOS (Mục 15.25).
+# Để true khi dev/test/demo; false hoặc bỏ trống khi dùng thật. Chỉ nhận true/false.
+SMS_DRY_RUN=true
 
 # OpenRouteService (openrouteservice.org/dev/#/signup, free tier — Mục 15.13) — để trống thì
 # /api/routing/route trả 503, frontend tự lùi về đường chim bay, không ảnh hưởng phần khác.
@@ -1423,8 +1426,28 @@ build sạch; boot thật `node dist/main.js` → 6 route mới được map, g�
 - [ ] `npm audit` báo 10 lỗ hổng (axios, multer, express...) — **có sẵn từ trước**, không cái nào
   từ `web-push`.
 
+### 15.25 Công tắc tắt SMS khi chạy thử — `SMS_DRY_RUN` (2026-10-15)
+
+Trước đây tạo SOS nào cũng gửi 1 SMS eSMS thật (tốn tiền), nên các phiên kiểm thử đều NÉ tạo SOS
+(Mục 15.11, 15.23) — luồng SOS → phân công → bản đồ nhiệm vụ của rescuer chưa từng được thử lại trên
+trình duyệt. Nhánh `feature/sms-dry-run`, TDD (test viết trước, đỏ 7 → xanh).
+- `SMS_DRY_RUN=true` (backend/.env): `NotificationsService.sendSosSms()` KHÔNG gọi eSMS, chỉ ghi log
+  `[SMS DRY RUN] ... SOS <id> (<loại>)` — **không** ghi tên/SĐT/toạ độ nạn nhân. Khởi động mà đang
+  bật → log WARN để không lỡ để quên trên production.
+- Chỉ đúng chuỗi `true` mới bật. `env.validation.ts` chỉ nhận `true`/`false`/rỗng — gõ nhầm `yes`/`1`
+  thì crash lúc boot, thay vì âm thầm vẫn gửi SMS thật.
+- Kèm theo: thiếu `ESMS_API_KEY`/`ESMS_SECRET_KEY` → bỏ qua, không gọi eSMS (trước đây vẫn gọi với
+  khoá rỗng rồi nhận lỗi).
+- `backend/.env.example` để `SMS_DRY_RUN=true` (mặc định an toàn cho dev). Môi trường dùng thật
+  (Render) phải đặt `false` hoặc bỏ trống.
+- Chỉ áp cho SMS. Push (Mục 15.24), socket, auto-assign vẫn chạy đủ — đúng thứ cần để thử trọn luồng.
+
+**Kiểm chứng:** `notifications.service.spec.ts` (mới — trước đây service này không có test nào, 15 test)
++ `env.validation.spec.ts` (6 test). BE 207/207 test, lint/build sạch; boot thật thấy WARN.
+
 ---
 
+*Phiên bản: 2.17.0 — Cập nhật: 2026-10-15 (thêm Mục 15.25 — công tắc `SMS_DRY_RUN` tắt SMS thật khi chạy thử)*
 *Phiên bản: 2.16.0 — Cập nhật: 2026-10-15 (thêm Mục 15.24 — backend lịch sử SOS, sửa tên/đổi mật khẩu, thông báo đẩy Web Push; migration `gis/13-create-push-subscriptions.sql`)*
 *Phiên bản: 2.15.0 — Cập nhật: 2026-10-15 (merge PR #5 giữ cả hai phía: thêm Mục 15.23; mục của PR đổi số 15.13–15.15 → 15.20–15.22; migration ảnh SOS đổi `gis/10` → `gis/12`; ẩn tính năng chờ backend bằng cờ `VITE_BAT_*`)*
 *Phiên bản: 2.14.0 — Cập nhật: 2026-10-07 (merge PR #4; mục bug marker/tự zoom SOS đổi số 15.13 → 15.19; bỏ `GET /api/health` trùng của SystemController)*

@@ -26,6 +26,9 @@ export const envValidationSchema = Joi.object({
   ESMS_SMS_TYPE: Joi.string().allow('').optional(),
   ESMS_BRANDNAME: Joi.string().allow('').optional(),
   RESCUE_CENTER_PHONE: Joi.string().allow('').optional(),
+  // Chạy thử: 'true' thì KHÔNG gửi SMS thật (NotificationsService chỉ ghi log). Chỉ nhận đúng
+  // 'true'/'false'/rỗng — gõ nhầm 'yes'/'1' sẽ crash lúc boot thay vì âm thầm vẫn gửi SMS thật.
+  SMS_DRY_RUN: Joi.string().valid('true', 'false', '').optional(),
 
   // OpenRouteService (CLAUDE.md Mục 15.13) — không bắt buộc, giống eSMS: RoutingService tự
   // trả 503 khi thiếu, không được chặn boot của cả server vì Quang có thể chưa đăng ký key.
