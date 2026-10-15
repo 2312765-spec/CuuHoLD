@@ -1195,10 +1195,10 @@ phép camera và chụp ảnh tại hiện trường**, quản trị viên đư�
   - [ ] Bán kính gộp 100 m là hằng số, chưa cấu hình được; 2 điểm sạt khác nhau cùng loại cách < 100 m sẽ bị gộp.
   - [ ] Danh sách báo cáo chạy 2 truy vấn tuần tự (~1 s với Supabase từ xa, lần đầu ~3 s do kết nối nguội); nếu
     chậm khi triển khai thật thì gộp truy vấn "báo cáo đã gộp" vào truy vấn chính.
-  - [ ] **Dữ liệu thử còn lại trong DB thật** (đếm 2026-10-05): 17 dòng `hazard_reports` (7 đã duyệt, 10 từ chối;
+  - [x] **Dữ liệu thử còn lại trong DB thật** (đếm 2026-10-05): 17 dòng `hazard_reports` (7 đã duyệt, 10 từ chối;
     TOÀN BỘ là dữ liệu thử, mô tả chứa "E2E"/"UI-TEST"), trong đó 4 dòng đứng tên 1 tài khoản người dùng thật
-    của nhóm (đã ẩn tên + số điện thoại trong tài liệu này); 30 dòng `road_hazards` đã gỡ. Chưa xoá vì xoá dữ liệu trên DB thật cần Quang đồng ý.
-  - [ ] **2 cảnh báo ĐỎ đang hoạt động không phải do bài test này tạo** — `aae9a47c…` ("Sạt lở taluy, đá lăn xuống
+    của nhóm (đã ẩn tên + số điện thoại trong tài liệu này); 30 dòng `road_hazards` đã gỡ. Chưa xoá vì xoá dữ liệu trên DB thật cần Quang đồng ý. — **Đã xoá (2026-10-15, người dùng xác nhận từng nhóm):** toàn bộ 17 `hazard_reports` + toàn bộ 32 `road_hazards` (30 đã gỡ + 2 đang bật ở dòng dưới), 1 transaction có kiểm số dòng trước khi xoá. **Cố ý GIỮ:** 20 SOS cũ đã huỷ/hoàn tất + 36 dòng timeline (dữ liệu cho trang Thống kê/heatmap khi bảo vệ) và 14 tài khoản tên thử (Repro Tester, Test Commander, CORS Test, Race A/B/B2...).
+  - [x] **2 cảnh báo ĐỎ đang hoạt động không phải do bài test này tạo** — `aae9a47c…` ("Sạt lở taluy, đá lăn xuống
     đường (demo)", r=300 m, ward 24805) và `44eb9f44…` ("Điểm Sạt lở", r=200 m, ward 24781, tạo 15:03 bởi tài
     khoản Admin Local). Cảnh báo đỏ làm tuyến đi né và ảnh hưởng chọn đội tự động (Mục 15.14.1): nếu là dữ liệu
     thử thì gỡ ở Dashboard → "Cảnh báo/chặn đường" → "Gỡ cảnh báo".
