@@ -27,8 +27,8 @@ interface AuthenticatedRequest extends Request {
 
 // Không bao giờ trả passwordHash ra ngoài — cùng cách destructure "_passwordHash" đã dùng ở
 // auth.service.ts/auth.controller.ts (quy ước ignore-pattern có sẵn, xem CLAUDE.md Mục 15.2).
-type SafeUser = Omit<User, 'passwordHash'>;
-function toSafeUser(user: User): SafeUser {
+export type SafeUser = Omit<User, 'passwordHash'>;
+export function toSafeUser(user: User): SafeUser {
   const { passwordHash: _passwordHash, ...safeUser } = user;
   return safeUser;
 }

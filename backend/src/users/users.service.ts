@@ -94,6 +94,35 @@ export class UsersService {
     }
   }
 
+  // F-UI-01 — người dùng tự đổi TÊN của mình (DTO đã trim + kiểm độ dài). Không có tham số nào
+  // khác: phone/wardCode/role không có đường tự đổi.
+  async updateMyName(userId: string, name: string): Promise<User> {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
+    user.name = name.trim();
+    return this.usersRepo.save(user);
+  }
+
+  // F-UI-01 — đổi mật khẩu, bắt buộc đúng mật khẩu hiện tại. Sai → 400, KHÔNG 401: interceptor
+  // http.ts của frontend gặp 401 lúc đang đăng nhập sẽ tự đăng xuất người dùng.
+  // ⚠️ JWT không trạng thái: token đã cấp trước khi đổi vẫn dùng được tới khi hết hạn (24h).
+  async changeMyPassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Không tìm thấy người dùng');
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new BadRequestException('Mật khẩu hiện tại không đúng');
+    }
+    if (newPassword === currentPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.usersRepo.save(user);
+  }
+
   // actorId = id của chính commander đang gọi — chặn tự đổi role của mình để tránh tự khoá
   // quyền commander của chính mình (không có tài khoản nào khác để mở lại). Không liên quan
   // gì tới lỗ hổng leo thang đặc quyền cũ (endpoint này vốn đã chỉ commander gọi được).

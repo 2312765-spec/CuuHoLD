@@ -169,6 +169,28 @@ cũng không phát hiện được tái sử dụng. Hệ quả phải biết: *
 > chuyển `refreshToken` sang cookie `httpOnly` trước (xem CLAUDE.md Mục 15.4), rồi mới làm
 > interceptor. Hiện `accessToken` hết hạn → bắt user đăng nhập lại như cũ.
 
+### PATCH /api/users/me
+🔒 Mọi role. **F-UI-01** — tự sửa hồ sơ của chính mình. **Chỉ sửa được `name`.**
+
+**Body**: `{ "name": "Nguyễn Văn B" }` — trim, 2–100 ký tự. Gửi kèm `phone`, `wardCode`, `role`
+hay field nào khác → `400` (`forbidNonWhitelisted`): số điện thoại là tên đăng nhập, xã/phường
+quyết định rescuer xem được SOS xã nào — cho tự đổi là tự mở quyền xem SOS xã khác.
+
+**200 OK**: `data` = user sau khi sửa (cùng shape `GET /api/auth/me`, không có `passwordHash`).
+
+### PATCH /api/users/me/password
+🔒 Mọi role. **F-UI-01**. Rate limit **5 lần/15 phút/user**.
+
+**Body**: `{ "currentPassword": "...", "newPassword": "..." }` — `newPassword` 8–72 ký tự
+(bcrypt chỉ dùng 72 byte đầu), băm bcrypt cost 12.
+
+**200 OK**: `data: null`. Lỗi: **`400`** khi sai mật khẩu hiện tại hoặc mật khẩu mới trùng mật
+khẩu cũ — cố ý **không** dùng `401`, vì interceptor `http.ts` của frontend gặp `401` sẽ tự đăng
+xuất người đang đăng nhập.
+
+> ⚠️ JWT không trạng thái: `accessToken`/`refreshToken` cấp **trước** khi đổi mật khẩu vẫn dùng
+> được tới khi hết hạn (24h / 7 ngày). Muốn thu hồi ngay phải lưu phiên ở DB (chưa có).
+
 ---
 
 ## 2. SOS (`/api/sos`) 🔒 — tất cả route đều cần JWT
