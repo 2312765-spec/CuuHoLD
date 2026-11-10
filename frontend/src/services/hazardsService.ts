@@ -8,8 +8,10 @@ import { CONFIG } from '@/config'
 import type { Hazard, CreateHazardPayload } from '@/types'
 
 // GET /api/hazards — cảnh báo đang hoạt động, mọi vai trò đã đăng nhập đều gọi được.
-export async function layCanhBaoDangHoatDong(): Promise<Hazard[]> {
-  const { data } = await http.get(CONFIG.endpoints.hazards)
+// imLang=true: lượt tải lại ngầm định kỳ (MapView) — lỗi thì không toast, tránh mỗi phút một toast
+// khi mất mạng; lần tải chính khi mở trang vẫn báo lỗi như cũ.
+export async function layCanhBaoDangHoatDong(imLang = false): Promise<Hazard[]> {
+  const { data } = await http.get(CONFIG.endpoints.hazards, { khongHienToastLoi: imLang })
   return data.data as Hazard[]
 }
 

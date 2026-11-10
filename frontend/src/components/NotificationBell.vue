@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
-import { useNotificationStore } from '@/stores/notifications'
+import { useNotificationStore, type ThongBao } from '@/stores/notifications'
 
 // Trung tâm thông báo (F-UI-03). Chuông + badge số chưa đọc ở header, danh sách thả xuống.
 // CHỈ hiển thị: việc nghe socket và ghi lịch sử nằm ở NotificationListener.vue (mount ở App.vue,
@@ -23,10 +23,12 @@ function toggle() {
 }
 function dong() { moRong.value = false }
 
-function chonThongBao(sosId?: string) {
+function chonThongBao(tb: ThongBao) {
   dong()
-  // Chỉ commander có Bảng điều phối để xem chi tiết SOS.
-  if (sosId && authStore.role === 'commander') router.push('/dashboard')
+  // Chỉ commander có Bảng điều phối để xem chi tiết SOS / duyệt báo cáo.
+  if (authStore.role !== 'commander') return
+  if (tb.loai === 'bao-cao-moi') router.push({ path: '/dashboard', query: { tab: 'reports' } })
+  else if (tb.sosId) router.push('/dashboard')
 }
 
 function thoiGianNgan(iso: string): string {
@@ -38,7 +40,7 @@ function thoiGianNgan(iso: string): string {
 }
 
 // Thông báo cũ (lưu trước khi có trường icon) rơi về biểu tượng theo loại.
-const ICON: Record<string, string> = { 'sos-moi': '🆘', 'sos-capnhat': '🔄', 'he-thong': '📢' }
+const ICON: Record<string, string> = { 'sos-moi': '🆘', 'sos-capnhat': '🔄', 'he-thong': '📢', 'bao-cao-moi': '🚧' }
 
 // Đóng khi bấm ra ngoài.
 function onClickNgoai(e: MouseEvent) {
@@ -85,7 +87,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
             :key="tb.id"
             class="noti-item"
             :class="{ unread: !tb.daDoc }"
-            @click="chonThongBao(tb.sosId)"
+            @click="chonThongBao(tb)"
           >
             <span class="noti-ico" aria-hidden="true">{{ tb.icon ?? ICON[tb.loai] }}</span>
             <div class="noti-body">

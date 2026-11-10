@@ -11,7 +11,8 @@ import { ref, computed, watch } from 'vue'
 import { useAuthStore } from './auth.store'
 import type { SosStatus } from '@/types'
 
-export type LoaiThongBao = 'sos-moi' | 'sos-capnhat' | 'he-thong'
+// 'bao-cao-moi': báo cáo sạt lở/chặn đường của người dân đang chờ commander duyệt.
+export type LoaiThongBao = 'sos-moi' | 'sos-capnhat' | 'he-thong' | 'bao-cao-moi'
 
 export interface ThongBao {
   id: string
