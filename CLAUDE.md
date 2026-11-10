@@ -1550,3 +1550,40 @@ tốt hơn SRS → sửa tài liệu:
 *Phiên bản: 2.2.0 — Cập nhật: 2026-09-05 (thêm Mục 15 — checklist audit bảo mật/tooling/tài liệu, phát hiện qua rà code thật)*
 *Phiên bản: 2.1.0 — Cập nhật: 2026-08-24 (chuyển district_code → ward_code sau sáp nhập hành chính 2025)*
 *Tích hợp AI Skills từ: PatrickJS/awesome-cursorrules · Kadajett/agent-nestjs-skills · j4flmao/agent_skills_nodejs_nestjs · BehiSecc/awesome-claude-skills · Anthropic official skills*
+
+### 15.28 Bảng điều phối: thẻ SOS chi tiết + xếp theo mức độ, ghim đặt cảnh báo, lọc xã/phường, báo cáo mới tới commander (2026-11-10)
+
+Nhánh `feature/ui-chi-huy-sos-canh-bao`, **chỉ frontend**, không đổi API/DB.
+- **Thẻ SOS** (`DashboardView.vue`): tên xã thay mã số ("Phường Lâm Viên - Đà Lạt", không còn "Xã/phường 24778" —
+  `composables/useXaPhuong.ts`, đọc từ chính `public/data/lamdong-wards.geojson`), tên đường (Nominatim,
+  `services/diaChiService.ts`: hàng đợi ≥ 1.1 s/lượt + cache theo toạ độ ~11 m, lỗi → null không toast; chỉ tra
+  30 thẻ đầu), ngày giờ đầy đủ + "x phút trước", số điện thoại bấm gọi được, nhãn mức độ.
+- **Mức độ + sắp xếp** (`constants/sosMucDo.ts`): backend KHÔNG có cột mức độ → suy ra từ `type` (nguy kịch:
+  đuối nước/cháy/sạt lở; nặng: lũ/y tế/tai nạn; vừa: lạc/dã ngoại; nhẹ: còn lại). Mặc định xếp khẩn cấp nhất trước,
+  cùng mức thì ca `pending` trước rồi mới nhất; ca đã kết thúc luôn ở cuối. Có chọn "Mới nhất"/"Chờ lâu nhất". Viền
+  trái + nền thẻ theo MỨC ĐỘ (trước đây theo trạng thái); SOS `pending` < 5 phút nhấp nháy; tab SOS đếm "N ca gấp".
+- **"+ Đánh dấu cảnh báo"**: trước đây chỉ đổi con trỏ, click mò là mở form ngay. Giờ tái dùng ghim kéo được của
+  báo hộ (`useGhimViTri`, nới kiểu tham số sang `Readonly<Ref>`) + bảng "Chọn vị trí cảnh báo" (tên đường, toạ độ,
+  "Ghim tại tâm bản đồ", "Xác nhận vị trí"). Đang xem ≥ zoom 12 thì đặt sẵn ghim ở tâm. Dashboard không còn truyền
+  `placing-hazard`/`@pick-location` cho `RescueMap` — prop đó giờ không ai dùng (chưa xoá).
+- **Lọc xã/phường** (`components/map/ChonXaPhuong.vue`, control Leaflet dưới nút "Vị trí của tôi", tìm không dấu):
+  chọn xã → `flyToBounds` khung xã (maxZoom 15). Dashboard: lọc luôn danh sách SOS (`useSosDashboard.locXa`, "Xoá
+  lọc" bỏ cả lọc xã). MapView (victim): chỉ di chuyển bản đồ.
+- **Báo cáo sự cố chờ duyệt**: backend ĐÃ có đủ (`hazard-report:new` tới `province:lamdong`, duyệt → `hazards.create`
+  → `notification:system`). Lỗ hổng ở frontend: chỉ Dashboard nghe `hazard-report:new`. Giờ `NotificationListener`
+  ghi vào chuông (loại `bao-cao-moi`, bấm → `/dashboard?tab=reports`) + toast ở mọi trang trừ Dashboard; Dashboard
+  thêm dải vàng "Có N báo cáo chờ duyệt". MapView trước đây KHÔNG nghe `notification:system` → cảnh báo vừa duyệt
+  không hiện cho người dân tới khi F5; giờ nghe + tải lại mỗi 60 s và khi quay lại tab (`layCanhBaoDangHoatDong(true)`
+  không toast lỗi), vì sự kiện chỉ tới đúng xã của cảnh báo.
+- **Test**: `vitest.config.ts` thêm `setupFiles: src/test-utils/setup.ts` chặn `diaChiService` cho MỌI test (không
+  gọi Nominatim thật kể cả CI); spec riêng của service dùng `vi.unmock`. 21 test mới (xaPhuong, sosMucDo,
+  diaChiService, ChonXaPhuong, NotificationListener, DashboardChiTietSos) → 317 test pass; eslint + vue-tsc + build
+  sạch. Ảnh chụp Chrome headless với API giả: thẻ, sắp xếp, bay tới phường, ghim + tên đường đều đúng.
+- **Còn nợ / giới hạn**:
+  - [ ] Chưa test với backend/DB thật và điện thoại thật (kéo ghim trên màn cảm ứng).
+  - [ ] Commander đóng hẳn trình duyệt vẫn không biết có báo cáo mới — cần B thêm Web Push cho `hazard-report:new`
+    (đã có hạ tầng push Mục 15.24). Victim ở xã khác/không có xã không nhận `notification:system` (chỉ bắn
+    `province:lamdong` + `ward:{xã}`), đang bù bằng tải lại 60 s; muốn tức thì thì B bắn thêm vào mọi victim.
+  - [ ] Nominatim công khai: giới hạn 1 lượt/giây/IP, không SLA. Triển khai thật nên tra qua backend có cache chung
+    (hoặc lưu `address` vào `sos_requests` lúc tạo SOS).
+  - [ ] CSV vẫn xuất mã xã (chưa đổi sang tên).
