@@ -4,7 +4,7 @@
 // Bật chế độ ghim: chạm bản đồ đặt ghim, kéo ghim để chỉnh. Tắt chế độ: gỡ ghim, trả lại con
 // trỏ bình thường. Chỉ nhận vị trí nằm trong khung ranh giới tỉnh (nếu có) — ghim nhầm ra
 // ngoài tỉnh thì không đội nào trong hệ thống tới được.
-import { ref, watch, onBeforeUnmount, type Ref, type ShallowRef } from 'vue'
+import { ref, watch, onBeforeUnmount, type Ref } from 'vue'
 import L from 'leaflet'
 import type { ToaDo } from '@/utils/geo'
 
@@ -19,7 +19,8 @@ const ICON_GHIM = L.divIcon({
 })
 
 export function useGhimViTri(
-  mapInstance: ShallowRef<L.Map | null>,
+  // Readonly<Ref> thay vì ShallowRef: Bảng điều phối truyền computed lấy từ ref của RescueMap.
+  mapInstance: Readonly<Ref<L.Map | null>>,
   dangGhim: Ref<boolean>,
   khungHopLe?: () => L.LatLngBounds | null
 ) {

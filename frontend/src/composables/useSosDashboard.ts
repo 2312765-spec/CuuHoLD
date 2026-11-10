@@ -4,6 +4,7 @@
 
 import { ref, computed, type Ref } from 'vue'
 import type { SosListItem, SosType, SosStatus } from '@/types'
+import { sapXepSos, type CachSapXepSos } from '@/constants/sosMucDo'
 
 export function useSosDashboard(
   sosList: Ref<SosListItem[]>,
@@ -13,10 +14,15 @@ export function useSosDashboard(
   const locLoai = ref<SosType | 'all'>('all')
   const locTrangThai = ref<SosStatus | 'all'>('all')
   const tuKhoa = ref('')
+  // Mã xã/phường ('' = mọi xã) — đặt từ bộ chọn xã trên bản đồ (ChonXaPhuong.vue).
+  const locXa = ref('')
+  // Mặc định ca nghiêm trọng nhất lên đầu (constants/sosMucDo.ts).
+  const sapXep = ref<CachSapXepSos>('khan-cap')
 
   const danhSachLoc = computed(() => {
     const kw = tuKhoa.value.trim().toLowerCase()
-    return sosList.value.filter((s) => {
+    const loc = sosList.value.filter((s) => {
+      if (locXa.value && s.ward_code !== locXa.value) return false
       if (locLoai.value !== 'all' && s.type !== locLoai.value) return false
       if (locTrangThai.value !== 'all' && s.status !== locTrangThai.value) return false
       if (kw) {
@@ -26,13 +32,19 @@ export function useSosDashboard(
       }
       return true
     })
+    return sapXepSos(loc, sapXep.value)
   })
 
   const dangLoc = computed(
-    () => locLoai.value !== 'all' || locTrangThai.value !== 'all' || tuKhoa.value.trim() !== ''
+    () =>
+      locLoai.value !== 'all' ||
+      locTrangThai.value !== 'all' ||
+      tuKhoa.value.trim() !== '' ||
+      locXa.value !== ''
   )
 
   function xoaLoc(): void {
+    locXa.value = ''
     locLoai.value = 'all'
     locTrangThai.value = 'all'
     tuKhoa.value = ''
@@ -68,5 +80,5 @@ export function useSosDashboard(
     URL.revokeObjectURL(url)
   }
 
-  return { locLoai, locTrangThai, tuKhoa, danhSachLoc, dangLoc, xoaLoc, xuatCsv }
+  return { locLoai, locTrangThai, tuKhoa, locXa, sapXep, danhSachLoc, dangLoc, xoaLoc, xuatCsv }
 }
