@@ -4,19 +4,20 @@ import { useAuthStore } from '@/stores/auth.store'
 import type { UserRole } from '@/shared/socket-events.types'
 import { xuLyLoiTaiTrang } from './taiLaiKhiLoiTaiTrang'
 import { coLichSuSos } from '@/constants/tinhNangBackend'
+import { trang, taiTruocTheoVaiTro } from './taiTruocTrang'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'home', component: HomeView },
     // /map xem được không cần đăng nhập — chỉ hành động gửi SOS mới cần login (nhắc qua modal).
-    { path: '/map', name: 'map', component: () => import('@/views/MapView.vue') },
+    { path: '/map', name: 'map', component: trang.map },
     // Khu vực rescuer/commander vẫn bắt buộc đăng nhập đúng vai trò.
     // F-UI-01 — hồ sơ cá nhân + đổi mật khẩu, mọi role đã đăng nhập.
     {
       path: '/ho-so',
       name: 'ho-so',
-      component: () => import('@/views/HoSoView.vue'),
+      component: trang.hoSo,
       meta: { requiresAuth: true }
     },
     // F-UI-02 — lịch sử SOS cá nhân, chỉ victim (người gửi SOS). Backend chưa có
@@ -24,45 +25,45 @@ const router = createRouter({
     {
       path: '/lich-su',
       name: 'lich-su',
-      component: () => import('@/views/LichSuSosView.vue'),
+      component: trang.lichSu,
       meta: { requiresAuth: true, roles: ['victim'] as UserRole[] },
       beforeEnter: () => (coLichSuSos() ? true : { name: 'map' })
     },
     {
       path: '/rescuer',
       name: 'rescuer',
-      component: () => import('@/views/RescuerView.vue'),
+      component: trang.rescuer,
       meta: { requiresAuth: true, roles: ['rescuer'] as UserRole[] }
     },
     {
       path: '/dashboard',
       name: 'dashboard',
-      component: () => import('@/views/DashboardView.vue'),
+      component: trang.dashboard,
       meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
     },
     {
       path: '/users',
       name: 'users',
-      component: () => import('@/views/UsersView.vue'),
+      component: trang.users,
       meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
     },
     {
       // Mọi vai trò đã đăng nhập đều báo cáo được (người dân, tình nguyện viên/cứu hộ, chỉ huy).
       path: '/report',
       name: 'report',
-      component: () => import('@/views/ReportView.vue'),
+      component: trang.report,
       meta: { requiresAuth: true }
     },
     {
       path: '/system',
       name: 'system',
-      component: () => import('@/views/SystemView.vue'),
+      component: trang.system,
       meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
     },
     {
       path: '/stats',
       name: 'stats',
-      component: () => import('@/views/StatsView.vue'),
+      component: trang.stats,
       meta: { requiresAuth: true, roles: ['commander'] as UserRole[] }
     }
   ]
@@ -83,6 +84,9 @@ router.beforeEach((to) => {
   }
   return true
 })
+
+// Sau mỗi lần chuyển trang, tải trước (lúc rảnh) các trang vai trò này hay mở — xem taiTruocTrang.ts.
+router.afterEach(() => taiTruocTheoVaiTro(useAuthStore().role))
 
 // Tải file JS của trang thất bại → tự tải lại toàn trang tới đúng địa chỉ (xem file dưới).
 router.onError((loi, to) => xuLyLoiTaiTrang(loi, to.fullPath))

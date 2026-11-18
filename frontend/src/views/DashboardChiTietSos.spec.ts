@@ -75,14 +75,16 @@ describe('Bảng điều phối — thẻ SOS chi tiết', () => {
 })
 
 describe('Bảng điều phối — đặt cảnh báo', () => {
-  it('bấm "+ Đánh dấu cảnh báo" → bảng hướng dẫn, chưa ghim thì chưa xác nhận được; Huỷ đóng bảng', async () => {
+  it('bấm "+ Đánh dấu cảnh báo" → bảng hướng dẫn kéo ghim, không còn nút "Ghim tại tâm"; Huỷ đóng bảng', async () => {
     const w = await gan([])
     const nutDanhDau = w.findAll('button').find((b) => b.text().includes('Đánh dấu cảnh báo'))
     await nutDanhDau!.trigger('click')
 
     const bang = w.find('.dat-ghim')
     expect(bang.exists()).toBe(true)
-    expect(bang.text()).toContain('Chạm vào bản đồ')
+    expect(bang.text()).toContain('Kéo ghim')
+    expect(bang.text()).not.toContain('Ghim tại tâm')
+    // Bản đồ bị stub (không có Leaflet) nên chưa có ghim → chưa xác nhận được.
     const xacNhan = bang.findAll('button').find((b) => b.text() === 'Xác nhận vị trí')
     expect(xacNhan!.attributes('disabled')).toBeDefined()
 

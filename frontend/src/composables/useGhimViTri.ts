@@ -22,7 +22,9 @@ export function useGhimViTri(
   // Readonly<Ref> thay vì ShallowRef: Bảng điều phối truyền computed lấy từ ref của RescueMap.
   mapInstance: Readonly<Ref<L.Map | null>>,
   dangGhim: Ref<boolean>,
-  khungHopLe?: () => L.LatLngBounds | null
+  khungHopLe?: () => L.LatLngBounds | null,
+  // Chữ hiện khi rê chuột lên ghim — báo hộ SOS và đặt cảnh báo dùng chung ghim này.
+  tieuDeGhim = 'Vị trí người cần cứu (kéo để chỉnh)'
 ) {
   const viTriGhim = ref<ToaDo | null>(null)
   const loiGhim = ref<string | null>(null)
@@ -44,7 +46,7 @@ export function useGhimViTri(
         icon: ICON_GHIM,
         draggable: true,
         keyboard: true,
-        title: 'Vị trí người cần cứu (kéo để chỉnh)',
+        title: tieuDeGhim,
         zIndexOffset: 1000
       }).addTo(map)
       marker.on('dragend', () => {

@@ -311,14 +311,25 @@ function onSelectSosFromMap(id: string) {
 const hienThongKe = ref(false)
 const heatmapData = ref<SosHeatmapPoint[]>([])
 const dangTaiThongKe = ref(false)
-const SO_NGAY_THONG_KE = 30
+// Trước đây cố định 30 ngày và chỉ vẽ vòng tròn lên bản đồ: dữ liệu thử cũ hơn 30 ngày → kết quả
+// rỗng mà không báo gì, commander tưởng nút hỏng. Giờ chọn được khoảng, có bảng xếp hạng xã và
+// câu báo rõ khi không có SOS nào trong khoảng đã chọn.
+const SO_NGAY_THONG_KE_OPTIONS = [7, 30, 90, 365] as const
+const soNgayThongKe = ref<number>(30)
+const daTaiThongKe = ref(false)
+const xepHangXa = computed(() =>
+  [...heatmapData.value].sort((a, b) => b.incident_count - a.incident_count)
+)
+const tongVuThongKe = computed(() => heatmapData.value.reduce((t, p) => t + p.incident_count, 0))
 
 async function taiThongKe(): Promise<void> {
   dangTaiThongKe.value = true
   try {
     const to = new Date()
-    const from = new Date(to.getTime() - SO_NGAY_THONG_KE * 24 * 60 * 60 * 1000)
+    const from = new Date(to.getTime() - soNgayThongKe.value * 24 * 60 * 60 * 1000)
     heatmapData.value = await layThongKeSosTheoXa(from, to)
+    daTaiThongKe.value = true
+    vuaKhungThongKe()
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server — giữ dữ liệu cũ (nếu có).
   } finally {
@@ -326,12 +337,27 @@ async function taiThongKe(): Promise<void> {
   }
 }
 
+// Đưa mọi xã có SOS vào khung nhìn để commander thấy ngay vòng tròn thống kê.
+function vuaKhungThongKe(): void {
+  const map = banDo.value
+  if (!map || heatmapData.value.length === 0) return
+  const diem = heatmapData.value.map((p) => [Number(p.lat), Number(p.lng)] as [number, number])
+  map.fitBounds(diem, { padding: [48, 48], maxZoom: 13 })
+}
+
+function bayToiXaThongKe(p: SosHeatmapPoint): void {
+  banDo.value?.flyTo([Number(p.lat), Number(p.lng)], 13, { duration: 0.8 })
+}
+
 function toggleThongKe(): void {
   hienThongKe.value = !hienThongKe.value
-  // Chỉ tải lần đầu bật — bấm tắt/bật lại nhiều lần không gọi lại API thừa. Muốn dữ liệu mới
-  // hơn (VD: xem lại vài phút sau) thì tự tắt/bật lại — chưa cần nút "làm mới" riêng.
-  if (hienThongKe.value && heatmapData.value.length === 0) void taiThongKe()
+  // Chỉ tải lần đầu bật; đổi khoảng thời gian trong bảng thì tải lại.
+  if (hienThongKe.value && !daTaiThongKe.value) void taiThongKe()
 }
+
+watch(soNgayThongKe, () => {
+  if (hienThongKe.value) void taiThongKe()
+})
 
 // Tile nền OSM lỗi — marker SOS/đội vẫn đúng vị trí (vector), chỉ nền raster thiếu.
 // RescueMap.vue tự dedupe trước khi emit (xem loiTile/watch ở đó) nên ở đây không cần
@@ -488,10 +514,9 @@ onBeforeUnmount(() => {
 // Ghim KÉO ĐƯỢC để chọn vị trí cảnh báo — tái dùng đúng ghim của "Báo SOS hộ" (useGhimViTri).
 // Trước đây chế độ này chỉ đổi con trỏ thành dấu + và chờ một cú click: không có gì hiện trên bản
 // đồ, commander không biết phải bấm vào đâu, bấm lệch là mở form ngay với vị trí sai.
-const ghimCanhBao = useGhimViTri(banDo, placingHazard)
-// Bản đồ đang xem đủ gần (≥ zoom này) thì đặt sẵn ghim ở tâm cho commander kéo đi; đang xem cả
-// tỉnh thì chờ commander chọn xã/chạm bản đồ (ghim ở tâm cả tỉnh vô nghĩa).
-const ZOOM_DAT_SAN_GHIM = 12
+// Bấm nút là ghim xuất hiện NGAY ở giữa bản đồ — commander chỉ việc kéo ghim hoặc chạm chỗ khác.
+// (Bản trước bắt bấm thêm "Ghim tại tâm bản đồ" khi đang xem cả tỉnh — thừa một bước, khó hiểu.)
+const ghimCanhBao = useGhimViTri(banDo, placingHazard, undefined, 'Vị trí cảnh báo (kéo để chỉnh)')
 
 watch(
   () => ghimCanhBao.viTriGhim.value,
@@ -503,8 +528,7 @@ watch(
 function batDauDatCanhBao(): void {
   panelTab.value = 'hazards'
   placingHazard.value = true
-  const map = banDo.value
-  if (map && map.getZoom() >= ZOOM_DAT_SAN_GHIM) ghimCanhBao.ghimTaiTamBanDo()
+  ghimCanhBao.ghimTaiTamBanDo()
 }
 
 function huyDatCanhBao(): void {
@@ -602,7 +626,7 @@ async function confirmAssign(team: NearestTeam) {
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
         <button class="btn btn-ghost" :disabled="dangTaiThongKe" @click="toggleThongKe">
-          {{ dangTaiThongKe ? 'Đang tải...' : hienThongKe ? 'Ẩn thống kê theo xã' : `Thống kê theo xã (${SO_NGAY_THONG_KE} ngày)` }}
+          {{ hienThongKe ? 'Ẩn thống kê theo xã' : 'Thống kê theo xã' }}
         </button>
         <button v-if="!placingHazard" class="btn btn-ghost" @click="batDauDatCanhBao">
           + Đánh dấu cảnh báo
@@ -640,18 +664,49 @@ async function confirmAssign(team: NearestTeam) {
         <ViTriCuaToi :map="banDo" />
         <!-- Chọn xã → bản đồ bay tới xã đó + danh sách SOS chỉ còn SOS trong xã (F-MAP-02). -->
         <ChonXaPhuong v-model="locXa" :map="banDo" />
+        <!-- Bảng xếp hạng xã theo số SOS — đi kèm vòng tròn thống kê trên bản đồ. -->
+        <section v-if="hienThongKe" class="thong-ke-xa" aria-labelledby="thong-ke-xa-title">
+          <div class="thong-ke-xa__head">
+            <h2 id="thong-ke-xa-title">SOS theo xã/phường</h2>
+            <button type="button" class="thong-ke-xa__dong" aria-label="Ẩn thống kê theo xã" @click="toggleThongKe">✕</button>
+          </div>
+          <label class="thong-ke-xa__khoang">
+            Trong
+            <select v-model.number="soNgayThongKe" aria-label="Khoảng thời gian thống kê">
+              <option v-for="n in SO_NGAY_THONG_KE_OPTIONS" :key="n" :value="n">
+                {{ n === 365 ? '1 năm' : `${n} ngày` }}
+              </option>
+            </select>
+            qua
+          </label>
+          <p v-if="dangTaiThongKe" class="thong-ke-xa__trong">Đang tải…</p>
+          <p v-else-if="xepHangXa.length === 0" class="thong-ke-xa__trong">
+            Không có SOS nào trong {{ soNgayThongKe === 365 ? '1 năm' : `${soNgayThongKe} ngày` }} qua.
+            Thử chọn khoảng thời gian dài hơn.
+          </p>
+          <template v-else>
+            <p class="thong-ke-xa__tong">{{ tongVuThongKe }} vụ ở {{ xepHangXa.length }} xã/phường</p>
+            <ol class="thong-ke-xa__ds">
+              <li v-for="p in xepHangXa" :key="p.ward_code">
+                <button type="button" @click="bayToiXaThongKe(p)">
+                  <span>{{ p.ward_name }}</span>
+                  <b>{{ p.incident_count }}</b>
+                </button>
+              </li>
+            </ol>
+          </template>
+        </section>
         <!-- Chọn vị trí cảnh báo: ghim kéo được + nút xác nhận, thay cho "click mò" trước đây. -->
         <section v-if="placingHazard" class="dat-ghim" aria-labelledby="dat-ghim-title">
           <div class="dat-ghim__head">
             <h2 id="dat-ghim-title">Chọn vị trí cảnh báo</h2>
             <button type="button" class="dat-ghim__dong" aria-label="Huỷ chọn vị trí" @click="huyDatCanhBao">✕</button>
           </div>
-          <p v-if="!ghimCanhBao.viTriGhim.value" class="dat-ghim__huong-dan">
-            Chạm vào bản đồ tại chỗ cần cảnh báo, hoặc chọn xã/phường ở góc trái để bay tới nhanh rồi bấm
-            "Ghim tại tâm bản đồ".
+          <p class="dat-ghim__huong-dan">
+            Kéo ghim (hoặc chạm vào bản đồ) tới đúng chỗ cần cảnh báo. Ở xa thì chọn xã/phường ở góc
+            trái để bay tới nhanh.
           </p>
-          <template v-else>
-            <p class="dat-ghim__huong-dan">Kéo ghim để chỉnh cho đúng chỗ, xong bấm "Xác nhận vị trí".</p>
+          <template v-if="ghimCanhBao.viTriGhim.value">
             <p class="dat-ghim__dia-chi">
               📍
               {{
@@ -666,7 +721,6 @@ async function confirmAssign(team: NearestTeam) {
             </p>
           </template>
           <div class="dat-ghim__nut">
-            <button type="button" class="btn btn-ghost" @click="ghimCanhBao.ghimTaiTamBanDo">Ghim tại tâm bản đồ</button>
             <button
               type="button"
               class="btn btn-primary"
@@ -1099,7 +1153,7 @@ async function confirmAssign(team: NearestTeam) {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .realtime-status .dot {
   width: 8px;
@@ -1229,7 +1283,7 @@ async function confirmAssign(team: NearestTeam) {
   border-bottom: 2px solid transparent;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
 }
 .panel-tab.active {
@@ -1238,7 +1292,7 @@ async function confirmAssign(team: NearestTeam) {
 }
 .panel-empty {
   padding: 24px 20px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 14px;
 }
 
@@ -1255,7 +1309,7 @@ async function confirmAssign(team: NearestTeam) {
 .hazard-hint {
   padding: 12px 20px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   background: var(--fog-dim);
   border-bottom: 1px solid var(--line);
 }
@@ -1335,7 +1389,7 @@ async function confirmAssign(team: NearestTeam) {
 }
 .hazard-form-field label {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .hazard-form-field select,
 .hazard-form-field input,
@@ -1479,7 +1533,7 @@ async function confirmAssign(team: NearestTeam) {
 }
 .sos-status-badge {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .sos-victim {
   font-size: 15px;
@@ -1497,12 +1551,12 @@ async function confirmAssign(team: NearestTeam) {
 }
 .sos-meta {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .modal-sub {
   font-size: 14px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 18px;
 }
 .team-list {
@@ -1527,7 +1581,7 @@ async function confirmAssign(team: NearestTeam) {
 .team-meta {
   display: block;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   margin-top: 2px;
 }
 
@@ -1572,6 +1626,93 @@ async function confirmAssign(team: NearestTeam) {
 /* KHÔNG có luật dark riêng cho khu thống kê: .dashboard-panel luôn nền trắng (trang giữ nền
    sáng ở dark mode, xem style.css), luật cũ ép chữ kem sáng → ~1.0–1.2:1, gần như vô hình.
    Khoá bằng tuongPhanChu.spec.ts. */
+
+/* Bảng xếp hạng SOS theo xã — nổi góc phải trên bản đồ, dưới nút Điểm SOS/Mật độ. */
+.thong-ke-xa {
+  position: absolute;
+  top: 76px;
+  right: 12px;
+  z-index: 800;
+  width: min(280px, calc(100% - 24px));
+  max-height: calc(100% - 100px);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #2a2a24;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+}
+.thong-ke-xa__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.thong-ke-xa__head h2 {
+  margin: 0;
+  font-size: 15px;
+  color: #2a2a24;
+}
+.thong-ke-xa__dong {
+  min-width: 40px;
+  min-height: 40px;
+  border: none;
+  background: none;
+  color: #2a2a24;
+  font-size: 16px;
+  cursor: pointer;
+}
+.thong-ke-xa__khoang {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 8px;
+  font-size: 14px;
+  color: #3f3f38;
+}
+.thong-ke-xa__khoang select {
+  min-height: 36px;
+  padding: 0 6px;
+  border: 1px solid rgba(42, 42, 36, 0.35);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2a2a24;
+  font: inherit;
+}
+.thong-ke-xa__trong,
+.thong-ke-xa__tong {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #3f3f38;
+}
+.thong-ke-xa__ds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+.thong-ke-xa__ds button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a2a24;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.thong-ke-xa__ds button:hover {
+  background: #f1ede2;
+}
+.thong-ke-xa__ds b {
+  color: #8a3a20;
+}
 
 /* Dải báo "có báo cáo mới chờ duyệt" — nền vàng đậm chữ nâu (≥ 4.5:1). */
 .bao-cao-moi-bar {
@@ -1712,7 +1853,7 @@ async function confirmAssign(team: NearestTeam) {
   gap: 12px;
 }
 .modal-tinh-trang dt {
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .modal-tinh-trang dd {
   margin: 0;
