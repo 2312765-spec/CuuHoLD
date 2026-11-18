@@ -10,6 +10,13 @@ describe('thongBaoLoiThanThien', () => {
     expect(thongBaoLoiThanThien(400, { message: ['Số điện thoại không hợp lệ'] })).toBe('Số điện thoại không hợp lệ')
   })
 
+  it('429 khoá đăng nhập: giữ câu tiếng Việt kèm số phút của backend', () => {
+    const tb = thongBaoLoiThanThien(429, {
+      message: 'Bạn đã nhập sai mật khẩu nhiều lần. Vui lòng thử lại sau 12 phút.'
+    })
+    expect(tb).toContain('12 phút')
+  })
+
   it('429 luôn là câu dễ hiểu, không lộ "ThrottlerException"', () => {
     const tb = thongBaoLoiThanThien(429, { message: 'ThrottlerException: Too Many Requests' })
     expect(tb).not.toContain('Throttler')

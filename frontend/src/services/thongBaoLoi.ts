@@ -32,9 +32,10 @@ function trichMessage(data: unknown): string | null {
 
 export function thongBaoLoiThanThien(status: number, data: unknown): string {
   const macDinh = MAC_DINH[status] ?? 'Yêu cầu không hợp lệ.'
-  // 429 do bộ giới hạn tần suất sinh ra — message luôn là kỹ thuật.
-  if (status === 429) return macDinh
   const msg = trichMessage(data)
+  // 429 của bộ giới hạn tần suất là câu kỹ thuật tiếng Anh → câu mặc định. Riêng khoá đăng nhập
+  // do nhập sai nhiều lần, backend tự viết tiếng Việt kèm số phút phải chờ → giữ nguyên.
+  if (status === 429) return msg && CO_DAU_TIENG_VIET.test(msg) ? msg : macDinh
   if (!msg) return macDinh
   if (!CO_DAU_TIENG_VIET.test(msg) && MAU_KY_THUAT.test(msg)) return macDinh
   return msg

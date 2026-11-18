@@ -6,6 +6,7 @@ import {
   UseGuards,
   Request,
   HttpCode,
+  Ip,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -34,10 +35,12 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
-  @Throttle({ default: { limit: 5, ttl: minutes(15) } })
+  // Trần chung chống spam (đếm MỌI lần gọi, theo IP). Chống dò mật khẩu thật sự nằm ở
+  // LoginAttemptsService: chỉ đếm lần SAI, sai 5 lần/15 phút → khoá 15 phút (CLAUDE.md 15.30).
+  @Throttle({ default: { limit: 30, ttl: minutes(15) } })
   @ApiOperation({ summary: 'Đăng nhập' })
-  async login(@Body() dto: LoginDto) {
-    const result = await this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Ip() ip: string) {
+    const result = await this.authService.login(dto, ip);
     return { success: true, data: result, message: 'Đăng nhập thành công' };
   }
 

@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,6 +14,7 @@ import { RegisterDto } from './dto/register.dto';
 import type { JwtPayload } from './jwt-payload.interface';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { LoginAttemptsService } from './login-attempts.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +22,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly loginAttempts: LoginAttemptsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -26,11 +30,27 @@ export class AuthService {
     return this.createAuthResponse(user);
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ip: string) {
+    const khoa = { ip, phone: dto.phone };
+    // Đang bị khoá vì sai quá nhiều lần → từ chối luôn, KHÔNG so mật khẩu (không cho dò tiếp).
+    const conKhoaMs = this.loginAttempts.lockedForMs(khoa);
+    if (conKhoaMs > 0) {
+      const phut = Math.ceil(conKhoaMs / 60_000);
+      throw new HttpException(
+        `Bạn đã nhập sai mật khẩu nhiều lần. Vui lòng thử lại sau ${phut} phút.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const user = await this.usersService.findByPhone(dto.phone);
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
-      throw new UnauthorizedException('Sai thông tin đăng nhập');
+      this.loginAttempts.recordFailure(khoa);
+      const conLai = this.loginAttempts.remainingAttempts(khoa);
+      // Chỉ nhắc khi sắp hết lượt — nhắc từ lần sai đầu thì ồn và gợi ý cho kẻ dò.
+      const nhac = conLai > 0 && conLai <= 2 ? ` (còn ${conLai} lần thử)` : '';
+      throw new UnauthorizedException(`Sai thông tin đăng nhập${nhac}`);
     }
+    this.loginAttempts.recordSuccess(khoa);
     if (!user.isActive) {
       // 403 chứ không phải 401 (SRS 3.1.2): 401 = "chưa chứng minh được danh tính",
       // còn đây danh tính ĐÚNG nhưng bị từ chối quyền vào. Chấp nhận việc này để lộ
