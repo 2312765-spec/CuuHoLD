@@ -4,6 +4,7 @@
 // không sửa được qua web (và không bao giờ hiển thị giá trị key/secret).
 
 import { ref, onMounted } from 'vue'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { layTrangThaiHeThong, layNhatKyHoatDong } from '@/services/systemService'
@@ -53,11 +54,17 @@ function formatUptime(giay: number): string {
 }
 
 async function taiDuLieu(): Promise<void> {
+  const cu = docTam<{ s: typeof status.value; a: typeof activity.value }>('system')
+  if (cu && !status.value) {
+    status.value = cu.s
+    activity.value = cu.a
+  }
   loading.value = true
   try {
     const [s, a] = await Promise.all([layTrangThaiHeThong(), layNhatKyHoatDong(50)])
     status.value = s
     activity.value = a
+    ghiTam('system', { s, a })
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {

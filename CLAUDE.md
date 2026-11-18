@@ -177,7 +177,7 @@ ST_DWithin(col::geography, ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography
 - bcrypt MINIMUM cost factor: 12
 - JWT expiry: accessToken=24h, refreshToken=7d — never 'never'
 - ALWAYS parameterized queries — NEVER string interpolation in SQL
-- Rate limit: 5 SOS/hour/user, 5 logins/15min/IP
+- Rate limit: 5 SOS/hour/user; login: 5 FAILED attempts/15min per IP+phone → locked 15min (successful logins never count), plus 30 login requests/15min/IP cap — see Mục 15.30
 - helmet() MUST be first middleware in main.ts
 - CORS: only allow FRONTEND_URL — never '*' in production
 - Environment variables: NEVER hardcode secrets in source code
@@ -541,7 +541,7 @@ VAPID_SUBJECT=mailto:...
 
 ### Rate Limits
 - SOS: 5 lần/giờ/user
-- Đăng nhập: 5 lần/15 phút/IP
+- Đăng nhập: sai 5 lần/15 phút (theo IP + số điện thoại) → khoá 15 phút; đăng nhập đúng không bị tính (Mục 15.30). Trần chung 30 lần gọi/15 phút/IP
 - Đăng ký: 3 lần/giờ/IP
 
 ---
@@ -1610,3 +1610,32 @@ Cùng nhánh `feature/ui-chi-huy-sos-canh-bao`, chỉ frontend.
 - **Victim báo cảnh báo chờ duyệt**: đã có sẵn (nút "Báo cáo sạt lở / chặn đường" trên `/map` khi đăng
   nhập → hàng "Báo cáo chờ duyệt"), không làm thêm.
 - Kiểm chứng: 327 test, eslint, vue-tsc, build sạch; ảnh chụp sáng/tối 6 màn hình.
+
+### 15.30 Khoá đăng nhập chỉ tính lần SAI + bản đồ chỉ trong tỉnh + mở lại trang nhanh (2026-11-18)
+
+Cùng nhánh `feature/ui-chi-huy-sos-canh-bao`. **Có sửa backend (auth, users) — cần B review.**
+- **Lỗi thật:** nhập sai 1–2 lần đã bị "thử lại sau vài phút", chờ 5 phút vẫn bị. Nguyên nhân: `@Throttle`
+  của `POST /api/auth/login` là 5 lần/15 phút/IP và đếm CẢ lần đăng nhập ĐÚNG; test nhiều tài khoản trên một
+  máy (chung IP) là hết lượt; khoá kéo dài 15 phút. Sửa: `auth/login-attempts.service.ts` chỉ đếm lần SAI theo
+  (IP, số điện thoại), sai 5 lần trong 15 phút → khoá 15 phút (không so mật khẩu khi đang khoá), đăng nhập
+  đúng xoá bộ đếm. 429 có câu tiếng Việt "thử lại sau N phút"; sai lần 4–5 → 401 "(còn N lần thử)". Trần chung
+  của route nâng 5 → 30/15 phút/IP. Bộ đếm trong RAM (mất khi khởi động lại; nhiều instance thì đếm riêng).
+  FE `thongBaoLoi.ts`: 429 có tiếng Việt thì hiện nguyên câu của backend.
+- **Xác thực JWT nhanh hơn:** `JwtStrategy` trước đây đọc tài khoản từ DB ở MỌI request (~350 ms Supabase).
+  `UsersService.findByIdForAuth` nhớ tạm 15 s; `updateRole/updateStatus/updateMyName/changeMyPassword` xoá bản
+  nhớ tạm ngay. Thay đổi bằng SQL thẳng nơi khác (`is_flagged`/`late_cancel_count` trong `SosService.cancel`)
+  có thể trễ tối đa 15 s trong `req.user`.
+- **Bản đồ chỉ trong tỉnh** (`utils/gioiHanTinh.ts`, dùng ở `useLeafletMap` + `RescueMap`): `maxBounds` = viền
+  tỉnh + 12%, `maxBoundsViscosity: 1`, `minZoom` = mức vừa khít tỉnh; lớp che KÍN (fillOpacity 1, màu nền
+  `#eae3d0`) toàn bộ vùng ngoài tỉnh — không còn hiện nước láng giềng, tỉnh khác, địa danh biển đảo. Viền tỉnh:
+  `public/data/lamdong-outline.geojson` (29 KB, đất liền + đảo Phú Quý) sinh bằng `npm run build:outline`
+  (`scripts/build-province-outline.mjs`, mapshaper dissolve từ `lamdong-wards.geojson`) — chạy lại sau
+  `build:wards`. Đã thêm vào runtime cache của service worker. Lớp che vẽ SVG pane riêng z-index 350.
+- **Mở lại trang nhanh:** `utils/nhoTam.ts` nhớ tạm (RAM, không ghi ổ đĩa) kết quả API lần trước của Thống
+  kê/Người dùng/Hệ thống/Bảng điều phối (SOS, đội, cảnh báo); mở lại hiện ngay rồi tải mới ở nền; "Đang tải..."
+  chỉ hiện khi chưa có gì. Đăng xuất xoá hết (`auth.store logout`). Đo bản build (`vite preview`, API giả trễ
+  400 ms): lần đầu ~450 ms, mở lại 40–110 ms.
+- Kiểm chứng: BE 230 unit + 24 e2e (thêm `login-lockout.e2e-spec.ts` HTTP thật), FE 334 test, eslint/tsc/build
+  sạch cả hai; ảnh chụp: kéo/thu nhỏ hết cỡ vẫn chỉ thấy tỉnh, nút "−" tự khoá.
+- Còn nợ: [ ] chưa thử trên điện thoại thật (kéo bản đồ sát biên); [ ] bộ đếm sai mật khẩu chưa dùng chung khi
+  chạy nhiều instance backend.

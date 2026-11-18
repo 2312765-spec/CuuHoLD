@@ -9,6 +9,7 @@
 // hợp lệ sẽ bị interceptor 401 trong services/http.ts tự logout().
 
 import { defineStore } from 'pinia'
+import { xoaHetTam } from '@/utils/nhoTam'
 import { ref, computed, watch } from 'vue'
 import type { User } from '@/types/auth'
 import { login as apiLogin, getMe as apiGetMe } from '@/services/auth.service'
@@ -79,6 +80,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    // Dữ liệu trang nhớ tạm (utils/nhoTam.ts) có tên/SĐT người dùng — không để lại cho người sau.
+    xoaHetTam()
     // F-PWA-05: huỷ đăng ký thông báo đẩy TRÊN MÁY (không gọi API — logout() cũng chạy lúc
     // token đã hết hạn/401). Không huỷ thì người đăng nhập kế tiếp trên cùng máy nhận thông
     // báo SOS của tài khoản này. Không await: đăng xuất phải xong ngay, bước này best-effort.

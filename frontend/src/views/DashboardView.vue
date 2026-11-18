@@ -5,6 +5,7 @@
 
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import '@/assets/map-style.css'
 import RescueMap from '@/components/map/RescueMap.vue'
 import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
@@ -192,10 +193,15 @@ watch([cheDoBanDo, soNgayNhiet], ([cheDo]) => {
   else diemNhiet.value = null
 })
 
+// Mở lại Bảng điều phối: hiện ngay danh sách lần trước rồi tải mới ở nền (utils/nhoTam.ts).
+// Socket cập nhật SOS mới/đổi trạng thái ngay sau đó nên dữ liệu cũ chỉ tồn tại vài trăm ms.
 async function taiDanhSachSos() {
+  const cu = docTam<SosListItem[]>('dashboard:sos')
+  if (cu && sosList.value.length === 0) sosList.value = cu
   loadingSos.value = true
   try {
     sosList.value = await layDanhSachSos()
+    ghiTam('dashboard:sos', sosList.value)
   } finally {
     loadingSos.value = false
   }
@@ -206,8 +212,11 @@ async function taiDanhSachSos() {
 // nhầm timDoiGanNhat() nên đội đang bận đi cứu hộ — đúng đội cần theo dõi nhất — không
 // hiện trên bản đồ.
 async function taiTatCaDoi() {
+  const cu = docTam<typeof teams.value>('dashboard:teams')
+  if (cu && teams.value.length === 0) teams.value = cu
   try {
     teams.value = await fetchRescueTeams()
+    ghiTam('dashboard:teams', teams.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server — giữ danh sách rỗng.
   }
@@ -377,9 +386,12 @@ const hazardsActive = computed(() => hazards.value.filter((h) => h.is_active))
 // chayNen=true: làm mới do socket kích hoạt — không bật cờ "đang tải" để danh sách đang đọc không bị
 // thay bằng chữ "Đang tải..." giữa chừng.
 async function taiCanhBao(chayNen = false): Promise<void> {
-  if (!chayNen) loadingHazards.value = true
+  const cu = docTam<typeof hazards.value>('dashboard:hazards')
+  if (cu && hazards.value.length === 0) hazards.value = cu
+  if (!chayNen && hazards.value.length === 0) loadingHazards.value = true
   try {
     hazards.value = await layTatCaCanhBao()
+    ghiTam('dashboard:hazards', hazards.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {
@@ -840,7 +852,7 @@ async function confirmAssign(team: NearestTeam) {
             </div>
             <p v-if="locXa" class="dash-xa">Đang xem: {{ tenXa(locXa) }}</p>
           </div>
-          <div v-if="loadingSos" class="panel-empty">Đang tải...</div>
+          <div v-if="loadingSos && sosList.length === 0" class="panel-empty">Đang tải...</div>
           <div v-else-if="sosList.length === 0" class="panel-empty">Chưa có yêu cầu SOS nào.</div>
           <div v-else-if="danhSachLoc.length === 0" class="panel-empty">Không có SOS khớp bộ lọc.</div>
           <ul v-else class="sos-list">

@@ -5,6 +5,7 @@
 // (RolesGuard) — trang này chỉ là giao diện gọi vào, không tự kiểm tra quyền gì thêm.
 
 import { ref, computed, onMounted } from 'vue'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import '@/assets/map-style.css'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
@@ -32,9 +33,13 @@ const loading = ref(false)
 const locBoLoc = ref<UserRole | 'all'>('all')
 
 async function taiDanhSach(): Promise<void> {
+  const khoa = `users:${locBoLoc.value}`
+  const cu = docTam<User[]>(khoa)
+  if (cu) users.value = cu
   loading.value = true
   try {
     users.value = await layDanhSachNguoiDung(locBoLoc.value === 'all' ? undefined : locBoLoc.value)
+    ghiTam(khoa, users.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {
@@ -178,7 +183,7 @@ onMounted(() => {
         <button class="btn btn-primary" @click="moModalTao">+ Tạo tài khoản</button>
       </div>
 
-      <div v-if="loading" class="panel-empty">Đang tải...</div>
+      <div v-if="loading && users.length === 0" class="panel-empty">Đang tải...</div>
       <div v-else-if="users.length === 0" class="panel-empty">Không có tài khoản nào.</div>
       <table v-else class="users-table">
         <thead>

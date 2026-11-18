@@ -59,7 +59,10 @@ convert sang `ST_MakePoint(lng, lat)` — **frontend không cần quan tâm th�
 gửi đúng field `lat`/`lng` như spec dưới**.
 
 ### Rate limit — ĐÃ implement (từ 2026-09-06)
-`@nestjs/throttler` đã bật: `POST /api/auth/login` (5/15 phút), `POST /api/auth/register`
+`@nestjs/throttler` đã bật: `POST /api/auth/login` (trần 30/15 phút/IP — chống dò mật khẩu nằm ở
+`LoginAttemptsService`: **sai** 5 lần/15 phút theo IP + số điện thoại → `429` kèm câu tiếng Việt
+"thử lại sau N phút"; đăng nhập đúng không tính và xoá bộ đếm; sai lần 4–5 → `401` có "(còn N lần
+thử)" — CLAUDE.md 15.30), `POST /api/auth/register`
 (3/giờ), `POST /api/sos` (5/giờ), mọi route khác baseline 100/phút. Bucket theo `user.id`
 khi có Bearer token hợp lệ, fallback IP cho route công khai. Xem CLAUDE.md Mục 15.1.
 (Dòng này từng ghi "CHƯA implement" — đã lỗi thời so với code, sửa lại 2026-09-06.)
