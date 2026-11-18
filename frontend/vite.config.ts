@@ -127,7 +127,7 @@ export default defineConfig({
             // 42 KB). Trước đây pattern chỉ khớp file FALLBACK, nên nguồn chính — thứ gần
             // như luôn được dùng — không được cache byte nào: mất mạng là mất sạch ranh
             // giới, trái với đúng lời hứa "ưu tiên cache" ghi ngay trên dòng này.
-            urlPattern: /\/(lamdong-wards|lamdong_tinh)\.geojson$/,
+            urlPattern: /\/(lamdong-wards|lamdong-outline|lamdong_tinh)\.geojson$/,
             handler: 'StaleWhileRevalidate',
             options: { cacheName: 'boundary-data' }
           }
