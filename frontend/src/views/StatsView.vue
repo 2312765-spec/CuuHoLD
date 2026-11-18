@@ -247,7 +247,7 @@ onMounted(() => {
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -260,7 +260,7 @@ onMounted(() => {
 .panel-empty {
   padding: 24px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 13px;
 }
 
@@ -286,7 +286,7 @@ onMounted(() => {
 }
 .summary-card span {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .stats-section {
@@ -302,7 +302,7 @@ onMounted(() => {
 }
 .section-hint {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.5);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 12px;
 }
 
@@ -344,7 +344,7 @@ onMounted(() => {
 }
 .bar-count {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   text-align: right;
 }
 

@@ -45,7 +45,7 @@ function badgeClass(badge?: string): string {
 }
 .popup-subtitle {
   font-size: 12.5px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
   line-height: 1.4;
 }
 .popup-badge {

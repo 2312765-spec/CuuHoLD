@@ -35,12 +35,18 @@
   position:fixed; top:60px; left:0; right:0; z-index:900;
   display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   padding:8px 24px;
-  background:var(--pine-deep); color:var(--fog);
-  font-size:12px;
+  /* Chế độ sáng: dải nền kem đậm, chữ tối — cùng tông thanh trên (.map-top). Trước đây luôn xanh
+     đen, lạc lõng dưới header sáng. Chế độ tối: rule [data-theme=dark] ngay dưới. */
+  background:var(--fog-dim); color:var(--ink);
+  border-bottom:1px solid var(--line);
+  font-size:13px;
 }
-.map-stats b{ font-family:'JetBrains Mono',monospace; color:var(--amber); }
-.dot-sep{ opacity:0.4; }
-.stat-note{ opacity:0.7; margin-left:auto; font-size:11px; }
+.map-stats b{ font-family:'JetBrains Mono',monospace; color:#8a3a20; }
+.dot-sep{ opacity:0.5; }
+.stat-note{ color:#4b4b44; margin-left:auto; font-size:13px; }
+:root[data-theme="dark"] .map-stats{ background:var(--pine-deep); color:#ece7d9; border-bottom-color:rgba(236,231,217,0.12); }
+:root[data-theme="dark"] .map-stats b{ color:var(--amber); }
+:root[data-theme="dark"] .stat-note{ color:rgba(236,231,217,0.75); }
 
 /* bản đồ chiếm toàn màn hình */
 #map{
@@ -66,7 +72,7 @@
    nữa, để chắc chắn không thẻ nào lọt lưới dù cấu trúc DOM bên trong có ra sao. */
 .leaflet-popup-content, .leaflet-popup-content *{ font-family:'Inter', sans-serif; }
 .pin-popup b{ display:block; font-family:'Fraunces',serif; font-size:14px; margin-bottom:2px; }
-.pin-popup span{ font-size:12px; color:rgba(42,42,36,0.65); }
+.pin-popup span{ font-size:12px; color:rgba(42, 42, 36, 0.75); }
 
 /* marker tuỳ chỉnh (L.divIcon) — ghi đè style mặc định Leaflet gắn cho mọi div icon.
    ⚠️ Tên class ở đây PHẢI khớp đúng thứ utils/markerIcon.ts sinh ra. Trước đây cả khối này
@@ -135,7 +141,7 @@
   background:#fff; color:var(--ink);
 }
 #reportForm textarea{ resize:vertical; }
-.hint{ display:block; margin-top:6px; font-size:12px; color:rgba(42,42,36,0.55); font-weight:400; }
+.hint{ display:block; margin-top:6px; font-size:12px; color:rgba(42, 42, 36, 0.75); font-weight:400; }
 .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
 
 /* toast thông báo — CSS đã chuyển sang assets/style.css (dùng chung mọi trang, xem đó) */
@@ -185,7 +191,7 @@
   position:fixed; right:20px; bottom:24px; z-index:900;
   display:flex; align-items:center; gap:8px;
   background:rgba(255,255,255,0.94); border-radius:999px; padding:8px 14px;
-  font-size:11px; color:rgba(42,42,36,0.6); box-shadow:0 8px 20px rgba(0,0,0,0.1);
+  font-size:11px; color:rgba(42, 42, 36, 0.75); box-shadow:0 8px 20px rgba(0,0,0,0.1);
 }
 .socket-status .dot{ width:7px; height:7px; border-radius:50%; background:var(--clay); flex-shrink:0; }
 .socket-status.connected .dot{ background:var(--sage); }

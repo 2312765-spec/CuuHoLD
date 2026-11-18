@@ -343,7 +343,7 @@ onMounted(() => {
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -356,7 +356,7 @@ onMounted(() => {
 .panel-empty {
   padding: 40px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 13px;
 }
 
@@ -373,7 +373,7 @@ onMounted(() => {
   padding: 10px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   border-bottom: 1px solid var(--line);
   background: var(--fog-dim);
 }
@@ -390,22 +390,23 @@ onMounted(() => {
   background: rgba(20, 39, 32, 0.03);
 }
 .row-locked {
-  opacity: 0.6;
+  /* Tài khoản bị khoá: hơi nhạt để phân biệt, nhưng chữ vẫn phải đọc được (đã có nhãn "Đã khoá"). */
+  opacity: 0.8;
 }
 .u-name {
   font-weight: 500;
 }
 .u-phone {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .u-time {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .u-self-note {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.45);
+  color: rgba(42, 42, 36, 0.75);
   font-style: italic;
 }
 
@@ -445,7 +446,7 @@ onMounted(() => {
 .users-count {
   margin-top: 12px;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .form-label {

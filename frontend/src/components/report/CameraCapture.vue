@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
 }
 .camera-wait {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .camera-actions {
   display: flex;

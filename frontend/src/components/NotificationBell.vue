@@ -184,7 +184,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
   cursor: pointer;
 }
 .noti-clear:hover { text-decoration: underline; }
-.noti-empty { padding: 26px 14px; text-align: center; color: rgba(42, 42, 36, 0.55); font-size: 13px; }
+.noti-empty { padding: 26px 14px; text-align: center; color: rgba(42, 42, 36, 0.75); font-size: 13px; }
 .noti-list { list-style: none; margin: 0; padding: 0; }
 .noti-item {
   display: flex;
@@ -200,7 +200,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
 .noti-body { min-width: 0; }
 .noti-title { font-size: 13px; font-weight: 600; color: var(--ink); }
 .noti-desc { font-size: 12px; color: rgba(42, 42, 36, 0.7); margin-top: 1px; }
-.noti-time { font-size: 11px; color: rgba(42, 42, 36, 0.5); margin-top: 3px; }
+.noti-time { font-size: 11px; color: rgba(42, 42, 36, 0.75); margin-top: 3px; }
 .noti-fade-enter-active, .noti-fade-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
 .noti-fade-enter-from, .noti-fade-leave-to { opacity: 0; transform: translateY(-6px); }
 </style>

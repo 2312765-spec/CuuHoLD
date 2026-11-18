@@ -276,7 +276,7 @@ onMounted(() => {
 }
 .report-intro {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.7);
+  color: rgba(42, 42, 36, 0.75);
 }
 .report-card {
   background: #fff;
@@ -315,7 +315,7 @@ onMounted(() => {
 .note {
   font-size: 12px;
   line-height: 1.5;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 8px;
 }
 .note--warn {
@@ -347,7 +347,7 @@ onMounted(() => {
 .field-label {
   display: block;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 4px;
 }
 textarea {
@@ -398,7 +398,7 @@ textarea {
 }
 .mine-meta {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   margin-top: 2px;
 }
 .badge {
