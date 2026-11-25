@@ -42,6 +42,7 @@ Biến môi trường (Environment):
 | `SMS_DRY_RUN` | `true` |
 | `ORS_API_KEY` | key OpenRouteService |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | khoá mới + `mailto:<email nhóm>` |
+| `TILE_PROXY_USER_AGENT` | (tuỳ chọn) chỉ cần khi bật proxy tile — VD `ten-ung-dung/1.0 (mailto:<email nhóm>)` |
 
 Kiểm tra: `curl https://<be>.onrender.com/api/health` → `"database": "up"`. Log Render phải có dòng
 cảnh báo `SMS DRY RUN` lúc khởi động.
@@ -51,7 +52,8 @@ cảnh báo `SMS DRY RUN` lúc khởi động.
 - Environment Variables (biến lúc build — đổi xong phải Redeploy):
   `VITE_API_BASE_URL=https://<be>.onrender.com/api`, `VITE_SOCKET_URL=https://<be>.onrender.com`,
   `VITE_BAT_SUA_HO_SO=true`, `VITE_BAT_LICH_SU_SOS=true`, `VITE_BAT_THONG_BAO_DAY=true` (chỉ khi
-  Bước 1 đã có VAPID).
+  Bước 1 đã có VAPID), `VITE_DUNG_PROXY_TILE=false` (proxy tile — bật theo
+  `docs/tile-proxy-plan.md` Mục 5, sau khi phần còn lại đã chạy ổn).
 - FE và BE **phải** ở 2 tên miền khác nhau: rewrite của Vercel không proxy được WebSocket, Socket.IO
   nối thẳng tới Render.
 

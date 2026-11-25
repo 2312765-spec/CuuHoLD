@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 // File này CHỈ được chứa hằng số thuần (không import.meta.env) — xem comment đầu file
 // tileProvider.ts để biết lý do: import.meta.env không tồn tại đúng cách trong ngữ cảnh
 // Node của vite.config.ts, import nhầm file có dùng nó sẽ làm vỡ ngay lúc build/dev.
-import { TILE_HOST_PATTERN } from './src/constants/tileProvider'
+import { TILE_HOST_PATTERN, PROXY_TILE_PATTERN } from './src/constants/tileProvider'
 
 // Đo được: /data/lamdong-wards.geojson (file nặng nhất khi mở /map) đi NGUYÊN 1,1 MB qua
 // `vite preview` — trong khi gzip chỉ còn ~270 KB. Nguyên nhân (đã kiểm chứng bằng curl và đọc
@@ -114,6 +114,19 @@ export default defineConfig({
               // — guard statuses sẽ vô nghĩa, bắt buộc phải nhận cả 0 mới cache được gì.
               // Có crossOrigin, giờ đọc được status thật: trang lỗi 429 KHÔNG bị cache nhầm
               // thành tile hợp lệ nữa (trước đây bị cache 30 ngày do statuses cho qua cả 0).
+              cacheableResponse: { statuses: [200] }
+            }
+          },
+          {
+            // Tile đi qua proxy backend (VITE_DUNG_PROXY_TILE, docs/tile-proxy-plan.md) — cùng
+            // chiến lược với tile upstream ở trên, cache riêng. Backend trả 404 cho vùng không có
+            // tile chi tiết; statuses:[200] nên 404 không bị cache.
+            urlPattern: PROXY_TILE_PATTERN,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'proxy-tiles',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [200] }
             }
           },

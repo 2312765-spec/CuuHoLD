@@ -370,11 +370,12 @@ Mọi bảng mới bật RLS và **không** có policy → chỉ backend (DATABA
 
 ## 7. API Endpoints
 
-> Cập nhật 2026-10-15 theo đúng 43 route trong code. Chi tiết request/response: `docs/api-contract.md`.
+> Cập nhật 2026-10-15 theo đúng 43 route trong code (+ `/api/tiles` 2026-11-25 = 44). Chi tiết request/response: `docs/api-contract.md`.
 > "JWT" = mọi role đã đăng nhập.
 
 ```
 GET    /api/health                       — Kiểm tra server + DB sống (public, cho Render)
+GET    /api/tiles/:z/:x/:y.png           — Proxy tile nền, chỉ vùng Lâm Đồng (public, 600/phút/IP — Mục 15.29)
 
 POST   /api/auth/register                — Đăng ký (public, LUÔN tạo victim — không nhận role)
 POST   /api/auth/login                   — Đăng nhập → JWT (public)
@@ -506,6 +507,9 @@ SMS_DRY_RUN=true
 # OpenRouteService (openrouteservice.org/dev/#/signup, free tier — Mục 15.13) — để trống thì
 # /api/routing/route trả 503, frontend tự lùi về đường chim bay, không ảnh hưởng phần khác.
 ORS_API_KEY=
+
+# Proxy tile (Mục 15.29) — User-Agent gửi openstreetmap.fr, tuỳ chọn
+TILE_PROXY_USER_AGENT=
 
 # Web Push (Mục 15.24) — tạo 1 lần: npx.cmd web-push generate-vapid-keys. Để trống thì tắt push.
 VAPID_PUBLIC_KEY=
@@ -1544,8 +1548,29 @@ Chốt: FE **Vercel**, BE **Render free + ping** `/api/health` 5 phút/lần, t�
 **Kiểm chứng:** BE eslint sạch, 219/219 unit, 25/25 e2e (trừ `app.e2e-spec.ts` cần DB, đỏ sẵn), build sạch; FE build sạch.
 **Còn nợ:** [ ] deploy thật + chạy HOSTING.md Mục 3 (bước 1–9), ghi kết quả vào đây.
 
+### 15.29 Proxy tile qua backend, cờ mặc định tắt (2026-11-25)
+
+Nhánh `feature/tile-proxy`. Chi tiết + cách bật: `docs/tile-proxy-plan.md`. Làm SAU khi deploy (Mục 15.28)
+theo yêu cầu người dùng; cờ `VITE_DUNG_PROXY_TILE` mặc định **tắt** nên merge không đổi hành vi production.
+- BE `backend/src/tiles/`: `GET /api/tiles/:z/:x/:y.png` public, 600/phút/IP, chỉ ô trong tỉnh (+2 ô) — ngoài
+  vùng `400` không gọi upstream (chặn dùng làm proxy bản đồ toàn cầu → IP Render bị OSM France chặn). Upstream
+  404 → `404` (frontend lùi tile cha), lỗi/không phải ảnh → `502`. Trả `Cross-Origin-Resource-Policy: cross-origin`
+  — **bắt buộc**: helmet mặc định `same-origin` làm trình duyệt chặn ảnh từ FE Vercel khác tên miền.
+- **Khác đề xuất gốc 3 điểm:** (1) gọi thẳng Render, KHÔNG qua Vercel rewrite — qua rewrite IP Render thấy có thể
+  là IP Vercel, rate limit dồn cả tỉnh (cùng lớp lỗi 15.28); (2) giới hạn vùng; (3) cầu dao chỉ đếm khi proxy lỗi
+  MÀ upstream tải được cùng tile — `<img>` không đọc được mã HTTP, đếm mọi lỗi thì 404 hợp lệ ở vùng rừng zoom sâu
+  sẽ ngắt oan. 4 lần/20 s → gọi thẳng upstream tới hết phiên + toast 1 lần.
+- ⚠️ `LAMDONG_BBOX`/padding/max zoom có ở CẢ `backend/src/tiles/tile-bounds.ts` lẫn `frontend/src/constants/tileProvider.ts`
+  — `tileProvider.spec.ts` import thẳng file backend để khoá trùng khít; sửa một bên là CI đỏ.
+- Cache SW riêng `proxy-tiles` (`PROXY_TILE_PATTERN`).
+
+**Kiểm chứng (TDD đỏ → xanh):** BE 231 unit + 32 e2e (thêm 12 + 7, e2e có `helmet()`), lint/build sạch; FE 306 test
+(thêm 10), lint/build sạch. Backend thật ở máy gọi upstream thật: Đà Lạt z13 → 200 PNG (đã mở ảnh), header đúng; Hà
+Nội → 400. **Còn nợ:** [ ] bật + chạy `docs/tile-proxy-plan.md` Mục 5 trên Render/Vercel thật, ghi kết quả vào đây.
+
 ---
 
+*Phiên bản: 2.21.0 — Cập nhật: 2026-11-25 (Mục 15.29 — proxy tile qua backend `/api/tiles`, cờ `VITE_DUNG_PROXY_TILE` mặc định tắt, cầu dao phía client)*
 *Phiên bản: 2.20.0 — Cập nhật: 2026-11-25 (Mục 15.28 — chuẩn bị deploy: TRUST_PROXY_HOPS sửa rate limit sau proxy, frontend/vercel.json, HOSTING.md Mục 0)*
 *Phiên bản: 2.19.0 — Cập nhật: 2026-10-15 (Mục 15.27 — SRS 1.1.0 và CLAUDE.md Mục 2/4/5/6/7/8/9/10/11 cập nhật cho khớp code; không sửa code)*
 *Phiên bản: 2.18.0 — Cập nhật: 2026-10-15 (thêm Mục 15.26 — commander không nhận sos:updated: cancel() không phát + thiếu phòng province:lamdong; sos:new trùng 2 lần)*

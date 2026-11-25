@@ -80,6 +80,20 @@ Public, **không rate limit** (`@SkipThrottle()`). Thêm 2026-09-18 cho Render.c
 > ⚠️ **Đừng gỡ `@SkipThrottle()`**: baseline 100 req/phút áp lên mọi route, Render ping health
 > rất dày lúc deploy → chạm ngưỡng → `429` → Render đọc là "không khoẻ" → restart lặp vô hạn.
 
+### GET /api/tiles/:z/:x/:y.png
+Public (thẻ `<img>` không gửi được Bearer token), rate limit **600/phút/IP**. Proxy tile nền
+`openstreetmap.fr/hot` — frontend chỉ dùng khi bật `VITE_DUNG_PROXY_TILE=true`
+(`docs/tile-proxy-plan.md`).
+
+| Status | Khi nào |
+|---|---|
+| `200` | Ảnh PNG, `Cache-Control: public, max-age=86400`, `Cross-Origin-Resource-Policy: cross-origin` |
+| `400` | z/x/y không phải số nguyên, z > 18, hoặc ô **nằm ngoài vùng tỉnh Lâm Đồng** (+2 ô quanh biên — `backend/src/tiles/tile-bounds.ts`) |
+| `404` | Upstream không có tile ở mức zoom này (vùng thưa dữ liệu) — frontend tự lùi về tile cha |
+| `502` | Upstream lỗi mạng/timeout 8s/5xx/429, hoặc trả về thứ không phải ảnh |
+
+Body lỗi là JSON chuẩn (Mục 0), không phải ảnh.
+
 ---
 
 ## 1. Auth (`/api/auth`)
