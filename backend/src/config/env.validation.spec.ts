@@ -32,3 +32,31 @@ describe('envValidationSchema — SMS_DRY_RUN', () => {
     },
   );
 });
+
+describe('envValidationSchema — TRUST_PROXY_HOPS', () => {
+  it('không đặt → mặc định 0 (máy dev, không có proxy)', () => {
+    const kq = envValidationSchema.validate(CO_BAN);
+    expect(kq.error).toBeUndefined();
+    expect((kq.value as { TRUST_PROXY_HOPS: number }).TRUST_PROXY_HOPS).toBe(0);
+  });
+
+  it('nhận "1" (Render) và đổi thành số', () => {
+    const kq = envValidationSchema.validate({
+      ...CO_BAN,
+      TRUST_PROXY_HOPS: '1',
+    });
+    expect(kq.error).toBeUndefined();
+    expect((kq.value as { TRUST_PROXY_HOPS: number }).TRUST_PROXY_HOPS).toBe(1);
+  });
+
+  it.each(['true', '-1', '1.5', '99'])(
+    'từ chối TRUST_PROXY_HOPS=%p lúc khởi động',
+    (v) => {
+      const { error } = envValidationSchema.validate({
+        ...CO_BAN,
+        TRUST_PROXY_HOPS: v,
+      });
+      expect(error).toBeDefined();
+    },
+  );
+});
