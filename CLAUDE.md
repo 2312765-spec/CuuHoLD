@@ -1568,8 +1568,32 @@ theo yêu cầu người dùng; cờ `VITE_DUNG_PROXY_TILE` mặc định **tắ
 (thêm 10), lint/build sạch. Backend thật ở máy gọi upstream thật: Đà Lạt z13 → 200 PNG (đã mở ảnh), header đúng; Hà
 Nội → 400. **Còn nợ:** [ ] bật + chạy `docs/tile-proxy-plan.md` Mục 5 trên Render/Vercel thật, ghi kết quả vào đây.
 
+### 15.30 Mở tab mới bị "đăng xuất" — chia sẻ phiên giữa tab (2026-11-25)
+
+Người dùng báo: đăng nhập ở 1 tab, mở tab khác thì thấy đã đăng xuất. Không phải bug mới — hệ quả của Mục 15.4:
+phiên ở `sessionStorage`, **mỗi tab một bản** (chỉ "Nhân bản tab" mới chép sang). Nhánh `feature/phien-giua-tab`.
+- **Đã cân nhắc + loại:** (1) `localStorage` — token sống cả sau khi đóng trình duyệt, rủi ro XSS cao hơn; (2) cookie
+  httpOnly + `/api/auth/refresh` (người dùng chọn trước) — **không chạy được** với tên miền mặc định: `vercel.app` và
+  `onrender.com` đều thuộc Public Suffix List → FE/BE là 2 site khác nhau → cookie bên thứ ba, Safari/iPhone (ITP) chặn
+  hẳn, Chrome ẩn danh/Firefox chặn hoặc cô lập. Chỉ làm được khi có tên miền riêng (`app.x` + `api.x`) hoặc đưa REST qua
+  Vercel rewrite (lại vướng IP Vercel — Mục 15.28).
+- **Đã làm:** `utils/phienGiuaTab.ts` (BroadcastChannel, chỉ cùng origin). Tab chưa có phiên → `main.ts` hỏi các tab khác
+  (chờ ≤ 300 ms) **trước** `app.use(router)` (router chạy guard ngay khi gắn). Đăng nhập/đăng xuất/đổi tên ở 1 tab → mọi
+  tab làm theo (`auth.store` `setAuth`/`logout`/`capNhatUser` phát tin; `nhanPhien` nhận mà KHÔNG phát lại). Tab đang ở
+  trang cần đăng nhập nhận tin đăng xuất → `App.vue` sẵn có tự đưa về trang chủ. Vẫn `sessionStorage`: đóng HẾT tab là mất
+  phiên như cũ. Trình duyệt không có BroadcastChannel → hành vi y như trước.
+- ⚠️ **Bẫy đã gặp:** `user.value` là Proxy reactive của Vue — `postMessage` ném `DataCloneError` khi clone Proxy, lỗi bị nuốt
+  trong handler nên tab kia im lặng không nhận được gì. Phải gửi bản sao thường (`{ ...toRaw(user.value) }`). `postMessage` giờ
+  bọc try/catch + `console.warn`.
+
+**Kiểm chứng (TDD đỏ → xanh):** `phienGiuaTab.spec.ts` (8) + `auth.nhieuTab.spec.ts` (4, 2 Pinia = 2 tab — test "tab mới xin
+được phiên" đỏ đúng vì lỗi Proxy trước khi sửa); FE 318 test, eslint + build sạch. **Chrome thật** (headless qua CDP, `vite
+preview`, không backend để token giả không bị 401): tab mới mở thẳng `/ho-so` vẫn đăng nhập; đăng xuất ở tab 2 → tab 1 mất
+phiên, tab 2 về `/`; đối chứng đóng hết tab → tab mới bị đẩy về trang chủ. **Chưa thử:** Safari/iPhone thật.
+
 ---
 
+*Phiên bản: 2.22.0 — Cập nhật: 2026-11-25 (Mục 15.30 — chia sẻ phiên đăng nhập giữa các tab qua BroadcastChannel; ghi lý do không dùng cookie httpOnly với tên miền mặc định)*
 *Phiên bản: 2.21.0 — Cập nhật: 2026-11-25 (Mục 15.29 — proxy tile qua backend `/api/tiles`, cờ `VITE_DUNG_PROXY_TILE` mặc định tắt, cầu dao phía client)*
 *Phiên bản: 2.20.0 — Cập nhật: 2026-11-25 (Mục 15.28 — chuẩn bị deploy: TRUST_PROXY_HOPS sửa rate limit sau proxy, frontend/vercel.json, HOSTING.md Mục 0)*
 *Phiên bản: 2.19.0 — Cập nhật: 2026-10-15 (Mục 15.27 — SRS 1.1.0 và CLAUDE.md Mục 2/4/5/6/7/8/9/10/11 cập nhật cho khớp code; không sửa code)*
