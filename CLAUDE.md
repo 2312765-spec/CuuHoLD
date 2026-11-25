@@ -1568,6 +1568,13 @@ theo yêu cầu người dùng; cờ `VITE_DUNG_PROXY_TILE` mặc định **tắ
 (thêm 10), lint/build sạch. Backend thật ở máy gọi upstream thật: Đà Lạt z13 → 200 PNG (đã mở ảnh), header đúng; Hà
 Nội → 400. **Còn nợ:** [ ] bật + chạy `docs/tile-proxy-plan.md` Mục 5 trên Render/Vercel thật, ghi kết quả vào đây.
 
+**Bật lên production (2026-11-25) lộ bug — đã sửa trên nhánh `fix/tile-proxy-gioi-han-ket-noi`:** Chrome thật thấy
+48/58 tile proxy `502`. Gốc: trình duyệt bắn ~40 tile song song → Render mở bấy nhiêu kết nối tới openstreetmap.fr →
+26/40 bị từ chối/ngắt kết nối (đo thẳng Render); 6 song song thì 40/40. Sửa: `TilesService` giới hạn **6** request
+upstream đồng thời (hàng đợi, > 200 chờ → `503`), thử lại 1 lần khi lỗi kết nối, keep-alive. ⚠️ Bài học: phép đo tải
+lúc đầu chỉ 10 song song (1% lỗi) — **phải đo đúng kiểu tải của trình duyệt thật**, không chỉ một mức song song tuỳ chọn.
+Chi tiết: `docs/tile-proxy-plan.md` Mục 4.1.
+
 ### 15.30 Mở tab mới bị "đăng xuất" — chia sẻ phiên giữa tab (2026-11-25)
 
 Người dùng báo: đăng nhập ở 1 tab, mở tab khác thì thấy đã đăng xuất. Không phải bug mới — hệ quả của Mục 15.4:
