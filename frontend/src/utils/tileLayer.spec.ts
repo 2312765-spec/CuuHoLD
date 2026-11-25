@@ -146,3 +146,59 @@ describe('taoLopTileNen — proxy tile', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Nguồn chính Stadia Maps (VITE_TILE_STADIA) — openstreetmap.fr là dự phòng.
+// Kiểm chứng 2026-11-25: Stadia trả tile thật tới z18 ở cả vùng rừng/Phú Quý (.fr 404 từ z16).
+// ---------------------------------------------------------------------------
+describe('taoLopTileNen — nguồn Stadia', () => {
+  beforeEach(() => {
+    datLaiCauDaoProxy()
+    toastSpy.mockReset()
+    vi.stubEnv('VITE_TILE_STADIA', 'true')
+  })
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('bật Stadia → tile z11+ lấy từ Stadia style outdoors', () => {
+    expect(taoTileTai(PZ, PX, PY).src).toContain(`tiles.stadiamaps.com/tiles/outdoors/${PZ}/${PX}/${PY}.png`)
+  })
+
+  it('có VITE_STADIA_API_KEY → gắn ?api_key vào URL', () => {
+    vi.stubEnv('VITE_STADIA_API_KEY', 'khoa-thu')
+    expect(taoTileTai(PZ, PX, PY).src).toMatch(/outdoors\/13\/6563\/3822\.png\?api_key=khoa-thu$/)
+  })
+
+  it('không có key → URL không có ?api_key (dựa vào xác thực theo tên miền)', () => {
+    expect(taoTileTai(PZ, PX, PY).src).not.toContain('api_key')
+  })
+
+  it('tile NGOÀI tỉnh cũng lấy từ Stadia (khác proxy, Stadia không giới hạn vùng)', () => {
+    expect(taoTileTai(13, 6504, 3606).src).toContain('tiles.stadiamaps.com')
+  })
+
+  it('z8–10 vẫn dùng bộ tile offline đóng gói sẵn', () => {
+    expect(taoTileTai(9, 410, 238).src).toContain('/tiles/9/410/238.png')
+  })
+
+  it('bật cả Stadia lẫn proxy → Stadia được ưu tiên, không tốn tải Render', () => {
+    vi.stubEnv('VITE_DUNG_PROXY_TILE', 'true')
+    expect(taoTileTai(PZ, PX, PY).src).toContain('tiles.stadiamaps.com')
+  })
+
+  it('Stadia lỗi → thử lại ĐÚNG tile đó từ openstreetmap.fr', () => {
+    const img = taoTileTai(PZ, PX, PY)
+    img.dispatchEvent(new Event('error'))
+    expect(img.src).toContain(`/hot/${PZ}/${PX}/${PY}.png`)
+  })
+
+  it('4 lần Stadia lỗi mà .fr tải được (VD hết hạn mức) → chuyển hẳn sang .fr + toast 1 lần', () => {
+    for (let i = 0; i < 4; i++) {
+      const img = taoTileTai(PZ, PX + i, PY)
+      img.dispatchEvent(new Event('error'))
+      img.dispatchEvent(new Event('load'))
+    }
+    expect(toastSpy).toHaveBeenCalledTimes(1)
+    expect(toastSpy.mock.calls[0][0]).toContain('dự phòng')
+    expect(taoTileTai(PZ, PX, PY + 1).src).toContain(`/hot/${PZ}/${PX}/${PY + 1}.png`)
+  })
+})

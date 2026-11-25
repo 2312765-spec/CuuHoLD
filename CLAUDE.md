@@ -1598,8 +1598,35 @@ phiên ở `sessionStorage`, **mỗi tab một bản** (chỉ "Nhân bản tab" 
 preview`, không backend để token giả không bị 401): tab mới mở thẳng `/ho-so` vẫn đăng nhập; đăng xuất ở tab 2 → tab 1 mất
 phiên, tab 2 về `/`; đối chứng đóng hết tab → tab mới bị đẩy về trang chủ. **Chưa thử:** Safari/iPhone thật.
 
+### 15.31 Nguồn tile chính Stadia Maps, openstreetmap.fr làm dự phòng (2026-11-25)
+
+Nhánh `feature/tile-stadia` (tách từ `fix/tile-proxy-gioi-han-ket-noi` — merge PR đó trước). Người dùng chọn "nguồn
+có key" thay vì proxy qua Render sau khi proxy lộ giới hạn kết nối (Mục 15.29) và hỏi vì sao trang lớn chịu được tải
+(họ có cache/CDN/nguồn có hợp đồng; máy chủ tình nguyện không dành cho việc dồn tải).
+- **Chọn Stadia** (so với MapTiler, Thunderforest — đọc trang giá 2026-11-25): Free 200.000 tile/tháng (1 tile = 1
+  credit), phi thương mại được; MapTiler chỉ 100k + trần 5.000 phiên + dừng tới tháng sau khi vượt + bắt buộc logo.
+  Tài khoản mới tự dùng thử Professional 14 ngày rồi **tự về Free, không cần thẻ** — nên CHỈ dùng style trong gói Free
+  ("Standard Raster Basemaps"). Chọn style **`outdoors`**: có địa hình/độ cao, không vẽ ranh giới hành chính nét đứt
+  chồng lên lớp ranh giới xã của app (`osm_bright` có).
+- **Kiểm chứng trước khi code (MỞ ẢNH, không tin status — bài học Carto Mục 15.12):** 32 tile (Đà Lạt, rừng, Phú Quý,
+  Phan Thiết × z11/14/16/18 × 2 style) đều 200 và là bản đồ thật, nhãn tiếng Việt, **có tới z18 ở cả rừng/Phú Quý**
+  (openstreetmap.fr 404 từ z16). CORS `*`. Xác thực theo tên miền: không key từ `cuu-ho-ld.vercel.app` → 401 (chưa
+  đăng ký tên miền ở Stadia lúc thử) → code hỗ trợ cả key (`?api_key=`) lẫn không key.
+- **Code:** `tileProvider.ts` (`STADIA_TILE_URL`, `STADIA_ATTRIBUTION`, `STADIA_HOST_PATTERN`), cờ `coDungStadia()` /
+  `khoaStadia()` (`tinhNangBackend.ts`, biến `VITE_TILE_STADIA`, `VITE_STADIA_API_KEY`). `tileLayer.ts`: cầu dao proxy
+  tổng quát thành **"nguồn chính"** (Stadia > proxy) với dự phòng luôn là openstreetmap.fr — Stadia hết hạn mức/lỗi →
+  4 lần/20 s → chuyển hẳn sang .fr + toast "nguồn bản đồ dự phòng". Ghi nguồn đổi theo (Stadia + dự phòng). Cache SW
+  riêng `stadia-tiles` (tile lấy từ cache không trừ hạn mức). Bộ offline z8–10 giữ nguyên (style OSM, đổi style ở z11).
+- ⚠️ **Key KHÔNG được commit** — chỉ đặt trên Vercel. Đã kiểm `grep` toàn repo + `dist` sau khi thử.
+
+**Kiểm chứng (TDD đỏ → xanh):** 10 test mới (FE 328), eslint + build sạch. Chrome thật (`vite preview` build có bật
+Stadia + key qua biến môi trường lệnh build): 100/100 tile Stadia 200 ở z12–18, 0 tile dự phòng, z8–10 vẫn offline,
+ghi nguồn đúng. **Chưa thử:** mạng Viettel trên điện thoại (DNS Viettel từ chối truy vấn từ máy dev — không kiểm được
+Viettel có chặn `stadiamaps.com` không); hành vi thật khi vượt 200.000 tile.
+
 ---
 
+*Phiên bản: 2.23.0 — Cập nhật: 2026-11-25 (Mục 15.31 — nguồn tile chính Stadia Maps `outdoors`, openstreetmap.fr dự phòng qua cầu dao chung với proxy)*
 *Phiên bản: 2.22.0 — Cập nhật: 2026-11-25 (Mục 15.30 — chia sẻ phiên đăng nhập giữa các tab qua BroadcastChannel; ghi lý do không dùng cookie httpOnly với tên miền mặc định)*
 *Phiên bản: 2.21.0 — Cập nhật: 2026-11-25 (Mục 15.29 — proxy tile qua backend `/api/tiles`, cờ `VITE_DUNG_PROXY_TILE` mặc định tắt, cầu dao phía client)*
 *Phiên bản: 2.20.0 — Cập nhật: 2026-11-25 (Mục 15.28 — chuẩn bị deploy: TRUST_PROXY_HOPS sửa rate limit sau proxy, frontend/vercel.json, HOSTING.md Mục 0)*

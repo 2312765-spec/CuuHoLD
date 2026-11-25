@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 // File này CHỈ được chứa hằng số thuần (không import.meta.env) — xem comment đầu file
 // tileProvider.ts để biết lý do: import.meta.env không tồn tại đúng cách trong ngữ cảnh
 // Node của vite.config.ts, import nhầm file có dùng nó sẽ làm vỡ ngay lúc build/dev.
-import { TILE_HOST_PATTERN, PROXY_TILE_PATTERN } from './src/constants/tileProvider'
+import { TILE_HOST_PATTERN, PROXY_TILE_PATTERN, STADIA_HOST_PATTERN } from './src/constants/tileProvider'
 
 // Đo được: /data/lamdong-wards.geojson (file nặng nhất khi mở /map) đi NGUYÊN 1,1 MB qua
 // `vite preview` — trong khi gzip chỉ còn ~270 KB. Nguyên nhân (đã kiểm chứng bằng curl và đọc
@@ -125,6 +125,18 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'proxy-tiles',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [200] }
+            }
+          },
+          {
+            // Tile nguồn chính Stadia (VITE_TILE_STADIA, CLAUDE.md Mục 15.31) — cùng chiến lược,
+            // cache riêng. Mỗi tile lấy từ cache là 1 tile KHÔNG trừ vào hạn mức 200.000/tháng.
+            urlPattern: STADIA_HOST_PATTERN,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'stadia-tiles',
               networkTimeoutSeconds: 3,
               expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [200] }
