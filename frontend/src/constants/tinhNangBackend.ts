@@ -21,3 +21,9 @@ export function coLichSuSos(): boolean {
 export function coThongBaoDay(): boolean {
   return bat(import.meta.env.VITE_BAT_THONG_BAO_DAY)
 }
+
+// GET /api/tiles/:z/:x/:y.png — tile nền đi qua backend (docs/tile-proxy-plan.md). Tắt thì gọi
+// thẳng openstreetmap.fr như trước. Bật/tắt chỉ cần đổi biến + build lại, không cần revert code.
+export function coDungProxyTile(): boolean {
+  return bat(import.meta.env.VITE_DUNG_PROXY_TILE)
+}

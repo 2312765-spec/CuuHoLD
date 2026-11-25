@@ -98,3 +98,26 @@ export function duongDanTileOffline(z: number, x: number, y: number): string | n
   if (x < x0 || x > x1 || y < y0 || y > y1) return null
   return `/tiles/${z}/${x}/${y}.png`
 }
+
+// ---------------------------------------------------------------------------
+// PROXY TILE QUA BACKEND (docs/tile-proxy-plan.md, bật bằng VITE_DUNG_PROXY_TILE)
+// ---------------------------------------------------------------------------
+// Backend (backend/src/tiles/tile-bounds.ts) CHỈ phục vụ ô phủ Lâm Đồng + nới 2 ô — ⚠️ PHẢI
+// KHỚP với hằng số bên đó. Ô ngoài vùng này frontend gọi thẳng upstream, không xin proxy (sẽ 400).
+export const TILE_PROXY_PADDING = 2
+export const TILE_PROXY_MAX_ZOOM = 18
+
+export function tileTrongVungProxy(z: number, x: number, y: number): boolean {
+  if (z < 0 || z > TILE_PROXY_MAX_ZOOM) return false
+  const p = TILE_PROXY_PADDING
+  return (
+    x >= tileX(LAMDONG_BBOX.minLng, z) - p &&
+    x <= tileX(LAMDONG_BBOX.maxLng, z) + p &&
+    y >= tileY(LAMDONG_BBOX.maxLat, z) - p &&
+    y <= tileY(LAMDONG_BBOX.minLat, z) + p
+  )
+}
+
+// urlPattern cho runtimeCaching (vite.config.ts) — khớp `<VITE_API_BASE_URL>/tiles/z/x/y.png`
+// ở bất kỳ tên miền backend nào (onrender.com hay cùng origin lúc dev).
+export const PROXY_TILE_PATTERN = /\/api\/tiles\/\d+\/\d+\/\d+\.png$/

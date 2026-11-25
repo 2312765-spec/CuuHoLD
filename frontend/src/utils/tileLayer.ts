@@ -11,7 +11,15 @@
 // có nền dù nhà mạng chặn nhà cung cấp tile (như Viettel từng chặn openstreetmap.org).
 
 import L from 'leaflet'
-import { TILE_URL, TILE_ATTRIBUTION, duongDanTileOffline } from '@/constants/tileProvider'
+import {
+  TILE_URL,
+  TILE_ATTRIBUTION,
+  duongDanTileOffline,
+  tileTrongVungProxy
+} from '@/constants/tileProvider'
+import { coDungProxyTile } from '@/constants/tinhNangBackend'
+import { CONFIG } from '@/config'
+import { useToastStore } from '@/stores/toast'
 
 // z18 → z14: xa hơn thì ảnh phóng 16 lần, mờ tới mức vô nghĩa — thà báo lỗi trung thực.
 const TILE_LUI_TOI_DA = 4
@@ -19,11 +27,55 @@ const TILE_LUI_TOI_DA = 4
 // ⚠️ KHÔNG dùng getTileUrl() gốc của Leaflet để lấy URL tile cha bên dưới: nó lấy z từ zoom
 // HIỆN TẠI của bản đồ (_getZoomForUrl), bỏ qua coords.z. Ghép bằng L.Util.template trên chính
 // TILE_URL thì mọi thay đổi nhà cung cấp vẫn chỉ cần sửa đúng một chỗ ở tileProvider.ts.
-function urlTile(z: number, x: number, y: number): string {
-  return (
-    duongDanTileOffline(z, x, y) ??
-    L.Util.template(TILE_URL, { s: 'abc'[Math.abs(x + y) % 3], z, x, y })
-  )
+function urlUpstream(z: number, x: number, y: number): string {
+  return L.Util.template(TILE_URL, { s: 'abc'[Math.abs(x + y) % 3], z, x, y })
+}
+
+// ---------------------------------------------------------------------------
+// Cầu dao proxy (docs/tile-proxy-plan.md, rủi ro #1): backend sập/ngủ thì bản đồ z11+ KHÔNG được
+// trắng — tự chuyển sang gọi thẳng upstream tới hết phiên (tải lại trang mới thử proxy lại).
+// Chỉ đếm khi proxy lỗi MÀ upstream tải được CÙNG tile đó: <img> không đọc được mã HTTP, nên
+// proxy lỗi có thể chỉ là 404 hợp lệ ở vùng thưa dữ liệu (upstream cũng 404) — đếm mọi lỗi thì
+// zoom sâu ở vùng rừng sẽ ngắt oan.
+// ---------------------------------------------------------------------------
+const NGUONG_LOI = 4
+const CUA_SO_MS = 20_000
+let loiGanDay: number[] = []
+let proxyDaNgat = false
+
+function ghiNhanProxyHong(): void {
+  if (proxyDaNgat) return
+  const now = Date.now()
+  loiGanDay = loiGanDay.filter((t) => now - t < CUA_SO_MS)
+  loiGanDay.push(now)
+  if (loiGanDay.length < NGUONG_LOI) return
+  proxyDaNgat = true
+  try {
+    useToastStore().showToast(
+      'Máy chủ bản đồ của hệ thống đang chậm — đã chuyển sang tải bản đồ trực tiếp.'
+    )
+  } catch {
+    // Chưa có Pinia (VD trang test) — bỏ qua toast, vẫn chuyển nguồn.
+  }
+}
+
+// Chỉ dùng trong test.
+export function datLaiCauDaoProxy(): void {
+  loiGanDay = []
+  proxyDaNgat = false
+}
+
+function nenDungProxy(z: number, x: number, y: number): boolean {
+  return coDungProxyTile() && !proxyDaNgat && tileTrongVungProxy(z, x, y)
+}
+
+function urlTile(z: number, x: number, y: number, choPhepProxy = true): string {
+  const offline = duongDanTileOffline(z, x, y)
+  if (offline) return offline
+  if (choPhepProxy && nenDungProxy(z, x, y)) {
+    return `${CONFIG.apiBaseUrl}/tiles/${z}/${x}/${y}.png`
+  }
+  return urlUpstream(z, x, y)
 }
 
 // Tile thiếu ở zoom sâu → lùi về tile cha rồi phóng to đúng phần tương ứng.
@@ -52,16 +104,36 @@ export class LopTileNen extends L.TileLayer {
     khung.appendChild(img)
 
     let lui = 0
+    // Proxy đã lỗi cho tile này → mọi lần thử sau (cùng mức + các tile cha) đi thẳng upstream.
+    let boQuaProxy = false
+    // Lần tải hiện tại đang đi qua proxy / là lần thử lại upstream ngay sau khi proxy lỗi.
+    let dangQuaProxy = false
+    let dangThuLaiSauProxy = false
     const dat = (): void => {
       const s = 2 ** lui
       img.style.width = `${kichThuoc.x * s}px`
       img.style.height = `${kichThuoc.y * s}px`
       img.style.left = `-${(coords.x % s) * kichThuoc.x}px`
       img.style.top = `-${(coords.y % s) * kichThuoc.y}px`
-      img.src = urlTile(coords.z - lui, Math.floor(coords.x / s), Math.floor(coords.y / s))
+      const z = coords.z - lui
+      const x = Math.floor(coords.x / s)
+      const y = Math.floor(coords.y / s)
+      dangQuaProxy = !boQuaProxy && duongDanTileOffline(z, x, y) === null && nenDungProxy(z, x, y)
+      img.src = urlTile(z, x, y, !boQuaProxy)
     }
-    img.addEventListener('load', () => done(undefined, khung))
+    img.addEventListener('load', () => {
+      if (dangThuLaiSauProxy) ghiNhanProxyHong()
+      done(undefined, khung)
+    })
     img.addEventListener('error', () => {
+      if (dangQuaProxy) {
+        // Thử lại ĐÚNG mức này trực tiếp từ upstream trước khi lùi tile cha.
+        boQuaProxy = true
+        dangThuLaiSauProxy = true
+        dat()
+        return
+      }
+      dangThuLaiSauProxy = false
       if (lui < TILE_LUI_TOI_DA && coords.z - lui > 0) {
         lui++
         dat()

@@ -7,4 +7,5 @@ interface ImportMetaEnv {
   readonly VITE_BAT_SUA_HO_SO?: string
   readonly VITE_BAT_LICH_SU_SOS?: string
   readonly VITE_BAT_THONG_BAO_DAY?: string
+  readonly VITE_DUNG_PROXY_TILE?: string
 }
