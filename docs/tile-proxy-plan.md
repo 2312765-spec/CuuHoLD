@@ -69,6 +69,21 @@ không có tile; `502` upstream lỗi/không phải ảnh. Không cache RAM. Bi�
 thật ở máy: tile Đà Lạt z13 → `200 image/png` (đã mở ảnh xem — đúng bản đồ), header cache/CORP/CORS
 đúng; Hà Nội → `400`; z sai → `400`. **Chưa thử trên Render + Vercel thật.**
 
+## 4.1 Bug sau khi bật trên production (2026-11-25) — đã sửa
+
+Bật cờ xong, Chrome thật mở `/map` trên Vercel: **48/58 tile qua proxy bị `502`**, cầu dao ngắt và chuyển
+sang gọi thẳng (bản đồ vẫn có nền, nhưng mỗi phiên hiện toast "đang chậm"). Gọi lần lượt từng tile thì
+đều `200` — lỗi chỉ khi trình duyệt bắn ~40 tile song song. Đo trực tiếp Render: 40 song song → 26/40
+lỗi **kết nối** nhanh (0,5–1,5 s, không phải timeout, không phải 429); cùng 40 tile 6 song song →
+**40/40**, tổng thời gian không đổi (~3,2 s). Máy chủ tình nguyện giới hạn kết nối đồng thời mỗi IP, và
+mọi người dùng proxy đều chung IP Render. Phép đo tải trước đó chỉ chạy 10 song song nên chỉ thấy 1% lỗi.
+
+**Sửa** (`tiles.service.ts`): tối đa **6** request upstream cùng lúc, phần còn lại xếp hàng; lỗi kết nối
+thử lại 1 lần sau 300 ms; keep-alive tái dùng kết nối; hàng đợi > 200 tile → `503` ngay để frontend gọi
+thẳng thay vì chờ. Test: 4 test mới (đỏ → xanh). Thật (backend chạy ở máy, upstream thật): 40 song song
+→ 40/40. Giới hạn: toàn hệ thống chỉ ~20 tile/s qua proxy (6 kết nối × ~300 ms) — đủ cho demo, nhiều
+người cùng kéo bản đồ thì tile tới chậm hơn (xếp hàng), không lỗi.
+
 ## 5. Bật trên production và kiểm tra
 
 1. Render → Environment: đặt `TILE_PROXY_USER_AGENT` (VD `ten-ung-dung/1.0 (mailto:email-nhom)`).

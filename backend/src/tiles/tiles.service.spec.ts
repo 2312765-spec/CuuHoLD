@@ -1,7 +1,14 @@
-import { BadGatewayException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { TilesService } from './tiles.service';
+import {
+  TilesService,
+  UPSTREAM_DONG_THOI_TOI_DA,
+  HANG_DOI_TOI_DA,
+} from './tiles.service';
 
 jest.mock('axios');
 
@@ -91,10 +98,82 @@ describe('TilesService.fetchTile', () => {
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
 
-  it('lỗi mạng / timeout → 502', async () => {
+  it('lỗi mạng / timeout 2 lần liên tiếp → 502', async () => {
     axiosMock.get.mockRejectedValue(new Error('timeout of 8000ms exceeded'));
     await expect(
       new TilesService(buildConfig()).fetchTile(13, 6551, 3793),
     ).rejects.toBeInstanceOf(BadGatewayException);
+  });
+});
+
+// Bug thật trên Render (2026-11-25): trình duyệt bắn ~40 tile song song mỗi lần zoom; Render mở
+// bấy nhiêu kết nối cùng lúc tới openstreetmap.fr → 26/40 lỗi kết nối nhanh (~0,5–1,5 s) → 502.
+// Cùng 40 tile mà 6 song song thì 40/40 thành công, tổng thời gian không đổi (~3,2 s).
+describe('TilesService — giới hạn kết nối tới upstream', () => {
+  beforeEach(() => axiosMock.get.mockReset());
+  const ANH = {
+    status: 200,
+    data: PNG,
+    headers: { 'content-type': 'image/png' },
+  };
+
+  it(`không bao giờ quá ${UPSTREAM_DONG_THOI_TOI_DA} request upstream cùng lúc, các tile sau xếp hàng`, async () => {
+    let dangChay = 0;
+    let caoNhat = 0;
+    axiosMock.get.mockImplementation(async () => {
+      dangChay++;
+      caoNhat = Math.max(caoNhat, dangChay);
+      await new Promise((r) => setTimeout(r, 5));
+      dangChay--;
+      return ANH;
+    });
+    const svc = new TilesService(buildConfig());
+    const kq = await Promise.all(
+      Array.from({ length: 40 }, (_, i) => svc.fetchTile(13, 6500 + i, 3800)),
+    );
+    expect(kq.every((k) => k.found)).toBe(true);
+    expect(caoNhat).toBe(UPSTREAM_DONG_THOI_TOI_DA);
+  });
+
+  it('lỗi kết nối 1 lần → thử lại và trả tile', async () => {
+    axiosMock.get
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce(ANH);
+    const kq = await new TilesService(buildConfig()).fetchTile(13, 6551, 3793);
+    expect(kq.found).toBe(true);
+    expect(axiosMock.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('hàng đợi đầy → 503 ngay (frontend chuyển sang gọi thẳng, không chờ lâu)', async () => {
+    let tha!: () => void;
+    const chan = new Promise<void>((r) => (tha = r));
+    axiosMock.get.mockImplementation(async () => {
+      await chan;
+      return ANH;
+    });
+    const svc = new TilesService(buildConfig());
+    const dangCho = Array.from(
+      { length: UPSTREAM_DONG_THOI_TOI_DA + HANG_DOI_TOI_DA },
+      (_, i) => svc.fetchTile(13, 6000 + i, 3800),
+    );
+    await expect(svc.fetchTile(13, 1, 1)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    tha();
+    await Promise.all(dangCho);
+  });
+
+  it('request lỗi vẫn trả chỗ cho hàng đợi (không kẹt vĩnh viễn)', async () => {
+    axiosMock.get.mockRejectedValue(new Error('ECONNRESET'));
+    const svc = new TilesService(buildConfig());
+    await Promise.allSettled(
+      Array.from({ length: 20 }, (_, i) => svc.fetchTile(13, 6500 + i, 3800)),
+    );
+    axiosMock.get.mockReset();
+    axiosMock.get.mockResolvedValue(ANH);
+    const kq = await Promise.all(
+      Array.from({ length: 10 }, (_, i) => svc.fetchTile(13, 6600 + i, 3800)),
+    );
+    expect(kq.every((k) => k.found)).toBe(true);
   });
 });
