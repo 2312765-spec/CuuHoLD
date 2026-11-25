@@ -478,6 +478,8 @@ Gateway gộp mọi phòng vào **1 lần emit** để ai thuộc nhiều phòng
 NODE_ENV=development
 PORT=3000
 FRONTEND_URL=http://localhost:5173
+# Số tầng proxy trước backend: máy dev 0, Render 1 (Mục 15.28) — sai thì rate limit dồn mọi người vào 1 IP
+TRUST_PROXY_HOPS=0
 
 # Supabase (Settings → Database → Connection String → URI)
 DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres
@@ -1523,8 +1525,28 @@ tốt hơn SRS → sửa tài liệu:
 **Còn mở (cần quyết định, không phải lệch tài liệu):** victim chưa nhận `sos:updated` qua socket (phòng
 `sos:{id}` không ai join) — đang dùng poll 20s, chạy được; muốn real-time thì thêm join.
 
+### 15.28 Chuẩn bị deploy Render + Vercel (2026-11-25)
+
+Chốt: FE **Vercel**, BE **Render free + ping** `/api/health` 5 phút/lần, tên miền mặc định, `SMS_DRY_RUN=true`
+(chưa có Brandname eSMS). Hướng dẫn từng bước: `docs/HOSTING.md` Mục 0. Nhánh `chore/deploy-render-vercel`.
+- **Bug chặn deploy đã sửa — rate limit dồn cả tỉnh vào 1 IP.** `UserThrottlerGuard` bucket theo `req.ip` cho
+  route chưa có token (login/register), mà Express không tin `X-Forwarded-For` khi chưa bật `trust proxy` → sau
+  proxy Render mọi request mang IP proxy → 5 lần đăng nhập của bất kỳ ai trong 15 phút là cả tỉnh bị 429. Sửa:
+  `common/http/trust-proxy.ts` + biến `TRUST_PROXY_HOPS` (Joi: số nguyên 0–5, mặc định 0; Render đặt `1`).
+  Đếm tầng từ phải nên client tự chèn IP giả ở đầu header không đổi được bucket. Test `test/trust-proxy.e2e-spec.ts`
+  (HTTP thật, đỏ → xanh) + `env.validation.spec.ts`. ⚠️ **"Render = 1 tầng" CHƯA kiểm trên Render thật** — kiểm
+  bằng HOSTING.md Mục 3 bước 7.
+- `frontend/vercel.json` (mới): SPA fallback + `no-cache` cho `/`, `index.html`, SW + `immutable` cho `/assets/*`.
+- `DATABASE_URL` trên Render dùng **Session pooler** của Supabase (host trực tiếp chỉ IPv6).
+- Đề xuất proxy tile (`docs/tile-proxy-plan.md`) làm SAU, trên nhánh riêng, sau cờ bật/tắt — vì qua rewrite Vercel,
+  IP Render thấy có thể là IP Vercel (cùng lớp lỗi trên) và Render free 0,1 CPU dùng chung với SOS.
+
+**Kiểm chứng:** BE eslint sạch, 219/219 unit, 25/25 e2e (trừ `app.e2e-spec.ts` cần DB, đỏ sẵn), build sạch; FE build sạch.
+**Còn nợ:** [ ] deploy thật + chạy HOSTING.md Mục 3 (bước 1–9), ghi kết quả vào đây.
+
 ---
 
+*Phiên bản: 2.20.0 — Cập nhật: 2026-11-25 (Mục 15.28 — chuẩn bị deploy: TRUST_PROXY_HOPS sửa rate limit sau proxy, frontend/vercel.json, HOSTING.md Mục 0)*
 *Phiên bản: 2.19.0 — Cập nhật: 2026-10-15 (Mục 15.27 — SRS 1.1.0 và CLAUDE.md Mục 2/4/5/6/7/8/9/10/11 cập nhật cho khớp code; không sửa code)*
 *Phiên bản: 2.18.0 — Cập nhật: 2026-10-15 (thêm Mục 15.26 — commander không nhận sos:updated: cancel() không phát + thiếu phòng province:lamdong; sos:new trùng 2 lần)*
 *Phiên bản: 2.17.0 — Cập nhật: 2026-10-15 (thêm Mục 15.25 — công tắc `SMS_DRY_RUN` tắt SMS thật khi chạy thử)*

@@ -9,6 +9,9 @@ export const envValidationSchema = Joi.object({
     .default('development'),
   PORT: Joi.number().default(3000),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+  // Số tầng proxy trước app — Render: 1. Thiếu thì sau proxy mọi người dùng chung 1 IP và chung
+  // 1 bucket rate limit (login 5/15 phút cho CẢ tỉnh). Xem common/http/trust-proxy.ts.
+  TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
 
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgres', 'postgresql'] })

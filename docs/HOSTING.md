@@ -1,8 +1,70 @@
 # Triển khai (hosting) — Rescue GIS Lâm Đồng
 
-> Tài liệu mẫu, **chưa chọn nhà cung cấp**. Các đoạn cấu hình Vercel / Netlify / Cloudflare Pages
-> dưới đây chỉ để tham khảo — chưa có file cấu hình nào của nhà cung cấp được commit vào repo.
-> Chưa có lần triển khai thật nào được kiểm chứng theo tài liệu này.
+> **Đã chốt (2026-11-25):** FE trên **Vercel**, BE trên **Render gói free + ping giữ thức**,
+> DB là Supabase đang dùng, **tên miền mặc định** (`*.vercel.app`, `*.onrender.com`), SMS để
+> `SMS_DRY_RUN=true` (chưa có Brandname eSMS, xem CLAUDE.md Mục 9). Cấu hình Vercel đã commit ở
+> `frontend/vercel.json`; Render cấu hình tay theo **Mục 0** bên dưới. Mẫu Netlify / Cloudflare Pages
+> ở Mục 1 chỉ để tham khảo. **Chưa có lần triển khai thật nào được kiểm chứng** — làm xong ghi kết
+> quả vào Mục 3.
+
+## 0. Thứ tự triển khai (Render + Vercel)
+
+**Trước khi bắt đầu:**
+- Xác nhận đã chạy `gis/12-create-sos-images.sql` và `gis/13-create-push-subscriptions.sql` trên
+  Supabase (thiếu thì ảnh SOS / thông báo đẩy trả 500).
+- Mật khẩu 3 tài khoản demo (CLAUDE.md Mục 12) trên DB thật không còn là `demo1234` — chạy lại
+  `gis/06-seed-demo-users.sql` hoặc đặt mật khẩu mới trước buổi demo.
+- Tạo secret RIÊNG cho production, không dùng lại của máy dev: `JWT_SECRET`, `JWT_REFRESH_SECRET`
+  (`openssl rand -base64 32`, mỗi cái một lần), khoá VAPID (`npx web-push generate-vapid-keys`).
+
+**Bước 1 — Backend trên Render** (New → Web Service → chọn repo):
+
+| Mục | Giá trị |
+|---|---|
+| Root Directory | `backend` |
+| Runtime / Node | Node, thêm biến `NODE_VERSION=20` (cùng bản CI) |
+| Build Command | `npm ci && npm run build` |
+| Start Command | `npm run start:prod` |
+| Region | **Trùng region Supabase** (Supabase → Settings → General); lệch region mỗi truy vấn chậm thêm vài trăm ms |
+| Instance | Free |
+| Health Check Path | `/api/health` |
+
+Biến môi trường (Environment):
+
+| Biến | Giá trị |
+|---|---|
+| `NODE_ENV` | `production` (tắt Swagger `/api/docs`) |
+| `TRUST_PROXY_HOPS` | `1` — **bắt buộc**, thiếu thì mọi người dùng chung IP proxy, rate limit đăng nhập chặn cả tỉnh |
+| `DATABASE_URL` | Chuỗi **Session pooler** của Supabase (Connect → Session pooler, `aws-0-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`). Host trực tiếp `db.<ref>.supabase.co` chỉ có IPv6, Render có thể không gọi được. Ký tự `@` trong mật khẩu phải viết `%40` |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET` | secret mới tạo ở trên |
+| `JWT_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | `24h` / `7d` |
+| `FRONTEND_URL` | Tạm để `https://example.com`, điền đúng ở Bước 3 |
+| `SMS_DRY_RUN` | `true` |
+| `ORS_API_KEY` | key OpenRouteService |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | khoá mới + `mailto:<email nhóm>` |
+
+Kiểm tra: `curl https://<be>.onrender.com/api/health` → `"database": "up"`. Log Render phải có dòng
+cảnh báo `SMS DRY RUN` lúc khởi động.
+
+**Bước 2 — Frontend trên Vercel** (Add New → Project → chọn repo):
+- Root Directory `frontend`; Framework Preset Vite; Build `npm run build`; Output `dist`; Node 20.
+- Environment Variables (biến lúc build — đổi xong phải Redeploy):
+  `VITE_API_BASE_URL=https://<be>.onrender.com/api`, `VITE_SOCKET_URL=https://<be>.onrender.com`,
+  `VITE_BAT_SUA_HO_SO=true`, `VITE_BAT_LICH_SU_SOS=true`, `VITE_BAT_THONG_BAO_DAY=true` (chỉ khi
+  Bước 1 đã có VAPID).
+- FE và BE **phải** ở 2 tên miền khác nhau: rewrite của Vercel không proxy được WebSocket, Socket.IO
+  nối thẳng tới Render.
+
+**Bước 3 — Nối hai bên:** trên Render đặt `FRONTEND_URL=https://<fe>.vercel.app` (đúng `https`,
+không `/` cuối) → Render tự redeploy. Chỉ nhận 1 origin nên URL **preview** của Vercel bị CORS chặn —
+chỉ dùng URL production.
+
+**Bước 4 — Ping giữ thức (UptimeRobot hoặc tương đương):** monitor HTTP(s) tới
+`https://<be>.onrender.com/api/health`, chu kỳ 5 phút. Giảm (không loại bỏ hẳn) việc Render free ngủ
+— xem Mục 2 về hệ quả với SOS. Gói free Render có ~750 giờ chạy/tháng cho cả tài khoản: đủ cho
+**1** service chạy suốt tháng, không đủ cho 2. Đọc lại điều khoản Render về ping giữ thức trước khi bật.
+
+**Bước 5 — Kiểm tra:** Mục 3.
 
 ## 1. Frontend (thư mục `frontend/`)
 
@@ -172,3 +234,10 @@ ngrok tiện để thử trên điện thoại thật (có HTTPS nên GPS chạy
 4. Đăng nhập → request tới `VITE_API_BASE_URL` thành công, không lỗi CORS trong Console.
 5. Mở `/dashboard` bằng commander → WS `101 Switching Protocols`, chỉ báo "Thời gian thực: đang bật".
 6. Trên điện thoại (HTTPS): bấm "Vị trí của tôi" → trình duyệt hỏi quyền vị trí.
+7. **Rate limit theo đúng người** (`TRUST_PROXY_HOPS`): đăng nhập sai 6 lần từ máy A (lần 6 bị 429),
+   rồi đăng nhập từ máy B ở mạng KHÁC (VD 4G) → máy B **không** bị 429. Nếu B cũng 429: số tầng proxy
+   sai — thử `TRUST_PROXY_HOPS` khác và ghi lại số đúng vào Mục 0.
+8. **Trọn luồng SOS** (an toàn nhờ `SMS_DRY_RUN=true`): victim gửi SOS trên điện thoại → commander
+   thấy ngay trên `/dashboard` → rescuer được phân công thấy nhiệm vụ + tuyến đường ORS → victim huỷ
+   → dashboard tự cập nhật không cần F5. Log Render có `[SMS DRY RUN]`, không có tin SMS thật.
+9. Để BE ngủ (tắt ping ~20 phút) rồi gửi SOS: ghi lại SOS tới ngay hay vào hàng đợi offline.

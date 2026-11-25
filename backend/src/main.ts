@@ -1,12 +1,21 @@
 // src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { cauHinhTrustProxy } from './common/http/trust-proxy';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Đặt trước mọi middleware/guard để req.ip đúng ngay từ request đầu tiên.
+  cauHinhTrustProxy(
+    app,
+    app.get(ConfigService).get<number>('TRUST_PROXY_HOPS', 0),
+  );
 
   app.setGlobalPrefix('api');
 
