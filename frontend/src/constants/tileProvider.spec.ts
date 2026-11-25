@@ -10,6 +10,8 @@ import {
   TILE_URL,
   TILE_HOST_PATTERN,
   PROXY_TILE_PATTERN,
+  STADIA_TILE_URL,
+  STADIA_HOST_PATTERN,
   LAMDONG_BBOX,
   TILE_PROXY_PADDING,
   TILE_PROXY_MAX_ZOOM,
@@ -82,5 +84,18 @@ describe('proxy tile — khớp với backend', () => {
         expect(tileTrongVungProxy(z, x, y)).toBe(BE.tileTrongVungPhucVu(z, x, y))
       }
     }
+  })
+})
+
+describe('nguồn Stadia', () => {
+  const url = STADIA_TILE_URL.replace('{z}', '13').replace('{x}', '6563').replace('{y}', '3822')
+
+  it('KHÔNG trỏ vào *.openstreetmap.org (Viettel chặn DNS)', () => {
+    expect(new URL(url).hostname).not.toMatch(/(^|\.)openstreetmap\.org$/)
+  })
+
+  it('STADIA_HOST_PATTERN (cache SW) khớp URL Stadia, có hoặc không có ?api_key', () => {
+    expect(STADIA_HOST_PATTERN.test(url)).toBe(true)
+    expect(STADIA_HOST_PATTERN.test(url + '?api_key=abc')).toBe(true)
   })
 })

@@ -14,10 +14,12 @@ import L from 'leaflet'
 import {
   TILE_URL,
   TILE_ATTRIBUTION,
+  STADIA_TILE_URL,
+  STADIA_ATTRIBUTION,
   duongDanTileOffline,
   tileTrongVungProxy
 } from '@/constants/tileProvider'
-import { coDungProxyTile } from '@/constants/tinhNangBackend'
+import { coDungProxyTile, coDungStadia, khoaStadia } from '@/constants/tinhNangBackend'
 import { CONFIG } from '@/config'
 import { useToastStore } from '@/stores/toast'
 
@@ -32,50 +34,64 @@ function urlUpstream(z: number, x: number, y: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Cầu dao proxy (docs/tile-proxy-plan.md, rủi ro #1): backend sập/ngủ thì bản đồ z11+ KHÔNG được
-// trắng — tự chuyển sang gọi thẳng upstream tới hết phiên (tải lại trang mới thử proxy lại).
-// Chỉ đếm khi proxy lỗi MÀ upstream tải được CÙNG tile đó: <img> không đọc được mã HTTP, nên
-// proxy lỗi có thể chỉ là 404 hợp lệ ở vùng thưa dữ liệu (upstream cũng 404) — đếm mọi lỗi thì
-// zoom sâu ở vùng rừng sẽ ngắt oan.
+// NGUỒN CHÍNH + DỰ PHÒNG. Nguồn chính (ưu tiên theo thứ tự):
+//   1. Stadia Maps — VITE_TILE_STADIA (CLAUDE.md Mục 15.31), mọi vùng;
+//   2. proxy backend — VITE_DUNG_PROXY_TILE (docs/tile-proxy-plan.md), chỉ ô trong tỉnh.
+// Dự phòng luôn là openstreetmap.fr gọi thẳng (urlUpstream). Không bật gì → gọi thẳng như cũ.
+//
+// Cầu dao: nguồn chính hỏng (Stadia hết hạn mức/đổi điều khoản, backend sập/ngủ) thì bản đồ KHÔNG
+// được trắng — tự chuyển sang dự phòng tới hết phiên (tải lại trang mới thử lại nguồn chính).
+// Chỉ đếm khi nguồn chính lỗi MÀ dự phòng tải được CÙNG tile đó: <img> không đọc được mã HTTP,
+// nên lỗi có thể chỉ là 404 hợp lệ ở vùng thưa dữ liệu (dự phòng cũng 404) — đếm mọi lỗi thì zoom
+// sâu ở vùng rừng sẽ ngắt oan.
 // ---------------------------------------------------------------------------
 const NGUONG_LOI = 4
 const CUA_SO_MS = 20_000
 let loiGanDay: number[] = []
-let proxyDaNgat = false
+let nguonChinhDaNgat = false
 
-function ghiNhanProxyHong(): void {
-  if (proxyDaNgat) return
+function ghiNhanNguonChinhHong(): void {
+  if (nguonChinhDaNgat) return
   const now = Date.now()
   loiGanDay = loiGanDay.filter((t) => now - t < CUA_SO_MS)
   loiGanDay.push(now)
   if (loiGanDay.length < NGUONG_LOI) return
-  proxyDaNgat = true
+  nguonChinhDaNgat = true
   try {
     useToastStore().showToast(
-      'Máy chủ bản đồ của hệ thống đang chậm — đã chuyển sang tải bản đồ trực tiếp.'
+      coDungStadia()
+        ? 'Nguồn bản đồ chính đang lỗi — đã chuyển sang nguồn bản đồ dự phòng.'
+        : 'Máy chủ bản đồ của hệ thống đang chậm — đã chuyển sang tải bản đồ trực tiếp.'
     )
   } catch {
     // Chưa có Pinia (VD trang test) — bỏ qua toast, vẫn chuyển nguồn.
   }
 }
 
-// Chỉ dùng trong test.
+// Chỉ dùng trong test (tên giữ từ khi cầu dao chỉ dành cho proxy).
 export function datLaiCauDaoProxy(): void {
   loiGanDay = []
-  proxyDaNgat = false
+  nguonChinhDaNgat = false
 }
 
-function nenDungProxy(z: number, x: number, y: number): boolean {
-  return coDungProxyTile() && !proxyDaNgat && tileTrongVungProxy(z, x, y)
-}
-
-function urlTile(z: number, x: number, y: number, choPhepProxy = true): string {
-  const offline = duongDanTileOffline(z, x, y)
-  if (offline) return offline
-  if (choPhepProxy && nenDungProxy(z, x, y)) {
+// URL nguồn chính cho ô này, hoặc null nếu ô này dùng dự phòng.
+function urlNguonChinh(z: number, x: number, y: number): string | null {
+  if (nguonChinhDaNgat) return null
+  if (coDungStadia()) {
+    const khoa = khoaStadia()
+    const url = L.Util.template(STADIA_TILE_URL, { z, x, y })
+    return khoa ? `${url}?api_key=${encodeURIComponent(khoa)}` : url
+  }
+  if (coDungProxyTile() && tileTrongVungProxy(z, x, y)) {
     return `${CONFIG.apiBaseUrl}/tiles/${z}/${x}/${y}.png`
   }
-  return urlUpstream(z, x, y)
+  return null
+}
+
+function urlTile(z: number, x: number, y: number, choPhepNguonChinh = true): string {
+  const offline = duongDanTileOffline(z, x, y)
+  if (offline) return offline
+  return (choPhepNguonChinh ? urlNguonChinh(z, x, y) : null) ?? urlUpstream(z, x, y)
 }
 
 // Tile thiếu ở zoom sâu → lùi về tile cha rồi phóng to đúng phần tương ứng.
@@ -104,11 +120,11 @@ export class LopTileNen extends L.TileLayer {
     khung.appendChild(img)
 
     let lui = 0
-    // Proxy đã lỗi cho tile này → mọi lần thử sau (cùng mức + các tile cha) đi thẳng upstream.
-    let boQuaProxy = false
-    // Lần tải hiện tại đang đi qua proxy / là lần thử lại upstream ngay sau khi proxy lỗi.
-    let dangQuaProxy = false
-    let dangThuLaiSauProxy = false
+    // Nguồn chính đã lỗi cho tile này → mọi lần thử sau (cùng mức + các tile cha) dùng dự phòng.
+    let boQuaNguonChinh = false
+    // Lần tải hiện tại đang dùng nguồn chính / là lần thử dự phòng ngay sau khi nguồn chính lỗi.
+    let dangDungNguonChinh = false
+    let dangThuLaiSauLoi = false
     const dat = (): void => {
       const s = 2 ** lui
       img.style.width = `${kichThuoc.x * s}px`
@@ -118,22 +134,23 @@ export class LopTileNen extends L.TileLayer {
       const z = coords.z - lui
       const x = Math.floor(coords.x / s)
       const y = Math.floor(coords.y / s)
-      dangQuaProxy = !boQuaProxy && duongDanTileOffline(z, x, y) === null && nenDungProxy(z, x, y)
-      img.src = urlTile(z, x, y, !boQuaProxy)
+      dangDungNguonChinh =
+        !boQuaNguonChinh && duongDanTileOffline(z, x, y) === null && urlNguonChinh(z, x, y) !== null
+      img.src = urlTile(z, x, y, !boQuaNguonChinh)
     }
     img.addEventListener('load', () => {
-      if (dangThuLaiSauProxy) ghiNhanProxyHong()
+      if (dangThuLaiSauLoi) ghiNhanNguonChinhHong()
       done(undefined, khung)
     })
     img.addEventListener('error', () => {
-      if (dangQuaProxy) {
-        // Thử lại ĐÚNG mức này trực tiếp từ upstream trước khi lùi tile cha.
-        boQuaProxy = true
-        dangThuLaiSauProxy = true
+      if (dangDungNguonChinh) {
+        // Thử lại ĐÚNG mức này bằng nguồn dự phòng trước khi lùi tile cha.
+        boQuaNguonChinh = true
+        dangThuLaiSauLoi = true
         dat()
         return
       }
-      dangThuLaiSauProxy = false
+      dangThuLaiSauLoi = false
       if (lui < TILE_LUI_TOI_DA && coords.z - lui > 0) {
         lui++
         dat()
@@ -148,7 +165,8 @@ export class LopTileNen extends L.TileLayer {
 
 export function taoLopTileNen(): LopTileNen {
   return new LopTileNen(TILE_URL, {
-    attribution: TILE_ATTRIBUTION,
+    // Stadia bật thì ghi nguồn Stadia (bắt buộc theo điều khoản) + nguồn dự phòng.
+    attribution: coDungStadia() ? `${STADIA_ATTRIBUTION} | ${TILE_ATTRIBUTION}` : TILE_ATTRIBUTION,
     maxZoom: 18
     // crossOrigin đặt trực tiếp trên <img> trong createTile (option của Leaflet chỉ có tác
     // dụng với createTile gốc). BẮT BUỘC để service worker đọc được status thật (200/429/...)

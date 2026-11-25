@@ -54,6 +54,9 @@ cảnh báo `SMS DRY RUN` lúc khởi động.
   `VITE_BAT_SUA_HO_SO=true`, `VITE_BAT_LICH_SU_SOS=true`, `VITE_BAT_THONG_BAO_DAY=true` (chỉ khi
   Bước 1 đã có VAPID), `VITE_DUNG_PROXY_TILE=false` (proxy tile — bật theo
   `docs/tile-proxy-plan.md` Mục 5, sau khi phần còn lại đã chạy ổn).
+- **Nguồn tile Stadia Maps** (CLAUDE.md Mục 15.31): `VITE_TILE_STADIA=true` + `VITE_STADIA_API_KEY=<key>`
+  (key lấy ở Stadia → Client Dashboard → Property). Key nằm trong bundle — đặt giới hạn tên miền phía
+  Stadia. Stadia lỗi/hết hạn mức → tự chuyển sang openstreetmap.fr. Bật Stadia thì để proxy tile tắt.
 - FE và BE **phải** ở 2 tên miền khác nhau: rewrite của Vercel không proxy được WebSocket, Socket.IO
   nối thẳng tới Render.
 
