@@ -16,6 +16,7 @@ export interface AppConfig {
     hazards: string
     system: string
     hazardReports: string
+    geocodeReverse: string
   }
 }
 
@@ -33,6 +34,7 @@ export const CONFIG: AppConfig = {
     users: '/users',
     hazards: '/hazards',
     system: '/system',
-    hazardReports: '/hazard-reports'
+    hazardReports: '/hazard-reports',
+    geocodeReverse: '/geocode/reverse'
   }
 }

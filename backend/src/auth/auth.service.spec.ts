@@ -1,4 +1,9 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
@@ -7,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { User } from '../users/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { LoginAttemptsService } from './login-attempts.service';
 
 jest.mock('bcrypt');
 
@@ -36,6 +42,7 @@ describe('AuthService', () => {
   };
   let jwtService: { signAsync: jest.Mock; verifyAsync: jest.Mock };
   let configService: { getOrThrow: jest.Mock };
+  let now: number;
 
   beforeEach(() => {
     usersService = {
@@ -52,10 +59,12 @@ describe('AuthService', () => {
         key === 'JWT_SECRET' ? 'access-secret' : 'refresh-secret',
       ),
     };
+    now = Date.UTC(2026, 10, 18, 12, 0, 0);
     service = new AuthService(
       usersService as unknown as UsersService,
       jwtService as unknown as JwtService,
       configService as unknown as ConfigService,
+      new LoginAttemptsService(() => now),
     );
     jest.mocked(bcrypt.compare).mockReset();
   });
@@ -81,12 +90,74 @@ describe('AuthService', () => {
 
   describe('login', () => {
     const dto: LoginDto = { phone: '0901234567', password: 'matkhau123' };
+    const IP = '10.0.0.1';
+
+    async function saiMatKhau(lan: number): Promise<void> {
+      usersService.findByPhone.mockResolvedValue(buildUser());
+      jest.mocked(bcrypt.compare).mockResolvedValue(false as never);
+      for (let i = 0; i < lan; i++) {
+        await expect(service.login(dto, IP)).rejects.toThrow(
+          UnauthorizedException,
+        );
+      }
+    }
+
+    // Lỗi thật người dùng gặp (2026-11-18): giới hạn cũ đếm CẢ lần đăng nhập đúng, theo IP —
+    // test nhiều tài khoản trên 1 máy là hết lượt, sai 1-2 lần đã bị chặn 15 phút.
+    it('đăng nhập ĐÚNG nhiều lần không bao giờ bị chặn', async () => {
+      usersService.findByPhone.mockResolvedValue(buildUser());
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      for (let i = 0; i < 10; i++) {
+        await expect(service.login(dto, IP)).resolves.toHaveProperty(
+          'accessToken',
+        );
+      }
+    });
+
+    it('sai lần 4 → báo còn 1 lần thử', async () => {
+      await saiMatKhau(3);
+      jest.mocked(bcrypt.compare).mockResolvedValue(false as never);
+      await expect(service.login(dto, IP)).rejects.toThrow('còn 1 lần thử');
+    });
+
+    it('sai 5 lần → lần sau bị 429 kèm số phút phải chờ, kể cả khi lần này nhập đúng', async () => {
+      await saiMatKhau(5);
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      const loi = await service.login(dto, IP).catch((e: unknown) => e);
+      expect(loi).toBeInstanceOf(HttpException);
+      expect((loi as HttpException).getStatus()).toBe(
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+      expect((loi as HttpException).message).toContain('15 phút');
+      // Bị khoá thì KHÔNG so mật khẩu nữa (không cho dò tiếp).
+      expect(bcrypt.compare).toHaveBeenCalledTimes(5);
+    });
+
+    it('hết thời gian khoá → đăng nhập lại được', async () => {
+      await saiMatKhau(5);
+      now += 15 * 60_000;
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      await expect(service.login(dto, IP)).resolves.toHaveProperty(
+        'accessToken',
+      );
+    });
+
+    it('đăng nhập đúng xoá các lần sai trước đó', async () => {
+      await saiMatKhau(4);
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      await service.login(dto, IP);
+      await saiMatKhau(4);
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      await expect(service.login(dto, IP)).resolves.toHaveProperty(
+        'accessToken',
+      );
+    });
 
     it('đăng nhập thành công khi mật khẩu đúng và tài khoản active', async () => {
       usersService.findByPhone.mockResolvedValue(buildUser());
       jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
 
-      const result = await service.login(dto);
+      const result = await service.login(dto, IP);
 
       expect(result.accessToken).toBe('signed-token');
       expect(result.user).not.toHaveProperty('passwordHash');
@@ -95,14 +166,18 @@ describe('AuthService', () => {
     it('ném UnauthorizedException khi không tìm thấy user', async () => {
       usersService.findByPhone.mockResolvedValue(null);
 
-      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(dto, IP)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('ném UnauthorizedException khi sai mật khẩu', async () => {
       usersService.findByPhone.mockResolvedValue(buildUser());
       jest.mocked(bcrypt.compare).mockResolvedValue(false as never);
 
-      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(dto, IP)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     // TDD cho CLAUDE.md kế hoạch F-AUTH-02 (SRS 3.1.2): tài khoản bị khoá phải trả 403
@@ -117,8 +192,10 @@ describe('AuthService', () => {
       );
       jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
 
-      await expect(service.login(dto)).rejects.toThrow(ForbiddenException);
-      await expect(service.login(dto)).rejects.toThrow('Tài khoản đã bị khóa');
+      await expect(service.login(dto, IP)).rejects.toThrow(ForbiddenException);
+      await expect(service.login(dto, IP)).rejects.toThrow(
+        'Tài khoản đã bị khóa',
+      );
     });
   });
 

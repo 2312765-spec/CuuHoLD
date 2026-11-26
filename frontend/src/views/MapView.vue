@@ -17,6 +17,7 @@ import MapTopBar from '@/components/map/MapTopBar.vue'
 import MapStats from '@/components/map/MapStats.vue'
 import MapLegend from '@/components/map/MapLegend.vue'
 import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
+import ChonXaPhuong from '@/components/map/ChonXaPhuong.vue'
 import SosButton from '@/components/sos/SosButton.vue'
 import SosConfirmDialog from '@/components/sos/SosConfirmDialog.vue'
 import SosTrackerPanel from '@/components/sos/SosTrackerPanel.vue'
@@ -28,7 +29,7 @@ import { useGhimViTri } from '@/composables/useGhimViTri'
 import { useVetGpsStore } from '@/stores/vetGps.store'
 import { SOS_STATUS_LABEL } from '@/constants/sosLabels'
 import type { SosType } from '@/types'
-import type { SosUpdatedPayload } from '@/shared/socket-events.types'
+import type { SosUpdatedPayload, SystemNotificationPayload } from '@/shared/socket-events.types'
 
 const authStore = useAuthStore()
 // Nút SOS chỉ dành cho người dân (victim). Rescuer/commander không gửi SOS.
@@ -318,8 +319,26 @@ const { isConnected, connect } = useSocket({
   onTeamLocation: (data) => {
     // Đội cứu hộ gửi vị trí mới → nếu là đội của SOS mình đang theo dõi, đánh dấu "đang di chuyển".
     sos.danhDauDoiDiChuyen(data.teamId)
+  },
+  // Commander vừa tạo/duyệt/gỡ cảnh báo (backend bắn vào xã của cảnh báo) → vẽ lại ngay, không
+  // phải F5. Trước đây trang này không nghe sự kiện này nên báo cáo được duyệt không hiện tới khi
+  // người dân tải lại trang.
+  onSystemNotification: (data: SystemNotificationPayload) => {
+    toastStore.showToast(data.message)
+    void taiCanhBaoDuong()
   }
 })
+
+// Sự kiện trên chỉ tới người ở ĐÚNG xã của cảnh báo (phòng ward:{mã}) — người ở xã khác, hoặc tài
+// khoản chưa có xã, không nhận được. Bù bằng tải lại định kỳ + mỗi khi quay lại tab.
+const CHU_KY_TAI_CANH_BAO_MS = 60_000
+let henTaiCanhBao: ReturnType<typeof setInterval> | null = null
+function taiCanhBaoKhiQuayLai(): void {
+  if (document.visibilityState === 'visible') void taiCanhBaoDuong(true)
+}
+
+// Bộ chọn xã/phường: chỉ bay bản đồ tới xã đó (trang này không có danh sách để lọc).
+const xaDangXem = ref('')
 
 // ---------- Đồng bộ state theo phiên đăng nhập ----------
 // Mọi thứ thuộc về PHIÊN (SOS đang theo dõi, marker của nó, kết nối socket mang JWT) phải
@@ -378,13 +397,13 @@ let huyLangNgheHangDoi: (() => void) | null = null
 
 // Cảnh báo chặn đường đã duyệt (GET /api/hazards cần JWT như danh sách đội) — chỉ tải khi đã
 // đăng nhập; đăng xuất thì xoá khỏi bản đồ. Lỗi mạng/server không chặn xem bản đồ.
-async function taiCanhBaoDuong(): Promise<void> {
+async function taiCanhBaoDuong(imLang = false): Promise<void> {
   if (!authStore.isLoggedIn) {
     capNhatCanhBaoDuong([])
     return
   }
   try {
-    capNhatCanhBaoDuong(await layCanhBaoDangHoatDong())
+    capNhatCanhBaoDuong(await layCanhBaoDangHoatDong(imLang))
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   }
@@ -398,6 +417,8 @@ onMounted(async () => {
   // (victim đã đăng nhập) rồi hiện toast lỗi cho người chỉ muốn xem map.
   if (coTheXemDoiCuuHo.value) mapDataStore.taiDiemCuuTroTuServer()
   void taiCanhBaoDuong()
+  henTaiCanhBao = setInterval(() => void taiCanhBaoDuong(true), CHU_KY_TAI_CANH_BAO_MS)
+  document.addEventListener('visibilitychange', taiCanhBaoKhiQuayLai)
   // Khi có mạng trở lại: báo cáo minh hoạ trong hàng đợi được "gửi" theo đúng luồng
   // themMarkerBaoCao() có sẵn (tái dùng, không viết logic vẽ marker riêng lần 2); SOS thật
   // trong hàng đợi được gửi qua guiSos() thật, kết quả đổ ngược lại thẻ theo dõi hiện tại.
@@ -428,6 +449,9 @@ watch(
 )
 
 onUnmounted(() => {
+  if (henTaiCanhBao) clearInterval(henTaiCanhBao)
+  henTaiCanhBao = null
+  document.removeEventListener('visibilitychange', taiCanhBaoKhiQuayLai)
   destroyMap()
   huyLangNgheHangDoi?.()
   huyLangNgheHangDoi = null
@@ -446,6 +470,7 @@ watch(activeLayer, (layer) => {
     <div id="map"></div>
     <!-- Mọi vai trò (kể cả khách): xem mình đang ở đâu, không gửi gì đi. -->
     <ViTriCuaToi :map="mapInstance" />
+    <ChonXaPhuong v-model="xaDangXem" :map="mapInstance" />
     <MapLegend />
     <!-- Báo cáo sạt lở / chặn đường từ hiện trường — mọi người dùng đã đăng nhập (người dân,
          tình nguyện viên). Cần đăng nhập vì báo cáo gắn với người gửi để quản trị viên xác minh. -->

@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
-import { useNotificationStore } from '@/stores/notifications'
+import { useNotificationStore, type ThongBao } from '@/stores/notifications'
 
 // Trung tâm thông báo (F-UI-03). Chuông + badge số chưa đọc ở header, danh sách thả xuống.
 // CHỈ hiển thị: việc nghe socket và ghi lịch sử nằm ở NotificationListener.vue (mount ở App.vue,
@@ -23,10 +23,12 @@ function toggle() {
 }
 function dong() { moRong.value = false }
 
-function chonThongBao(sosId?: string) {
+function chonThongBao(tb: ThongBao) {
   dong()
-  // Chỉ commander có Bảng điều phối để xem chi tiết SOS.
-  if (sosId && authStore.role === 'commander') router.push('/dashboard')
+  // Chỉ commander có Bảng điều phối để xem chi tiết SOS / duyệt báo cáo.
+  if (authStore.role !== 'commander') return
+  if (tb.loai === 'bao-cao-moi') router.push({ path: '/dashboard', query: { tab: 'reports' } })
+  else if (tb.sosId) router.push('/dashboard')
 }
 
 function thoiGianNgan(iso: string): string {
@@ -38,7 +40,7 @@ function thoiGianNgan(iso: string): string {
 }
 
 // Thông báo cũ (lưu trước khi có trường icon) rơi về biểu tượng theo loại.
-const ICON: Record<string, string> = { 'sos-moi': '🆘', 'sos-capnhat': '🔄', 'he-thong': '📢' }
+const ICON: Record<string, string> = { 'sos-moi': '🆘', 'sos-capnhat': '🔄', 'he-thong': '📢', 'bao-cao-moi': '🚧' }
 
 // Đóng khi bấm ra ngoài.
 function onClickNgoai(e: MouseEvent) {
@@ -85,7 +87,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
             :key="tb.id"
             class="noti-item"
             :class="{ unread: !tb.daDoc }"
-            @click="chonThongBao(tb.sosId)"
+            @click="chonThongBao(tb)"
           >
             <span class="noti-ico" aria-hidden="true">{{ tb.icon ?? ICON[tb.loai] }}</span>
             <div class="noti-body">
@@ -182,7 +184,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
   cursor: pointer;
 }
 .noti-clear:hover { text-decoration: underline; }
-.noti-empty { padding: 26px 14px; text-align: center; color: rgba(42, 42, 36, 0.55); font-size: 13px; }
+.noti-empty { padding: 26px 14px; text-align: center; color: rgba(42, 42, 36, 0.75); font-size: 13px; }
 .noti-list { list-style: none; margin: 0; padding: 0; }
 .noti-item {
   display: flex;
@@ -198,7 +200,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickNgoai))
 .noti-body { min-width: 0; }
 .noti-title { font-size: 13px; font-weight: 600; color: var(--ink); }
 .noti-desc { font-size: 12px; color: rgba(42, 42, 36, 0.7); margin-top: 1px; }
-.noti-time { font-size: 11px; color: rgba(42, 42, 36, 0.5); margin-top: 3px; }
+.noti-time { font-size: 11px; color: rgba(42, 42, 36, 0.75); margin-top: 3px; }
 .noti-fade-enter-active, .noti-fade-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
 .noti-fade-enter-from, .noti-fade-leave-to { opacity: 0; transform: translateY(-6px); }
 </style>

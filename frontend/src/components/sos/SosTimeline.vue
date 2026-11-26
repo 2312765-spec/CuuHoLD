@@ -62,7 +62,7 @@ function gioPhut(iso: string): string {
 }
 .sos-timeline-empty {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   margin: 0;
 }
 .sos-timeline-list {
@@ -109,7 +109,7 @@ function gioPhut(iso: string): string {
 }
 .sos-timeline-time {
   font-size: 11px;
-  color: rgba(42, 42, 36, 0.5);
+  color: rgba(42, 42, 36, 0.75);
 }
 .sos-timeline-note {
   margin: 3px 0 0;

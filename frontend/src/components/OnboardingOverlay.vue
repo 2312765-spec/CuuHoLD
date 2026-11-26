@@ -148,7 +148,7 @@ function boQua(): void {
 .ob-count {
   margin-top: 14px;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.5);
+  color: rgba(42, 42, 36, 0.75);
 }
 .ob-fade-enter-active,
 .ob-fade-leave-active { transition: opacity 0.25s ease; }

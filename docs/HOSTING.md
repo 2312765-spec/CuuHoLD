@@ -43,6 +43,7 @@ Biến môi trường (Environment):
 | `ORS_API_KEY` | key OpenRouteService |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | khoá mới + `mailto:<email nhóm>` |
 | `TILE_PROXY_USER_AGENT` | (tuỳ chọn) chỉ cần khi bật proxy tile — VD `ten-ung-dung/1.0 (mailto:<email nhóm>)` |
+| `GEOCODE_USER_AGENT` | (tuỳ chọn) User-Agent gửi Nominatim khi tra tên đường; trống → dùng `TILE_PROXY_USER_AGENT` |
 
 Kiểm tra: `curl https://<be>.onrender.com/api/health` → `"database": "up"`. Log Render phải có dòng
 cảnh báo `SMS DRY RUN` lúc khởi động.

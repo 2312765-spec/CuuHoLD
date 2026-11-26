@@ -4,6 +4,7 @@
 // làm nhẹ-gọn đã dùng cho heatmap (DashboardView.vue vẽ vòng tròn tự tính màu, không dùng lib).
 
 import { ref, computed, onMounted } from 'vue'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { layThongKeTongQuan } from '@/services/gisService'
@@ -55,11 +56,16 @@ const stats = ref<StatsResult | null>(null)
 const loading = ref(false)
 
 async function taiThongKe(): Promise<void> {
+  // Có dữ liệu lần trước của đúng khoảng này → hiện ngay, tải mới ở nền (utils/nhoTam.ts).
+  const khoa = `stats:${soNgay.value}`
+  const cu = docTam<StatsResult>(khoa)
+  if (cu) stats.value = cu
   loading.value = true
   try {
     const to = new Date()
     const from = new Date(to.getTime() - soNgay.value * 24 * 60 * 60 * 1000)
     stats.value = await layThongKeTongQuan(from, to)
+    ghiTam(khoa, stats.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {
@@ -109,7 +115,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-if="loading" class="panel-empty">Đang tải...</div>
+      <div v-if="loading && !stats" class="panel-empty">Đang tải...</div>
       <template v-else-if="coDuLieu && stats">
         <!-- Tổng quan -->
         <div class="stats-summary">
@@ -247,7 +253,7 @@ onMounted(() => {
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -260,7 +266,7 @@ onMounted(() => {
 .panel-empty {
   padding: 24px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 13px;
 }
 
@@ -286,7 +292,7 @@ onMounted(() => {
 }
 .summary-card span {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .stats-section {
@@ -302,7 +308,7 @@ onMounted(() => {
 }
 .section-hint {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.5);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 12px;
 }
 
@@ -344,7 +350,7 @@ onMounted(() => {
 }
 .bar-count {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   text-align: right;
 }
 

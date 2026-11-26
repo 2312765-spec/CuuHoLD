@@ -366,7 +366,7 @@ const emptyText = computed(() => {
 <style scoped>
 .panel-empty {
   padding: 24px 20px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 13px;
 }
 .mod-filter {
@@ -381,7 +381,7 @@ const emptyText = computed(() => {
   border-radius: 999px;
   background: #fff;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.7);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
 }
 .mod-filter-btn.active {
@@ -393,7 +393,7 @@ const emptyText = computed(() => {
   padding: 12px 20px;
   font-size: 12px;
   line-height: 1.5;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   background: var(--fog-dim);
   border-bottom: 1px solid var(--line);
 }
@@ -437,7 +437,7 @@ const emptyText = computed(() => {
 }
 .mod-time {
   font-size: 11px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   white-space: nowrap;
 }
 .mod-name {
@@ -451,7 +451,7 @@ const emptyText = computed(() => {
 }
 .mod-meta {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .warn {
   display: inline-block;
@@ -531,7 +531,7 @@ const emptyText = computed(() => {
   padding: 22px 10px;
   text-align: center;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   background: #f3f4f6;
   border-radius: 8px;
 }
@@ -547,7 +547,7 @@ const emptyText = computed(() => {
 .mod-photo figcaption {
   margin-top: 4px;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .review-severity {
   display: flex;
@@ -577,7 +577,7 @@ const emptyText = computed(() => {
 }
 .field label {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .field input {
   padding: 8px 10px;

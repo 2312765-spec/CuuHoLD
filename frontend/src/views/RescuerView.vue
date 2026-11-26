@@ -600,7 +600,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .realtime-status .dot {
   width: 8px;
@@ -622,7 +622,7 @@ onUnmounted(() => {
 .panel-empty {
   padding: 40px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 14px;
 }
 
@@ -647,7 +647,7 @@ onUnmounted(() => {
 .map-hint {
   margin: 8px 2px 14px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .sos-list {
@@ -691,7 +691,7 @@ onUnmounted(() => {
 }
 .sos-status-badge {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .sos-victim {
   font-size: 16px;
@@ -708,7 +708,7 @@ onUnmounted(() => {
 }
 .sos-meta {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 2px;
 }
 .sos-meta a {

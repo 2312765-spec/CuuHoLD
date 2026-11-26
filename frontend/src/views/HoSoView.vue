@@ -381,7 +381,7 @@ async function doiMk() {
   font-size: 15px;
 }
 .ho-so-dl dt {
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .ho-so-dl dd {
   margin: 0;
@@ -390,7 +390,7 @@ async function doiMk() {
 .ho-so-ghi-chu {
   margin: 10px 0 16px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .ho-so-mo-ta {
   margin: 0 0 10px;

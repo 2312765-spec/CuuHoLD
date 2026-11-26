@@ -13,6 +13,7 @@
 // động (main.ts), đăng nhập/đăng xuất ở một tab thì mọi tab đang mở làm theo.
 
 import { defineStore } from 'pinia'
+import { xoaHetTam } from '@/utils/nhoTam'
 import { ref, computed, watch, toRaw } from 'vue'
 import type { User } from '@/types/auth'
 import { login as apiLogin, getMe as apiGetMe } from '@/services/auth.service'
@@ -73,6 +74,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Gán phiên nhận từ tab khác — KHÔNG phát lại (tránh các tab đẩy tin qua lại vô hạn).
   function nhanPhien(phien: StoredSession) {
+    // Đổi sang tài khoản KHÁC mà không qua đăng xuất (tab khác đăng nhập người khác) → dữ liệu
+    // trang nhớ tạm của người trước không được hiện cho người sau.
+    if (user.value && user.value.id !== phien.user.id) xoaHetTam()
     accessToken.value = phien.accessToken
     refreshToken.value = phien.refreshToken
     user.value = phien.user
@@ -104,6 +108,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Phần đăng xuất chạy ở MỌI tab (kể cả tab nhận tin từ tab khác).
   function xoaPhienCucBo() {
+    // Dữ liệu trang nhớ tạm (utils/nhoTam.ts) có tên/SĐT người dùng — không để lại cho người
+    // sau. Đặt ở đây (không phải logout()) để tab NHẬN tin đăng xuất từ tab khác cũng xoá.
+    xoaHetTam()
     // F-PWA-05: huỷ đăng ký thông báo đẩy TRÊN MÁY (không gọi API — logout() cũng chạy lúc
     // token đã hết hạn/401). Không huỷ thì người đăng nhập kế tiếp trên cùng máy nhận thông
     // báo SOS của tài khoản này. Không await: đăng xuất phải xong ngay, bước này best-effort.

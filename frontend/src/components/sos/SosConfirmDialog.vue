@@ -219,7 +219,7 @@ onUnmounted(() => {
 .sos-dialog-card .sos-cancel-btn:hover{ border-color:#2a2a24; }
 .sos-dialog-card h3{ padding-right:40px; }
 .sos-dialog-card h3{ font-family:'Fraunces',serif; font-size:19px; color:var(--pine-deep); margin-bottom:6px; }
-.sos-dialog-sub{ font-size:13px; color:rgba(42,42,36,0.65); margin-bottom:18px; }
+.sos-dialog-sub{ font-size:13px; color:rgba(42, 42, 36, 0.75); margin-bottom:18px; }
 .sos-dialog-card label{ display:block; font-size:13px; color:var(--ink); margin-bottom:14px; }
 .sos-dialog-card select, .sos-dialog-card textarea{
   display:block; width:100%; margin-top:6px; padding:11px 13px;
@@ -246,5 +246,5 @@ onUnmounted(() => {
 .sos-dialog-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:4px; }
 .sos-confirm-btn{ background:var(--clay); color:var(--fog); }
 .sos-confirm-btn:hover{ background:var(--clay-soft); }
-.sos-dialog-hint{ font-size:11px; color:rgba(42,42,36,0.5); text-align:right; margin-top:8px; }
+.sos-dialog-hint{ font-size:11px; color:rgba(42, 42, 36, 0.75); text-align:right; margin-top:8px; }
 </style>

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
+  Optional,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,12 +13,44 @@ import { RegisterDto } from '../auth/dto/register.dto';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import * as bcrypt from 'bcrypt';
 
+// Nhớ tạm tài khoản cho xác thực JWT (CLAUDE.md 15.34): trước đây MỌI request có JWT đọc lại
+// tài khoản từ Supabase (~350 ms) chỉ để kiểm còn hoạt động — mỗi lần mở trang chậm gấp đôi.
+const AUTH_CACHE_TTL_MS = 15_000;
+
 @Injectable()
 export class UsersService {
+  private readonly authCache = new Map<
+    string,
+    { user: User; expiresAt: number }
+  >();
+  private readonly now: () => number;
+
   constructor(
     @InjectRepository(User)
     private usersRepo: Repository<User>,
-  ) {}
+    // Đồng hồ tiêm được cho test; app Nest không cung cấp token này → Date.now.
+    @Optional() @Inject('USERS_CLOCK') now?: () => number,
+  ) {
+    this.now = now ?? Date.now;
+  }
+
+  // Chỉ dùng cho JwtStrategy. Khoá/đổi vai trò/đổi tên/đổi mật khẩu đi qua service này đều
+  // xoá bản nhớ tạm ngay (quenTaiKhoan). Thay đổi bằng SQL thẳng ở nơi khác (VD đếm huỷ trễ
+  // `is_flagged` trong SosService.cancel) có thể trễ tối đa 15 giây trong req.user.
+  async findByIdForAuth(id: string): Promise<User | null> {
+    const t = this.now();
+    const hit = this.authCache.get(id);
+    if (hit && hit.expiresAt > t) return hit.user;
+    const user = await this.findById(id);
+    if (user)
+      this.authCache.set(id, { user, expiresAt: t + AUTH_CACHE_TTL_MS });
+    else this.authCache.delete(id);
+    return user;
+  }
+
+  private quenTaiKhoan(id: string): void {
+    this.authCache.delete(id);
+  }
 
   async create(dto: RegisterDto): Promise<User> {
     const existing = await this.usersRepo.findOne({
@@ -100,7 +134,10 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.name = name.trim();
-    return this.usersRepo.save(user);
+    const saved = await this.usersRepo.save(user);
+    // Xoá SAU khi lưu: xoá trước thì request đến giữa chừng nạp lại bản cũ vào cache 15 giây.
+    this.quenTaiKhoan(userId);
+    return saved;
   }
 
   // F-UI-01 — đổi mật khẩu, bắt buộc đúng mật khẩu hiện tại. Sai → 400, KHÔNG 401: interceptor
@@ -121,6 +158,7 @@ export class UsersService {
     }
     user.passwordHash = await bcrypt.hash(newPassword, 12);
     await this.usersRepo.save(user);
+    this.quenTaiKhoan(userId);
   }
 
   // actorId = id của chính commander đang gọi — chặn tự đổi role của mình để tránh tự khoá
@@ -133,7 +171,10 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.role = role;
-    return this.usersRepo.save(user);
+    const saved = await this.usersRepo.save(user);
+    // Xoá SAU khi lưu: xoá trước thì request đến giữa chừng nạp lại bản cũ vào cache 15 giây.
+    this.quenTaiKhoan(id);
+    return saved;
   }
 
   // Cùng lý do chặn tự-thao-tác như updateRole() — tự khoá tài khoản mình sẽ không đăng nhập
@@ -151,6 +192,9 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.isActive = isActive;
-    return this.usersRepo.save(user);
+    const saved = await this.usersRepo.save(user);
+    // Xoá SAU khi lưu: xoá trước thì request đến giữa chừng nạp lại bản cũ vào cache 15 giây.
+    this.quenTaiKhoan(id);
+    return saved;
   }
 }

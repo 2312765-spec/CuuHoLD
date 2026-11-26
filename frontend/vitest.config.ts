@@ -15,6 +15,8 @@ export default defineConfig({
   test: {
     // globals:false (mặc định) — import describe/it/expect/vi tường minh từ 'vitest' thay
     // vì bơm vào global, khỏi phải sửa "types" trong tsconfig.json cho cả dự án chỉ vì test.
-    environment: 'jsdom'
+    environment: 'jsdom',
+    // Chặn gọi mạng thật trong test (tra tên đường Nominatim) — xem file.
+    setupFiles: ['./src/test-utils/setup.ts']
   }
 })

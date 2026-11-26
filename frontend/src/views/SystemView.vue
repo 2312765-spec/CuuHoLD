@@ -4,6 +4,7 @@
 // không sửa được qua web (và không bao giờ hiển thị giá trị key/secret).
 
 import { ref, onMounted } from 'vue'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
 import { layTrangThaiHeThong, layNhatKyHoatDong } from '@/services/systemService'
@@ -53,11 +54,17 @@ function formatUptime(giay: number): string {
 }
 
 async function taiDuLieu(): Promise<void> {
+  const cu = docTam<{ s: typeof status.value; a: typeof activity.value }>('system')
+  if (cu && !status.value) {
+    status.value = cu.s
+    activity.value = cu.a
+  }
   loading.value = true
   try {
     const [s, a] = await Promise.all([layTrangThaiHeThong(), layNhatKyHoatDong(50)])
     status.value = s
     activity.value = a
+    ghiTam('system', { s, a })
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {
@@ -216,7 +223,7 @@ onMounted(() => {
 .panel-empty {
   padding: 24px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 13px;
 }
 .system-section {
@@ -233,7 +240,7 @@ onMounted(() => {
 .section-hint {
   margin-top: 12px;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .status-list {
   list-style: none;
@@ -249,7 +256,7 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 .status-note {
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .dot {
   width: 10px;
@@ -286,7 +293,7 @@ onMounted(() => {
 }
 .summary-card span {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .log-list {
   list-style: none;
@@ -307,12 +314,12 @@ onMounted(() => {
 }
 .log-time {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   white-space: nowrap;
 }
 .log-meta {
   margin-top: 2px;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 </style>

@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from './auth.store'
 import { xinPhienTuTabKhac } from '@/utils/phienGiuaTab'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 
 vi.mock('@/composables/useThongBaoDay', () => ({ huyThongBaoDayTrenMay: vi.fn(async () => undefined) }))
 
@@ -45,6 +46,16 @@ describe('auth.store — nhiều tab', () => {
     await vi.waitFor(() => expect(tabB.isLoggedIn).toBe(true))
     tabA.logout()
     await vi.waitFor(() => expect(tabB.isLoggedIn).toBe(false))
+  })
+
+  it('nhận phiên của NGƯỜI KHÁC → xoá dữ liệu trang nhớ tạm của người trước; cùng người thì giữ', () => {
+    const tab = moTab()
+    tab.nhanPhien({ accessToken: 'a', refreshToken: 'r', user: USER })
+    ghiTam('dashboard:sos', ['du-lieu-cua-u1'])
+    tab.nhanPhien({ accessToken: 'a2', refreshToken: 'r', user: USER })
+    expect(docTam('dashboard:sos')).toEqual(['du-lieu-cua-u1'])
+    tab.nhanPhien({ accessToken: 'b', refreshToken: 'r', user: { ...USER, id: 'u2' } })
+    expect(docTam('dashboard:sos')).toBeUndefined()
   })
 
   it('nhanPhien() gán phiên mà KHÔNG phát lại cho tab khác', () => {

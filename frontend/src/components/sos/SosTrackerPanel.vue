@@ -121,7 +121,7 @@ const khoangCachDoi = computed(() => {
 }
 .sos-tracker-status {
   font-size: 11px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .sos-tracker-note {
   font-size: 12px;

@@ -20,6 +20,7 @@ import { envValidationSchema } from './config/env.validation';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 
 import { TilesModule } from './tiles/tiles.module';
+import { GeocodeModule } from './geocode/geocode.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -66,6 +67,7 @@ import { TilesModule } from './tiles/tiles.module';
     HazardReportsModule,
     PushModule,
     TilesModule,
+    GeocodeModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: UserThrottlerGuard }],

@@ -12,6 +12,7 @@
     "lint": "eslint \"src/**/*.{ts,vue}\" --fix",
     "format": "prettier --write \"src/**/*.{ts,vue,css,md,json}\" \"public/**/*.json\"",
     "build:wards": "node scripts/build-wards-geojson.mjs",
+    "build:outline": "node scripts/build-province-outline.mjs",
     "build:tiles": "node scripts/build-offline-tiles.mjs"
   },
   "dependencies": {

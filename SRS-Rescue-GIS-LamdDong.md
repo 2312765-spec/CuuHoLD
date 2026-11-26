@@ -171,7 +171,7 @@ Hệ thống hiện tại chủ yếu dựa vào báo cáo qua điện thoại, 
 | Đầu vào        | Số điện thoại, Mật khẩu                                                                                                            |
 | Đầu ra         | accessToken, refreshToken, expiresIn, thông tin user                                                                               |
 | Luồng ngoại lệ | Sai thông tin → lỗi 401. Tài khoản bị khóa → lỗi 403.                                                                              |
-| Ràng buộc      | Rate limit: 5 lần/15 phút/IP để chống brute force                                                                                  |
+| Ràng buộc      | Chống dò mật khẩu (v1.1): sai 5 lần/15 phút (theo IP + số điện thoại) → khoá 15 phút, trả 429 kèm số phút phải chờ; đăng nhập đúng không bị tính và xoá bộ đếm |
 | Ghi chú (v1.1) | Có API `POST /api/auth/refresh`, nhưng giao diện chưa tự gia hạn phiên: phiên lưu trong sessionStorage, mất khi đóng tab, trong khi accessToken sống 24 giờ — hết hạn thì yêu cầu đăng nhập lại. |
 
 ## **3.2 Gửi và quản lý SOS**

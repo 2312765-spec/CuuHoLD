@@ -5,6 +5,7 @@
 // (RolesGuard) — trang này chỉ là giao diện gọi vào, không tự kiểm tra quyền gì thêm.
 
 import { ref, computed, onMounted } from 'vue'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import '@/assets/map-style.css'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToastStore } from '@/stores/toast'
@@ -32,9 +33,13 @@ const loading = ref(false)
 const locBoLoc = ref<UserRole | 'all'>('all')
 
 async function taiDanhSach(): Promise<void> {
+  const khoa = `users:${locBoLoc.value}`
+  const cu = docTam<User[]>(khoa)
+  if (cu) users.value = cu
   loading.value = true
   try {
     users.value = await layDanhSachNguoiDung(locBoLoc.value === 'all' ? undefined : locBoLoc.value)
+    ghiTam(khoa, users.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {
@@ -178,7 +183,7 @@ onMounted(() => {
         <button class="btn btn-primary" @click="moModalTao">+ Tạo tài khoản</button>
       </div>
 
-      <div v-if="loading" class="panel-empty">Đang tải...</div>
+      <div v-if="loading && users.length === 0" class="panel-empty">Đang tải...</div>
       <div v-else-if="users.length === 0" class="panel-empty">Không có tài khoản nào.</div>
       <table v-else class="users-table">
         <thead>
@@ -343,7 +348,7 @@ onMounted(() => {
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -356,7 +361,7 @@ onMounted(() => {
 .panel-empty {
   padding: 40px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 13px;
 }
 
@@ -373,7 +378,7 @@ onMounted(() => {
   padding: 10px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   border-bottom: 1px solid var(--line);
   background: var(--fog-dim);
 }
@@ -390,22 +395,23 @@ onMounted(() => {
   background: rgba(20, 39, 32, 0.03);
 }
 .row-locked {
-  opacity: 0.6;
+  /* Tài khoản bị khoá: hơi nhạt để phân biệt, nhưng chữ vẫn phải đọc được (đã có nhãn "Đã khoá"). */
+  opacity: 0.8;
 }
 .u-name {
   font-weight: 500;
 }
 .u-phone {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .u-time {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .u-self-note {
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.45);
+  color: rgba(42, 42, 36, 0.75);
   font-style: italic;
 }
 
@@ -445,7 +451,7 @@ onMounted(() => {
 .users-count {
   margin-top: 12px;
   font-size: 12px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .form-label {

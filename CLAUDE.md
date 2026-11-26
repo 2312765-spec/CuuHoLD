@@ -177,7 +177,7 @@ ST_DWithin(col::geography, ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography
 - bcrypt MINIMUM cost factor: 12
 - JWT expiry: accessToken=24h, refreshToken=7d — never 'never'
 - ALWAYS parameterized queries — NEVER string interpolation in SQL
-- Rate limit: 5 SOS/hour/user, 5 logins/15min/IP
+- Rate limit: 5 SOS/hour/user; login: 5 FAILED attempts/15min per IP+phone → locked 15min (successful logins never count), plus 30 login requests/15min/IP cap — see Mục 15.34
 - helmet() MUST be first middleware in main.ts
 - CORS: only allow FRONTEND_URL — never '*' in production
 - Environment variables: NEVER hardcode secrets in source code
@@ -370,7 +370,7 @@ Mọi bảng mới bật RLS và **không** có policy → chỉ backend (DATABA
 
 ## 7. API Endpoints
 
-> Cập nhật 2026-10-15 theo đúng 43 route trong code (+ `/api/tiles` 2026-11-25 = 44). Chi tiết request/response: `docs/api-contract.md`.
+> Cập nhật 2026-10-15 theo đúng 43 route trong code (+ `/api/tiles` 2026-11-25 = 44, + `/api/geocode/reverse` 2026-11-26 = 45). Chi tiết request/response: `docs/api-contract.md`.
 > "JWT" = mọi role đã đăng nhập.
 
 ```
@@ -403,6 +403,8 @@ GET    /api/sos/:id/image                — Xem ảnh hiện trường (JWT, c�
 GET    /api/gis/nearest-teams            — Đội gần nhất PostGIS (commander)
 GET    /api/gis/sos-heatmap              — Số SOS theo xã (commander)
 GET    /api/gis/stats                    — Thống kê tổng quan (commander)
+
+GET    /api/geocode/reverse              — Tên đường gần toạ độ, Nominatim qua backend có cache (commander — Mục 15.32)
 
 GET    /api/rescue-teams                 — Danh sách đội (rescuer/commander)
 PATCH  /api/rescue-teams/:id/location    — Cập nhật GPS đội, mỗi 30 giây (rescuer)
@@ -510,6 +512,8 @@ ORS_API_KEY=
 
 # Proxy tile (Mục 15.29) — User-Agent gửi openstreetmap.fr, tuỳ chọn
 TILE_PROXY_USER_AGENT=
+# Tra tên đường (Mục 15.32) — User-Agent gửi Nominatim, tuỳ chọn (trống → dùng TILE_PROXY_USER_AGENT)
+GEOCODE_USER_AGENT=
 
 # Web Push (Mục 15.24) — tạo 1 lần: npx.cmd web-push generate-vapid-keys. Để trống thì tắt push.
 VAPID_PUBLIC_KEY=
@@ -547,7 +551,7 @@ VAPID_SUBJECT=mailto:...
 
 ### Rate Limits
 - SOS: 5 lần/giờ/user
-- Đăng nhập: 5 lần/15 phút/IP
+- Đăng nhập: sai 5 lần/15 phút (theo IP + số điện thoại) → khoá 15 phút; đăng nhập đúng không bị tính (Mục 15.34). Trần chung 30 lần gọi/15 phút/IP
 - Đăng ký: 3 lần/giờ/IP
 
 ---
@@ -803,7 +807,7 @@ openssl rand -base64 32
 - [x] **F-SOS-01: "Chỉ 1 SOS active cùng lúc/user" (SRS 3.2.1) không được enforce.** `SosService.create()` ([sos.service.ts:164](backend/src/sos/sos.service.ts#L164)) không kiểm tra victim đã có SOS active (`pending/assigned/in_progress/arrived`) trước khi insert thêm — giới hạn duy nhất đang có là rate limit 5 SOS/giờ, không phải "1 active/user". `GET /api/sos/mine/active` đã có sẵn (dùng để khôi phục UI sau F5, xem Mục 15.4) nên chặn được bằng cách gọi lại chính hàm đó trong `create()` trước khi insert, ném `ConflictException` (409) nếu đã có active.
 - [x] **F-GIS-01: thiếu fallback mở rộng bán kính 10km → 20km (SRS 3.3.2).** `GisService.findNearestTeams()` ([gis.service.ts:30-61](backend/src/gis/gis.service.ts#L30)) đã nhận `radiusM` làm tham số nhưng `tryAutoAssignNearestTeam` trong `sos.service.ts` chỉ gọi đúng 1 lần với `10000` cố định — không có đội trong 10km thì giữ nguyên `'pending'` luôn, không thử lại ở 20000. Cần thêm 1 lần gọi lại với `radiusM=20000` khi lần đầu rỗng. — **Đã xử lý (2026-09-11).** `tryAutoAssignNearestTeam` gọi lại `findNearestTeams(..., AUTO_ASSIGN_FALLBACK_RADIUS_M=20000, 1)` khi lần 10km rỗng; cả 2 rỗng mới giữ `'pending'`. **Phạm vi có chủ đích:** chỉ áp cho auto-assign (SRS ghi tác nhân F-GIS-01 là "Hệ thống — tự động khi có SOS mới"); `GET /api/gis/nearest-teams` của commander giữ nguyên, trả đúng bán kính `radiusMeters` được truyền, không tự mở rộng. Thêm test "mở rộng lên 20km" + assert "đã có đội trong 10km thì không gọi 20km" ở `sos.service.spec.ts`; `docs/api-contract.md` Mục 2 cập nhật mô tả.
 - [x] **6.1 RescuerView: không có bản đồ/route nào trong màn hình (SRS yêu cầu "route di chuyển trên bản đồ").** [RescuerView.vue](frontend/src/views/RescuerView.vue) hiện là list thuần, chỉ có `googleMapsLink()` mở Google Maps ra ngoài app — không dùng `useLeafletMap`/`RescueMap` nào. Cần quyết định: nhúng bản đồ thật (tốn công, đúng SRS) hay sửa lại SRS chấp nhận hướng "mở Google Maps ngoài app" như hiện tại. — **Đã xử lý (2026-09-11), team chọn nhúng bản đồ thật, kiểu "đường thẳng + chỉ đường ngoài".** RescuerView giờ có bản đồ ở đầu trang (tái dùng [RescueMap.vue](frontend/src/components/map/RescueMap.vue), thêm prop `route`, nới kiểu `sosList` để nhận cả `SosRequest`): vẽ **đường thẳng nét đứt** từ GPS của rescuer (`watchPosition` sẵn có) tới nạn nhân của nhiệm vụ đang chọn (bấm thẻ hoặc marker để chọn, mặc định nhiệm vụ đầu danh sách), mỗi thẻ hiện khoảng cách chim bay + ETA ước tính 40 km/h ([utils/geo.ts](frontend/src/utils/geo.ts), công thức ETA khớp `GisService.findNearestTeams()`). Link Google Maps đổi từ "xem điểm" sang **chỉ đường** (`/maps/dir/?api=1&destination=`). **Cố ý KHÔNG dùng định tuyến đường bộ thật (OSRM demo server):** không SLA, giới hạn 1 req/s, và không chạy khi mất mạng — đúng lúc cứu hộ thực địa hay mất sóng (cùng loại rủi ro tile OSM ở 15.7); đường thẳng + ghi rõ "đường chim bay, không phải tuyến đường bộ" dưới bản đồ thì trung thực và vẫn chạy offline (tile z8–10 bundle sẵn). Nếu hội đồng hỏi "route": dẫn đường theo đường bộ giao cho Google Maps qua nút "Chỉ đường". Kiểm chứng: `geo.spec.ts` (6 test, viết trước, đỏ → xanh), 26 test FE pass, `vue-tsc` + build + eslint sạch; chụp màn hình thật (Chrome headless, leader `0900000222`, GPS giả lập tại vị trí đội) — khoảng cách hiện ≈ 1.6 km, khớp 1.626 m PostGIS tính trong DB. **Phát hiện kèm lúc chụp:** `style.css` (đã commit) có rule toàn cục `header { position: fixed; z-index: 50 }` viết cho header trang chủ nhưng áp lên MỌI thẻ `<header>` — header của RescuerView không chiếm chỗ, nội dung đầu trang (trước đây là thẻ nhiệm vụ đầu tiên, giờ là bản đồ) nằm dưới header; thêm vào đó pane Leaflet (z-index 400+) vẽ đè lên header. Đã xử lý **trong RescuerView**: `.rescuer-top { position: sticky }` + `.rescuer-map { position: relative; z-index: 0 }` (stacking context riêng cho bản đồ). **⚠️ Cập nhật 2026-09-22 (Mục 15.13): quyết định "chỉ đường thẳng, giao Google Maps" ở dòng này đã được NÂNG CẤP lên dẫn đường thật (GraphHopper tự host) — không còn là trạng thái hiện tại của RescuerView. Dòng này giữ nguyên làm lịch sử audit.**
-- [ ] **DashboardView cũng dùng `<header class="dashboard-top">` nên dính cùng rule `header { position: fixed }` toàn cục ở `style.css`** (xem dòng trên) — chưa sửa, chưa kiểm chứng bằng ảnh. Sửa gốc đúng nhất: đổi selector `header` trong `style.css` thành class riêng của `AppHeader.vue`, rồi xem lại trang chủ/MapView (có thể đang dựa vào header fixed, VD `#map{padding-top:96px}` ở Mục 15.7) — khi đó override `sticky` trong RescuerView thành thừa, gỡ đi được.
+- [x] **DashboardView cũng dùng `<header class="dashboard-top">` nên dính cùng rule `header { position: fixed }` toàn cục ở `style.css`** — **Đã sửa gốc (2026-11-18, Mục 15.33):** selector đổi thành `header.site-header`; thanh trên của Hệ thống/Thống kê/Người dùng/Hồ sơ/Lịch sử/Báo cáo giờ `position: sticky`. (xem dòng trên) — chưa sửa, chưa kiểm chứng bằng ảnh. Sửa gốc đúng nhất: đổi selector `header` trong `style.css` thành class riêng của `AppHeader.vue`, rồi xem lại trang chủ/MapView (có thể đang dựa vào header fixed, VD `#map{padding-top:96px}` ở Mục 15.7) — khi đó override `sticky` trong RescuerView thành thừa, gỡ đi được.
 - [ ] **F-PWA-04: GPS breadcrumb mỗi 2 phút kể cả offline (SRS 3.5) — hoàn toàn chưa tồn tại.** Không tìm thấy logic nào lưu tọa độ định kỳ vào IndexedDB cho mục đích này ở bất kỳ đâu trong `frontend/src`. `watchPosition` hiện có ở `RescuerView.vue`/`MapView.vue` chỉ phục vụ gửi GPS đội cứu hộ mỗi 30s khi có nhiệm vụ active (F-RT-01), không phải breadcrumb liên tục cho ca mất tích/trekking mà SRS mô tả. Nếu team quyết định bỏ tính năng này (ít giá trị demo, nhiều công), nên sửa SRS 3.5/8.2 ghi rõ "ngoài phạm vi MVP" thay vì để lệch âm thầm. — **[x] Đã có ở FE (kiểm lại 2026-10-02, commit `61f8d27`).** Lệnh: `head -40 frontend/src/stores/vetGps.store.ts`, `ls frontend/src/stores/vetGps.store.spec.ts frontend/src/utils/vetGpsDb.spec.ts`. `vetGps.store.ts`: `CHU_KY_GHI_MS = 2 phút`, ghi IndexedDB trên máy (chạy được offline), xoá điểm > 48 giờ, 5 điểm gần nhất ghép vào mô tả khi gửi SOS. **Lệch SRS có chủ đích:** người dùng tự bật ở trang Hồ sơ (mặc định tắt — dữ liệu vị trí nhạy cảm), và trình duyệt chỉ cho lấy GPS khi app **đang mở** — đóng app/khoá màn hình lâu thì ngừng ghi. Chưa kiểm chứng trên điện thoại thật trong lần kiểm này.
 
 **Chưa làm — lệch nhỏ so với SRS, ưu tiên thấp hơn:**
@@ -1624,8 +1628,111 @@ Stadia + key qua biến môi trường lệnh build): 100/100 tile Stadia 200 �
 ghi nguồn đúng. **Chưa thử:** mạng Viettel trên điện thoại (DNS Viettel từ chối truy vấn từ máy dev — không kiểm được
 Viettel có chặn `stadiamaps.com` không); hành vi thật khi vượt 200.000 tile.
 
+### 15.32 Bảng điều phối: thẻ SOS chi tiết + xếp theo mức độ, ghim đặt cảnh báo, lọc xã/phường, báo cáo mới tới commander (2026-11-10)
+
+Nhánh `feature/ui-chi-huy-sos-canh-bao`. Bản đầu chỉ frontend; khi review (2026-11-26) thêm 1 route backend tra tên
+đường (xem dòng "Tên đường qua backend" cuối mục), không đổi DB.
+- **Thẻ SOS** (`DashboardView.vue`): tên xã thay mã số ("Phường Lâm Viên - Đà Lạt", không còn "Xã/phường 24778" —
+  `composables/useXaPhuong.ts`, đọc từ chính `public/data/lamdong-wards.geojson`), tên đường (Nominatim
+  qua backend — xem dòng "Tên đường qua backend" dưới; chỉ tra 30 thẻ đầu), ngày giờ đầy đủ + "x phút trước", số điện thoại bấm gọi được, nhãn mức độ.
+- **Mức độ + sắp xếp** (`constants/sosMucDo.ts`): backend KHÔNG có cột mức độ → suy ra từ `type` (nguy kịch:
+  đuối nước/cháy/sạt lở; nặng: lũ/y tế/tai nạn; vừa: lạc/dã ngoại; nhẹ: còn lại). Mặc định xếp khẩn cấp nhất trước,
+  cùng mức thì ca `pending` trước rồi mới nhất; ca đã kết thúc luôn ở cuối. Có chọn "Mới nhất"/"Chờ lâu nhất". Viền
+  trái + nền thẻ theo MỨC ĐỘ (trước đây theo trạng thái); SOS `pending` < 5 phút nhấp nháy; tab SOS đếm "N ca gấp".
+- **"+ Đánh dấu cảnh báo"**: trước đây chỉ đổi con trỏ, click mò là mở form ngay. Giờ tái dùng ghim kéo được của
+  báo hộ (`useGhimViTri`, nới kiểu tham số sang `Readonly<Ref>`) + bảng "Chọn vị trí cảnh báo" (tên đường, toạ độ,
+  "Ghim tại tâm bản đồ", "Xác nhận vị trí"). Đang xem ≥ zoom 12 thì đặt sẵn ghim ở tâm. Dashboard không còn truyền
+  `placing-hazard`/`@pick-location` cho `RescueMap` — prop đó giờ không ai dùng (chưa xoá).
+- **Lọc xã/phường** (`components/map/ChonXaPhuong.vue`, control Leaflet dưới nút "Vị trí của tôi", tìm không dấu):
+  chọn xã → `flyToBounds` khung xã (maxZoom 15). Dashboard: lọc luôn danh sách SOS (`useSosDashboard.locXa`, "Xoá
+  lọc" bỏ cả lọc xã). MapView (victim): chỉ di chuyển bản đồ.
+- **Báo cáo sự cố chờ duyệt**: backend ĐÃ có đủ (`hazard-report:new` tới `province:lamdong`, duyệt → `hazards.create`
+  → `notification:system`). Lỗ hổng ở frontend: chỉ Dashboard nghe `hazard-report:new`. Giờ `NotificationListener`
+  ghi vào chuông (loại `bao-cao-moi`, bấm → `/dashboard?tab=reports`) + toast ở mọi trang trừ Dashboard; Dashboard
+  thêm dải vàng "Có N báo cáo chờ duyệt". MapView trước đây KHÔNG nghe `notification:system` → cảnh báo vừa duyệt
+  không hiện cho người dân tới khi F5; giờ nghe + tải lại mỗi 60 s và khi quay lại tab (`layCanhBaoDangHoatDong(true)`
+  không toast lỗi), vì sự kiện chỉ tới đúng xã của cảnh báo.
+- **Test**: `vitest.config.ts` thêm `setupFiles: src/test-utils/setup.ts` chặn `diaChiService` cho MỌI test (không
+  gọi Nominatim thật kể cả CI); spec riêng của service dùng `vi.unmock`. 21 test mới (xaPhuong, sosMucDo,
+  diaChiService, ChonXaPhuong, NotificationListener, DashboardChiTietSos) → 317 test pass; eslint + vue-tsc + build
+  sạch. Ảnh chụp Chrome headless với API giả: thẻ, sắp xếp, bay tới phường, ghim + tên đường đều đúng.
+- **Còn nợ / giới hạn**:
+  - [ ] Chưa test với backend/DB thật và điện thoại thật (kéo ghim trên màn cảm ứng).
+  - [ ] Commander đóng hẳn trình duyệt vẫn không biết có báo cáo mới — cần B thêm Web Push cho `hazard-report:new`
+    (đã có hạ tầng push Mục 15.24). Victim ở xã khác/không có xã không nhận `notification:system` (chỉ bắn
+    `province:lamdong` + `ward:{xã}`), đang bù bằng tải lại 60 s; muốn tức thì thì B bắn thêm vào mọi victim.
+  - [x] ~~Nominatim gọi thẳng từ trình duyệt~~ — **Đã chuyển qua backend (2026-11-26, review PR #15)**, xem dưới.
+    Vẫn là máy chủ Nominatim công khai, không SLA; muốn bền hơn thì lưu `address` vào `sos_requests` lúc tạo SOS.
+  - [ ] CSV vẫn xuất mã xã (chưa đổi sang tên).
+- **Tên đường qua backend (review PR #15, 2026-11-26).** Bản đầu trình duyệt commander gọi thẳng
+  `nominatim.openstreetmap.org`: (1) DNS Viettel chặn cả tên miền `openstreetmap.org` (Mục 15.12) → mạng Viettel
+  không bao giờ có tên đường, im lặng; (2) toạ độ nạn nhân rời trình duyệt tới bên thứ ba kèm IP/Referer commander;
+  (3) giới hạn 1 lượt/giây chỉ tính trong từng trình duyệt, không cho cả hệ thống. Giờ: `GET /api/geocode/reverse`
+  (`backend/src/geocode/`, chỉ commander, chỉ toạ độ trong `LAMDONG_BBOX` → ngoài tỉnh 400) — cache chung 7 ngày
+  (≤ 5000 mục, giữ cả kết quả "không có đường"), hàng đợi 1 lượt/1,1 s cho CẢ server (> 50 chờ → 503), Nominatim
+  lỗi → 503 không cache, log không ghi toạ độ. User-Agent: `GEOCODE_USER_AGENT` → `TILE_PROXY_USER_AGENT` → chuỗi
+  chung. Frontend `diaChiService.ts` gọi qua `http` (`khongHienToastLoi`), gửi tuần tự, timeout 15 s. Test: BE
+  `geocode.service.spec.ts` (7) + `test/geocode.e2e-spec.ts` (4, RolesGuard thật); FE `diaChiService.spec.ts` viết
+  lại (4). Chưa gọi Nominatim thật qua backend trên Render.
+
+### 15.33 Chữ mờ ở chế độ tối + header đè nội dung + thống kê theo xã + tăng tốc chuyển trang (2026-11-18)
+
+Cùng nhánh `feature/ui-chi-huy-sos-canh-bao`, chỉ frontend.
+- **Chữ mờ khi bật chế độ tối** ở Hệ thống, Thống kê, Người dùng, Báo cáo: 4 trang nền `--fog` bị sót khỏi 3
+  danh sách "vùng luôn nền sáng" trong `style.css` → tiêu đề/nút thành chữ kem trên nền kem. Đã thêm;
+  `src/views/trangNenSang.spec.ts` tự quét mọi `*View.vue` nền `--fog` và đỏ nếu thiếu (đỏ 4 → xanh).
+- **Chữ phụ dưới chuẩn tương phản**: ~45 chỗ `color: rgba(42,42,36, 0.45–0.69)` (≈ 2.7–4:1) nâng lên `0.75`
+  (≈ 6:1) toàn `src/` (trừ placeholder). `.row-locked` opacity 0.6 → 0.8.
+- **Header đè nội dung**: luật `header { position: fixed }` (Mục 15.9) đổi thành `header.site-header`;
+  thanh trên các trang quản trị/cá nhân `position: sticky`.
+- **MapStats** (`map-style.css .map-stats`): chế độ sáng giờ nền `--fog-dim` chữ tối; chế độ tối giữ xanh đen.
+- **Thống kê theo xã** (Dashboard): trước cố định 30 ngày, chỉ vẽ vòng tròn, rỗng thì im lặng (dữ liệu
+  thử cũ hơn 30 ngày → commander tưởng hỏng). Giờ có bảng xếp hạng xã nổi trên bản đồ, chọn 7/30/90/365
+  ngày, câu báo khi rỗng, tự `fitBounds`, bấm xã → bay tới.
+- **Ghim cảnh báo**: bỏ nút "Ghim tại tâm bản đồ"; bấm "+ Đánh dấu cảnh báo" là ghim đặt ngay ở tâm.
+  `useGhimViTri` nhận thêm tham số chữ tooltip.
+- **Chuyển trang**: hiệu ứng `out-in` trước đây 0.22s rời + 0.22s vào → giờ rời tức thì, vào 0.15s.
+  `router/taiTruocTrang.ts` tải trước (lúc rảnh, theo vai trò) mã các trang hay mở. Đo Chrome headless
+  (dev, API giả): Dashboard → Thống kê ~30 ms sau khi tải trước.
+- **Victim báo cảnh báo chờ duyệt**: đã có sẵn (nút "Báo cáo sạt lở / chặn đường" trên `/map` khi đăng
+  nhập → hàng "Báo cáo chờ duyệt"), không làm thêm.
+- Kiểm chứng: 327 test, eslint, vue-tsc, build sạch; ảnh chụp sáng/tối 6 màn hình.
+
+### 15.34 Khoá đăng nhập chỉ tính lần SAI + bản đồ chỉ trong tỉnh + mở lại trang nhanh (2026-11-18)
+
+Cùng nhánh `feature/ui-chi-huy-sos-canh-bao`. **Có sửa backend (auth, users) — cần B review.**
+- **Lỗi thật:** nhập sai 1–2 lần đã bị "thử lại sau vài phút", chờ 5 phút vẫn bị. Nguyên nhân: `@Throttle`
+  của `POST /api/auth/login` là 5 lần/15 phút/IP và đếm CẢ lần đăng nhập ĐÚNG; test nhiều tài khoản trên một
+  máy (chung IP) là hết lượt; khoá kéo dài 15 phút. Sửa: `auth/login-attempts.service.ts` chỉ đếm lần SAI theo
+  (IP, số điện thoại), sai 5 lần trong 15 phút → khoá 15 phút (không so mật khẩu khi đang khoá), đăng nhập
+  đúng xoá bộ đếm. 429 có câu tiếng Việt "thử lại sau N phút"; sai lần 4–5 → 401 "(còn N lần thử)". Trần chung
+  của route nâng 5 → 30/15 phút/IP. Bộ đếm trong RAM (mất khi khởi động lại; nhiều instance thì đếm riêng).
+  FE `thongBaoLoi.ts`: 429 có tiếng Việt thì hiện nguyên câu của backend.
+- **Xác thực JWT nhanh hơn:** `JwtStrategy` trước đây đọc tài khoản từ DB ở MỌI request (~350 ms Supabase).
+  `UsersService.findByIdForAuth` nhớ tạm 15 s; `updateRole/updateStatus/updateMyName/changeMyPassword` xoá bản
+  nhớ tạm ngay. Thay đổi bằng SQL thẳng nơi khác (`is_flagged`/`late_cancel_count` trong `SosService.cancel`)
+  có thể trễ tối đa 15 s trong `req.user`.
+- **Bản đồ chỉ trong tỉnh** (`utils/gioiHanTinh.ts`, dùng ở `useLeafletMap` + `RescueMap`): `maxBounds` = viền
+  tỉnh + 12%, `maxBoundsViscosity: 1`, `minZoom` = mức vừa khít tỉnh; lớp che KÍN (fillOpacity 1, màu nền
+  `#eae3d0`) toàn bộ vùng ngoài tỉnh — không còn hiện nước láng giềng, tỉnh khác, địa danh biển đảo. Viền tỉnh:
+  `public/data/lamdong-outline.geojson` (29 KB, đất liền + đảo Phú Quý) sinh bằng `npm run build:outline`
+  (`scripts/build-province-outline.mjs`, mapshaper dissolve từ `lamdong-wards.geojson`) — chạy lại sau
+  `build:wards`. Đã thêm vào runtime cache của service worker. Lớp che vẽ SVG pane riêng z-index 350.
+- **Mở lại trang nhanh:** `utils/nhoTam.ts` nhớ tạm (RAM, không ghi ổ đĩa) kết quả API lần trước của Thống
+  kê/Người dùng/Hệ thống/Bảng điều phối (SOS, đội, cảnh báo); mở lại hiện ngay rồi tải mới ở nền; "Đang tải..."
+  chỉ hiện khi chưa có gì. Đăng xuất xoá hết (`auth.store` `xoaPhienCucBo`, chạy ở MỌI tab — kể cả tab nhận tin đăng xuất từ tab khác, Mục
+  15.30); nhận phiên của tài khoản KHÁC từ tab khác cũng xoá (`nhanPhien`). Đo bản build (`vite preview`, API giả trễ
+  400 ms): lần đầu ~450 ms, mở lại 40–110 ms.
+- Kiểm chứng: BE 230 unit + 24 e2e (thêm `login-lockout.e2e-spec.ts` HTTP thật), FE 334 test, eslint/tsc/build
+  sạch cả hai; ảnh chụp: kéo/thu nhỏ hết cỡ vẫn chỉ thấy tỉnh, nút "−" tự khoá.
+- Review PR #15 (2026-11-26): cache xác thực `UsersService` giờ xoá SAU `save()` — xoá trước thì request chen vào
+  giữa lúc lưu nạp lại bản cũ, tài khoản vừa khoá vẫn qua được tới 15 giây (test đỏ → xanh).
+- Còn nợ: [ ] chưa thử trên điện thoại thật (kéo bản đồ sát biên); [ ] bộ đếm sai mật khẩu chưa dùng chung khi
+  chạy nhiều instance backend.
+
 ---
 
+*Phiên bản: 2.24.0 — Cập nhật: 2026-11-26 (merge PR #15 với main: mục của PR đổi số 15.28–15.30 → 15.32–15.34; tra tên đường chuyển qua backend `GET /api/geocode/reverse`)*
 *Phiên bản: 2.23.0 — Cập nhật: 2026-11-25 (Mục 15.31 — nguồn tile chính Stadia Maps `outdoors`, openstreetmap.fr dự phòng qua cầu dao chung với proxy)*
 *Phiên bản: 2.22.0 — Cập nhật: 2026-11-25 (Mục 15.30 — chia sẻ phiên đăng nhập giữa các tab qua BroadcastChannel; ghi lý do không dùng cookie httpOnly với tên miền mặc định)*
 *Phiên bản: 2.21.0 — Cập nhật: 2026-11-25 (Mục 15.29 — proxy tile qua backend `/api/tiles`, cờ `VITE_DUNG_PROXY_TILE` mặc định tắt, cầu dao phía client)*

@@ -243,3 +243,76 @@ describe('UsersService', () => {
     });
   });
 });
+
+// Mỗi request có JWT trước đây đọc lại tài khoản từ Supabase (~350 ms) chỉ để xác thực
+// (CLAUDE.md 15.34). Giờ nhớ tạm 15 giây; khoá/đổi vai trò/đổi tên/đổi mật khẩu xoá bản nhớ
+// tạm NGAY để thay đổi có hiệu lực tức thì.
+describe('UsersService.findByIdForAuth (nhớ tạm cho xác thực JWT)', () => {
+  let service: UsersService;
+  let now: number;
+  let usersRepo: { findOne: jest.Mock; save: jest.Mock };
+  const user = { id: 'u1', role: 'victim', isActive: true } as User;
+
+  beforeEach(() => {
+    now = 1_000_000;
+    usersRepo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve({ ...user })),
+      save: jest.fn((u: User) => Promise.resolve(u)),
+    };
+    service = new UsersService(
+      usersRepo as unknown as Repository<User>,
+      () => now,
+    );
+  });
+
+  it('gọi liền nhau trong 15 giây → chỉ đọc DB 1 lần', async () => {
+    await service.findByIdForAuth('u1');
+    now += 14_000;
+    await service.findByIdForAuth('u1');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('quá 15 giây → đọc lại DB', async () => {
+    await service.findByIdForAuth('u1');
+    now += 15_001;
+    await service.findByIdForAuth('u1');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('commander khoá tài khoản → lần xác thực sau đọc lại DB ngay', async () => {
+    await service.findByIdForAuth('u1');
+    await service.updateStatus('u1', false, 'admin');
+    usersRepo.findOne.mockClear();
+    await service.findByIdForAuth('u1');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('đổi vai trò / đổi tên cũng xoá bản nhớ tạm', async () => {
+    await service.findByIdForAuth('u1');
+    await service.updateRole('u1', 'rescuer', 'admin');
+    await service.findByIdForAuth('u1');
+    await service.updateMyName('u1', 'Tên mới');
+    usersRepo.findOne.mockClear();
+    await service.findByIdForAuth('u1');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('request xác thực chen vào GIỮA lúc đang lưu không để lại bản cũ trong cache', async () => {
+    // Lúc save() còn chạy, DB vẫn trả bản cũ (isActive=true); một request khác nạp nó vào cache.
+    usersRepo.save.mockImplementationOnce(async (u: User) => {
+      await service.findByIdForAuth('u1');
+      return u;
+    });
+    await service.updateStatus('u1', false, 'admin');
+    usersRepo.findOne.mockClear();
+    await service.findByIdForAuth('u1');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('không tìm thấy tài khoản → không nhớ tạm kết quả rỗng', async () => {
+    usersRepo.findOne.mockResolvedValue(null);
+    await service.findByIdForAuth('x');
+    await service.findByIdForAuth('x');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(2);
+  });
+});

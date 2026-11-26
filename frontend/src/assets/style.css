@@ -40,11 +40,17 @@
   .btn-ghost{border-color:var(--line); color:var(--ink);}
   .btn-ghost:hover{border-color:var(--ink); transform:translateY(-2px);}
 
-  /* header */
-  header{
+  /* header TRANG CHỦ (AppHeader.vue). Trước đây selector là `header` trơn → mọi thẻ <header> của
+     các trang Hệ thống/Thống kê/Người dùng/Hồ sơ/Báo cáo/Lịch sử cũng thành position:fixed, nổi
+     đè che mất phần đầu nội dung (CLAUDE.md 15.9). */
+  header.site-header{
     position:fixed; top:0; left:0; right:0; z-index:50;
     backdrop-filter:blur(10px); background:rgba(245,241,230,0.86);
     border-bottom:1px solid var(--line);
+  }
+  /* Thanh trên của các trang quản trị/cá nhân: chiếm chỗ bình thường, dính ở đầu khi cuộn. */
+  :is(.system-top, .stats-top, .users-top, .ho-so-top, .lich-su-top, .report-top){
+    position:sticky; top:0; z-index:50; backdrop-filter:blur(10px);
   }
   .nav{display:flex; align-items:center; justify-content:space-between; padding:16px 28px; max-width:1120px; margin:0 auto;}
   .brand{display:flex; align-items:center; gap:10px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--pine-deep);}
@@ -82,7 +88,7 @@
   /* section heading pattern */
   .head{max-width:600px; margin-bottom:56px;}
   .head h2{font-size:clamp(28px,4vw,40px); margin-bottom:14px;}
-  .head p{color:rgba(42,42,36,0.68); font-size:16px;}
+  .head p{color:rgba(42, 42, 36, 0.75); font-size:16px;}
 
   /* features 3 up */
   .feat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
@@ -93,7 +99,7 @@
   .feat-card:hover{transform:translateY(-4px); box-shadow:0 16px 32px rgba(31,61,46,0.09);}
   .feat-num{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--sage); margin-bottom:18px; display:block;}
   .feat-card h3{font-size:19px; margin-bottom:10px;}
-  .feat-card p{font-size:14px; color:rgba(42,42,36,0.65);}
+  .feat-card p{font-size:14px; color:rgba(42, 42, 36, 0.75);}
   .feat-card .go{font-size:13px; color:var(--clay); margin-top:16px; display:inline-block;}
 
   /* map preview */
@@ -143,7 +149,7 @@
   }
   .feat2-icon svg{ width:20px; height:20px; }
   .feat2-card h3{font-size:16px; margin-bottom:8px;}
-  .feat2-card p{font-size:13px; color:rgba(42,42,36,0.62); line-height:1.55;}
+  .feat2-card p{font-size:13px; color:rgba(42, 42, 36, 0.75); line-height:1.55;}
 
   /* coverage */
   .coverage .wrap{display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:center;}
@@ -151,14 +157,14 @@
   .cov-card{border-left:2px solid var(--clay); padding-left:16px;}
   /* Trước đây màu này viết cứng trong style="" của HomeView — dark mode không ghi đè được, chữ
      tối nằm trên nền tối gần như biến mất. Đưa ra class để các khối theme bên dưới áp được. */
-  .coverage-mo-ta{color:rgba(42,42,36,0.68); max-width:440px;}
+  .coverage-mo-ta{color:rgba(42, 42, 36, 0.75); max-width:440px;}
   .cov-card b{font-family:'Fraunces',serif; font-size:32px; display:block; color:var(--pine-deep);}
-  .cov-card span{font-size:13px; color:rgba(42,42,36,0.6);}
+  .cov-card span{font-size:13px; color:rgba(42, 42, 36, 0.75);}
 
   footer{padding:48px 0; border-top:1px solid var(--line);}
   footer .wrap{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;}
   footer .brand{font-size:15px;}
-  footer .fine{font-size:12px; color:rgba(42,42,36,0.5);}
+  footer .fine{font-size:12px; color:rgba(42, 42, 36, 0.75);}
 
   .reveal{opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease;}
   .reveal.in{opacity:1; transform:none;}
@@ -218,11 +224,14 @@ section{ padding:56px 0; }
   .wrap{ padding:0 28px; }
 }
 /* ---------- hiệu ứng chuyển trang (App.vue) ---------- */
-.page-fade-enter-active, .page-fade-leave-active{
-  transition: opacity .22s ease, transform .22s ease;
-}
-.page-fade-enter-from{ opacity:0; transform:translateY(8px); }
-.page-fade-leave-to{ opacity:0; transform:translateY(-8px); }
+/* App.vue dùng mode="out-in": trang mới chỉ bắt đầu hiện SAU KHI trang cũ diễn xong hiệu ứng rời.
+   Trước đây rời 0.22s + vào 0.22s → mỗi lần chuyển trang chờ ≥ 0.44s chỉ vì hiệu ứng. Giờ rời
+   tức thì, trang mới hiện mờ dần nhanh 0.15s — vẫn mượt nhưng không còn cảm giác "khựng". */
+.page-fade-enter-active{ transition: opacity .15s ease; }
+.page-fade-leave-active{ transition: none; }
+.page-fade-enter-from{ opacity:0; }
+.page-fade-leave-to{ opacity:0; }
+@media (prefers-reduced-motion: reduce){ .page-fade-enter-active{ transition:none; } }
 
 /* ---------- nút bấm: phản hồi khi nhấn, không chỉ khi hover ---------- */
 .btn{ transition: transform .15s ease, box-shadow .15s ease, background .2s ease; }
@@ -283,16 +292,21 @@ section{ padding:56px 0; }
    Các rule dark toàn cục ở trên (h1–h3 sáng, .btn-ghost chữ sáng) viết cho nền TỐI của trang chủ;
    áp vào những chỗ này là chữ sáng trên nền sáng → biến mất. Đã gặp thật: "SOS theo loại" ở
    Dashboard, tiêu đề hộp xác nhận SOS, "Quay lại" ở hướng dẫn lần đầu, "Huỷ SOS"/"Đóng" ở bảng
-   theo dõi SOS, các nút lý do huỷ. Thêm hộp nền sáng MỚI thì thêm class của nó vào 2 danh sách. */
+   theo dõi SOS, các nút lý do huỷ. Thêm hộp nền sáng MỚI thì thêm class của nó vào CẢ 3 danh sách.
+   Trang Hệ thống/Thống kê/Người dùng/Báo cáo từng bị sót → tiêu đề + chữ mờ (2026-11-18);
+   src/views/trangNenSang.spec.ts giờ tự kiểm mọi view nền --fog phải có trong danh sách. */
 :root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .system-page, .stats-page, .users-page, .report-page,
   .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) :is(h1, h2, h3){ color:var(--pine-deep); }
 :root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .system-page, .stats-page, .users-page, .report-page,
   .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker) .btn-ghost{ color:var(--ink); border-color:rgba(42,42,36,0.35); }
 /* Chữ GỐC của chính các vùng đó: body đổi chữ sang kem sáng ở dark mode, phần tử không tự khai
    báo màu (VD tên nạn nhân .sos-victim) kế thừa chữ kem trên thẻ trắng → ~1.3:1, gần như vô
    hình. Trả về --ink như chế độ sáng; color-scheme light để ô nhập/thanh cuộn gốc cũng sáng.
    Khoá bằng src/views/tuongPhanChu.spec.ts. */
 :root[data-theme="dark"] :is(.dashboard-page, .rescuer-page, .ho-so-page, .lich-su-page,
+  .system-page, .stats-page, .users-page, .report-page,
   .sos-dialog-card, .ob-card, .bao-ho-panel, .modal-card, .auth-modal, .sos-tracker){ color:var(--ink); color-scheme:light; }
 
 /* Nút menu (hamburger/✕) + nút ⚙ Cài đặt hiển thị (ThemeToggle) nằm trên header TỐI của trang chủ:

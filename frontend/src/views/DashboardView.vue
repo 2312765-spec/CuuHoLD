@@ -4,9 +4,12 @@
 // click vào 1 SOS mở modal phân công đội gần nhất (GisService.timDoiGanNhat).
 
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
+import { docTam, ghiTam } from '@/utils/nhoTam'
 import '@/assets/map-style.css'
 import RescueMap from '@/components/map/RescueMap.vue'
 import ViTriCuaToi from '@/components/map/ViTriCuaToi.vue'
+import ChonXaPhuong from '@/components/map/ChonXaPhuong.vue'
 import AnhHienTruong from '@/components/sos/AnhHienTruong.vue'
 import ReportModerationPanel from '@/components/report/ReportModerationPanel.vue'
 import { HAZARD_TYPES, HAZARD_TYPE_LABEL } from '@/constants/hazardLabels'
@@ -41,6 +44,16 @@ import type {
 } from '@/shared/socket-events.types'
 import { useSosDashboard } from '@/composables/useSosDashboard'
 import { useSosStats } from '@/composables/useSosStats'
+import { useXaPhuong } from '@/composables/useXaPhuong'
+import { useTenDuong } from '@/composables/useTenDuong'
+import { useGhimViTri } from '@/composables/useGhimViTri'
+import {
+  NHAN_CACH_SAP_XEP,
+  NHAN_MUC_DO,
+  laSosDaKetThuc,
+  mucDoSos,
+  type CachSapXepSos
+} from '@/constants/sosMucDo'
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
@@ -87,8 +100,61 @@ const teams = ref<RescueTeam[]>([])
 const selectedSosId = ref<string | null>(null)
 
 // F-MAP-02 lọc/tìm kiếm + F-DASH-02 xuất CSV — thao tác trên danh sách SOS đang có.
-const { locLoai, locTrangThai, tuKhoa, danhSachLoc, dangLoc, xoaLoc, xuatCsv } =
+const { locLoai, locTrangThai, tuKhoa, locXa, sapXep, danhSachLoc, dangLoc, xoaLoc, xuatCsv } =
   useSosDashboard(sosList, SOS_TYPE_LABEL, SOS_STATUS_LABEL)
+const sapXepOptions = Object.entries(NHAN_CACH_SAP_XEP) as [CachSapXepSos, string][]
+
+// ---------- Thẻ SOS chi tiết: tên xã thay mã số, tên đường, ngày giờ đầy đủ + "x phút trước" ----------
+const { tenXa } = useXaPhuong()
+const { yeuCau: yeuCauTenDuong, tenDuong } = useTenDuong()
+// Chỉ tra tên đường cho các thẻ đầu danh sách (đã xếp ca gấp nhất lên trên) — Nominatim giới hạn
+// 1 lượt/giây, tra cả trăm SOS cũ một lúc vừa chậm vừa vô ích.
+const SO_THE_TRA_DUONG = 30
+watch(
+  danhSachLoc,
+  (ds) => {
+    for (const s of ds.slice(0, SO_THE_TRA_DUONG)) yeuCauTenDuong(s.lat, s.lng)
+  },
+  { immediate: true }
+)
+
+// Đồng hồ cho "x phút trước" + đánh dấu SOS mới — 30 giây/lần là đủ, không cần chính xác tới giây.
+const bayGio = ref(Date.now())
+const dongHo = setInterval(() => {
+  bayGio.value = Date.now()
+}, 30_000)
+onBeforeUnmount(() => clearInterval(dongHo))
+
+function ngayGio(iso: string): string {
+  const d = new Date(iso)
+  const gio = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  const ngay = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return `${gio} · ${ngay}`
+}
+
+function truocDo(iso: string): string {
+  const phut = Math.max(0, Math.floor((bayGio.value - new Date(iso).getTime()) / 60_000))
+  if (phut < 1) return 'vừa xong'
+  if (phut < 60) return `${phut} phút trước`
+  const gio = Math.floor(phut / 60)
+  if (gio < 24) return `${gio} giờ trước`
+  return `${Math.floor(gio / 24)} ngày trước`
+}
+
+// SOS chưa ai nhận và mới gửi trong 5 phút → thẻ nhấp nháy để commander thấy ngay.
+const PHUT_LA_SOS_MOI = 5
+function laSosMoi(sos: SosListItem): boolean {
+  return (
+    sos.status === 'pending' && bayGio.value - new Date(sos.created_at).getTime() < PHUT_LA_SOS_MOI * 60_000
+  )
+}
+
+// Số ca nguy kịch/nặng còn đang mở — hiện ở đầu tab SOS để thấy ngay có bao nhiêu ca gấp.
+const soCaGap = computed(
+  () =>
+    sosList.value.filter((s) => !laSosDaKetThuc(s.status) && ['nguy-kich', 'nang'].includes(mucDoSos(s.type)))
+      .length
+)
 const loaiOptions = Object.entries(SOS_TYPE_LABEL) as [SosType, string][]
 const trangThaiOptions = Object.entries(SOS_STATUS_LABEL) as [SosStatus, string][]
 // F-DASH-01 thống kê real-time (đếm theo trạng thái + loại) từ danh sách SOS.
@@ -127,10 +193,15 @@ watch([cheDoBanDo, soNgayNhiet], ([cheDo]) => {
   else diemNhiet.value = null
 })
 
+// Mở lại Bảng điều phối: hiện ngay danh sách lần trước rồi tải mới ở nền (utils/nhoTam.ts).
+// Socket cập nhật SOS mới/đổi trạng thái ngay sau đó nên dữ liệu cũ chỉ tồn tại vài trăm ms.
 async function taiDanhSachSos() {
+  const cu = docTam<SosListItem[]>('dashboard:sos')
+  if (cu && sosList.value.length === 0) sosList.value = cu
   loadingSos.value = true
   try {
     sosList.value = await layDanhSachSos()
+    ghiTam('dashboard:sos', sosList.value)
   } finally {
     loadingSos.value = false
   }
@@ -141,8 +212,11 @@ async function taiDanhSachSos() {
 // nhầm timDoiGanNhat() nên đội đang bận đi cứu hộ — đúng đội cần theo dõi nhất — không
 // hiện trên bản đồ.
 async function taiTatCaDoi() {
+  const cu = docTam<typeof teams.value>('dashboard:teams')
+  if (cu && teams.value.length === 0) teams.value = cu
   try {
     teams.value = await fetchRescueTeams()
+    ghiTam('dashboard:teams', teams.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server — giữ danh sách rỗng.
   }
@@ -246,14 +320,25 @@ function onSelectSosFromMap(id: string) {
 const hienThongKe = ref(false)
 const heatmapData = ref<SosHeatmapPoint[]>([])
 const dangTaiThongKe = ref(false)
-const SO_NGAY_THONG_KE = 30
+// Trước đây cố định 30 ngày và chỉ vẽ vòng tròn lên bản đồ: dữ liệu thử cũ hơn 30 ngày → kết quả
+// rỗng mà không báo gì, commander tưởng nút hỏng. Giờ chọn được khoảng, có bảng xếp hạng xã và
+// câu báo rõ khi không có SOS nào trong khoảng đã chọn.
+const SO_NGAY_THONG_KE_OPTIONS = [7, 30, 90, 365] as const
+const soNgayThongKe = ref<number>(30)
+const daTaiThongKe = ref(false)
+const xepHangXa = computed(() =>
+  [...heatmapData.value].sort((a, b) => b.incident_count - a.incident_count)
+)
+const tongVuThongKe = computed(() => heatmapData.value.reduce((t, p) => t + p.incident_count, 0))
 
 async function taiThongKe(): Promise<void> {
   dangTaiThongKe.value = true
   try {
     const to = new Date()
-    const from = new Date(to.getTime() - SO_NGAY_THONG_KE * 24 * 60 * 60 * 1000)
+    const from = new Date(to.getTime() - soNgayThongKe.value * 24 * 60 * 60 * 1000)
     heatmapData.value = await layThongKeSosTheoXa(from, to)
+    daTaiThongKe.value = true
+    vuaKhungThongKe()
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server — giữ dữ liệu cũ (nếu có).
   } finally {
@@ -261,12 +346,27 @@ async function taiThongKe(): Promise<void> {
   }
 }
 
+// Đưa mọi xã có SOS vào khung nhìn để commander thấy ngay vòng tròn thống kê.
+function vuaKhungThongKe(): void {
+  const map = banDo.value
+  if (!map || heatmapData.value.length === 0) return
+  const diem = heatmapData.value.map((p) => [Number(p.lat), Number(p.lng)] as [number, number])
+  map.fitBounds(diem, { padding: [48, 48], maxZoom: 13 })
+}
+
+function bayToiXaThongKe(p: SosHeatmapPoint): void {
+  banDo.value?.flyTo([Number(p.lat), Number(p.lng)], 13, { duration: 0.8 })
+}
+
 function toggleThongKe(): void {
   hienThongKe.value = !hienThongKe.value
-  // Chỉ tải lần đầu bật — bấm tắt/bật lại nhiều lần không gọi lại API thừa. Muốn dữ liệu mới
-  // hơn (VD: xem lại vài phút sau) thì tự tắt/bật lại — chưa cần nút "làm mới" riêng.
-  if (hienThongKe.value && heatmapData.value.length === 0) void taiThongKe()
+  // Chỉ tải lần đầu bật; đổi khoảng thời gian trong bảng thì tải lại.
+  if (hienThongKe.value && !daTaiThongKe.value) void taiThongKe()
 }
+
+watch(soNgayThongKe, () => {
+  if (hienThongKe.value) void taiThongKe()
+})
 
 // Tile nền OSM lỗi — marker SOS/đội vẫn đúng vị trí (vector), chỉ nền raster thiếu.
 // RescueMap.vue tự dedupe trước khi emit (xem loiTile/watch ở đó) nên ở đây không cần
@@ -286,9 +386,12 @@ const hazardsActive = computed(() => hazards.value.filter((h) => h.is_active))
 // chayNen=true: làm mới do socket kích hoạt — không bật cờ "đang tải" để danh sách đang đọc không bị
 // thay bằng chữ "Đang tải..." giữa chừng.
 async function taiCanhBao(chayNen = false): Promise<void> {
-  if (!chayNen) loadingHazards.value = true
+  const cu = docTam<typeof hazards.value>('dashboard:hazards')
+  if (cu && hazards.value.length === 0) hazards.value = cu
+  if (!chayNen && hazards.value.length === 0) loadingHazards.value = true
   try {
     hazards.value = await layTatCaCanhBao()
+    ghiTam('dashboard:hazards', hazards.value)
   } catch {
     // Interceptor http.ts đã hiện toast lỗi mạng/server.
   } finally {
@@ -395,6 +498,17 @@ watch(panelTab, (tab) => {
   if (tab === 'reports') coBaoCaoMoi.value = false
 })
 
+// Bấm thông báo "báo cáo mới" ở chuông (trang khác) → mở thẳng tab duyệt: /dashboard?tab=reports.
+const route = useRoute()
+watch(
+  // ?. : vài test mount trang này không kèm router.
+  () => route?.query.tab,
+  (tab) => {
+    if (tab === 'reports') panelTab.value = 'reports'
+  },
+  { immediate: true }
+)
+
 // Tiêu đề tab trình duyệt hiện số báo cáo chờ duyệt, "(2) Bản Đồ Cứu Trợ Lâm Đồng" — để commander
 // để dashboard ở tab nền vẫn thấy có việc mới.
 const tieuDeGoc = document.title
@@ -409,14 +523,33 @@ onBeforeUnmount(() => {
   document.title = tieuDeGoc
 })
 
+// Ghim KÉO ĐƯỢC để chọn vị trí cảnh báo — tái dùng đúng ghim của "Báo SOS hộ" (useGhimViTri).
+// Trước đây chế độ này chỉ đổi con trỏ thành dấu + và chờ một cú click: không có gì hiện trên bản
+// đồ, commander không biết phải bấm vào đâu, bấm lệch là mở form ngay với vị trí sai.
+// Bấm nút là ghim xuất hiện NGAY ở giữa bản đồ — commander chỉ việc kéo ghim hoặc chạm chỗ khác.
+// (Bản trước bắt bấm thêm "Ghim tại tâm bản đồ" khi đang xem cả tỉnh — thừa một bước, khó hiểu.)
+const ghimCanhBao = useGhimViTri(banDo, placingHazard, undefined, 'Vị trí cảnh báo (kéo để chỉnh)')
+
+watch(
+  () => ghimCanhBao.viTriGhim.value,
+  (v) => {
+    if (v) yeuCauTenDuong(v.lat, v.lng)
+  }
+)
+
 function batDauDatCanhBao(): void {
   panelTab.value = 'hazards'
   placingHazard.value = true
-  toastStore.showToast('Nhấp vào bản đồ để chọn vị trí cảnh báo')
+  ghimCanhBao.ghimTaiTamBanDo()
 }
 
 function huyDatCanhBao(): void {
   placingHazard.value = false
+}
+
+function xacNhanViTriCanhBao(): void {
+  const v = ghimCanhBao.viTriGhim.value
+  if (v) onPickHazardLocation(v.lat, v.lng)
 }
 
 function onPickHazardLocation(lat: number, lng: number): void {
@@ -505,7 +638,7 @@ async function confirmAssign(team: NearestTeam) {
           <span class="dot"></span>{{ isConnected ? 'Thời gian thực: đang bật' : 'Thời gian thực: mất kết nối' }}
         </span>
         <button class="btn btn-ghost" :disabled="dangTaiThongKe" @click="toggleThongKe">
-          {{ dangTaiThongKe ? 'Đang tải...' : hienThongKe ? 'Ẩn thống kê theo xã' : `Thống kê theo xã (${SO_NGAY_THONG_KE} ngày)` }}
+          {{ hienThongKe ? 'Ẩn thống kê theo xã' : 'Thống kê theo xã' }}
         </button>
         <button v-if="!placingHazard" class="btn btn-ghost" @click="batDauDatCanhBao">
           + Đánh dấu cảnh báo
@@ -532,17 +665,84 @@ async function confirmAssign(team: NearestTeam) {
           :selected-sos-id="selectedSosId"
           :thong-ke-xa="hienThongKe ? heatmapData : []"
           :hazards="hazardsActive"
-          :placing-hazard="placingHazard"
           :pending-reports="reports"
           :selected-report-id="selectedReportId"
           :gom-cum="true"
           :heatmap="diemNhiet"
           @select-sos="onSelectSosFromMap"
           @tile-error="onTileError"
-          @pick-location="onPickHazardLocation"
           @select-report="onSelectReportFromMap"
         />
         <ViTriCuaToi :map="banDo" />
+        <!-- Chọn xã → bản đồ bay tới xã đó + danh sách SOS chỉ còn SOS trong xã (F-MAP-02). -->
+        <ChonXaPhuong v-model="locXa" :map="banDo" />
+        <!-- Bảng xếp hạng xã theo số SOS — đi kèm vòng tròn thống kê trên bản đồ. -->
+        <section v-if="hienThongKe" class="thong-ke-xa" aria-labelledby="thong-ke-xa-title">
+          <div class="thong-ke-xa__head">
+            <h2 id="thong-ke-xa-title">SOS theo xã/phường</h2>
+            <button type="button" class="thong-ke-xa__dong" aria-label="Ẩn thống kê theo xã" @click="toggleThongKe">✕</button>
+          </div>
+          <label class="thong-ke-xa__khoang">
+            Trong
+            <select v-model.number="soNgayThongKe" aria-label="Khoảng thời gian thống kê">
+              <option v-for="n in SO_NGAY_THONG_KE_OPTIONS" :key="n" :value="n">
+                {{ n === 365 ? '1 năm' : `${n} ngày` }}
+              </option>
+            </select>
+            qua
+          </label>
+          <p v-if="dangTaiThongKe" class="thong-ke-xa__trong">Đang tải…</p>
+          <p v-else-if="xepHangXa.length === 0" class="thong-ke-xa__trong">
+            Không có SOS nào trong {{ soNgayThongKe === 365 ? '1 năm' : `${soNgayThongKe} ngày` }} qua.
+            Thử chọn khoảng thời gian dài hơn.
+          </p>
+          <template v-else>
+            <p class="thong-ke-xa__tong">{{ tongVuThongKe }} vụ ở {{ xepHangXa.length }} xã/phường</p>
+            <ol class="thong-ke-xa__ds">
+              <li v-for="p in xepHangXa" :key="p.ward_code">
+                <button type="button" @click="bayToiXaThongKe(p)">
+                  <span>{{ p.ward_name }}</span>
+                  <b>{{ p.incident_count }}</b>
+                </button>
+              </li>
+            </ol>
+          </template>
+        </section>
+        <!-- Chọn vị trí cảnh báo: ghim kéo được + nút xác nhận, thay cho "click mò" trước đây. -->
+        <section v-if="placingHazard" class="dat-ghim" aria-labelledby="dat-ghim-title">
+          <div class="dat-ghim__head">
+            <h2 id="dat-ghim-title">Chọn vị trí cảnh báo</h2>
+            <button type="button" class="dat-ghim__dong" aria-label="Huỷ chọn vị trí" @click="huyDatCanhBao">✕</button>
+          </div>
+          <p class="dat-ghim__huong-dan">
+            Kéo ghim (hoặc chạm vào bản đồ) tới đúng chỗ cần cảnh báo. Ở xa thì chọn xã/phường ở góc
+            trái để bay tới nhanh.
+          </p>
+          <template v-if="ghimCanhBao.viTriGhim.value">
+            <p class="dat-ghim__dia-chi">
+              📍
+              {{
+                tenDuong(ghimCanhBao.viTriGhim.value.lat, ghimCanhBao.viTriGhim.value.lng) ??
+                (tenDuong(ghimCanhBao.viTriGhim.value.lat, ghimCanhBao.viTriGhim.value.lng) === null
+                  ? 'Không xác định được tên đường'
+                  : 'Đang tìm tên đường…')
+              }}
+              <span class="dat-ghim__toa-do">
+                {{ ghimCanhBao.viTriGhim.value.lat.toFixed(5) }}, {{ ghimCanhBao.viTriGhim.value.lng.toFixed(5) }}
+              </span>
+            </p>
+          </template>
+          <div class="dat-ghim__nut">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="!ghimCanhBao.viTriGhim.value"
+              @click="xacNhanViTriCanhBao"
+            >
+              Xác nhận vị trí
+            </button>
+          </div>
+        </section>
         <div class="map-che-do">
           <div class="map-che-do__nhom" role="radiogroup" aria-label="Cách hiển thị SOS trên bản đồ">
             <button
@@ -582,7 +782,8 @@ async function confirmAssign(team: NearestTeam) {
             :class="{ active: panelTab === 'sos' }"
             @click="panelTab = 'sos'"
           >
-            Yêu cầu SOS ({{ sosList.length }})
+            🆘 Yêu cầu SOS ({{ sosList.length }})
+            <span v-if="soCaGap > 0" class="tab-gap">{{ soCaGap }} ca gấp</span>
           </button>
           <button
             class="panel-tab"
@@ -599,6 +800,16 @@ async function confirmAssign(team: NearestTeam) {
             Báo cáo chờ duyệt ({{ reports.length }})
           </button>
         </div>
+
+        <!-- Có báo cáo mới mà commander đang ở tab khác: dải nổi bật trên cùng, bấm là mở tab duyệt. -->
+        <button
+          v-if="coBaoCaoMoi && panelTab !== 'reports' && reports.length > 0"
+          type="button"
+          class="bao-cao-moi-bar"
+          @click="panelTab = 'reports'"
+        >
+          🚧 Có {{ reports.length }} báo cáo chờ duyệt — bấm để xem
+        </button>
 
         <template v-if="panelTab === 'sos'">
           <section v-if="tong > 0" class="dash-stats" aria-label="Thống kê SOS">
@@ -634,10 +845,14 @@ async function confirmAssign(team: NearestTeam) {
                 <option value="all">Mọi trạng thái</option>
                 <option v-for="[k, label] in trangThaiOptions" :key="k" :value="k">{{ label }}</option>
               </select>
+              <select v-model="sapXep" aria-label="Sắp xếp SOS">
+                <option v-for="[k, label] in sapXepOptions" :key="k" :value="k">{{ label }}</option>
+              </select>
               <button v-if="dangLoc" class="dash-clear" type="button" @click="xoaLoc">Xoá lọc</button>
             </div>
+            <p v-if="locXa" class="dash-xa">Đang xem: {{ tenXa(locXa) }}</p>
           </div>
-          <div v-if="loadingSos" class="panel-empty">Đang tải...</div>
+          <div v-if="loadingSos && sosList.length === 0" class="panel-empty">Đang tải...</div>
           <div v-else-if="sosList.length === 0" class="panel-empty">Chưa có yêu cầu SOS nào.</div>
           <div v-else-if="danhSachLoc.length === 0" class="panel-empty">Không có SOS khớp bộ lọc.</div>
           <ul v-else class="sos-list">
@@ -645,16 +860,41 @@ async function confirmAssign(team: NearestTeam) {
               v-for="sos in danhSachLoc"
               :key="sos.id"
               class="sos-item"
-              :class="[`status-${sos.status}`, { active: sos.id === selectedSosId }]"
+              :class="[
+                `muc-${mucDoSos(sos.type)}`,
+                {
+                  active: sos.id === selectedSosId,
+                  'sos-xong': laSosDaKetThuc(sos.status),
+                  'sos-moi': laSosMoi(sos)
+                }
+              ]"
+              tabindex="0"
               @click="openAssignModal(sos)"
+              @keydown.enter="openAssignModal(sos)"
             >
               <div class="sos-item-top">
                 <span class="sos-badge">{{ SOS_TYPE_LABEL[sos.type] }}</span>
-                <span class="sos-status-badge">{{ SOS_STATUS_LABEL[sos.status] }}</span>
+                <span v-if="!laSosDaKetThuc(sos.status)" class="muc-tag" :class="`muc-tag--${mucDoSos(sos.type)}`">
+                  {{ NHAN_MUC_DO[mucDoSos(sos.type)] }}
+                </span>
+                <span class="sos-status-badge" :class="`st-${sos.status}`">{{ SOS_STATUS_LABEL[sos.status] }}</span>
               </div>
-              <div class="sos-victim">{{ sos.victim_name }} · {{ sos.victim_phone }}</div>
+              <div class="sos-victim">
+                {{ sos.victim_name }} ·
+                <a :href="`tel:${sos.victim_phone}`" class="sos-tel" @click.stop>{{ sos.victim_phone }}</a>
+              </div>
+              <div class="sos-dong">
+                <span aria-hidden="true">📍</span>
+                <span>
+                  <template v-if="tenDuong(sos.lat, sos.lng)">{{ tenDuong(sos.lat, sos.lng) }}, </template>
+                  {{ tenXa(sos.ward_code) }}
+                </span>
+              </div>
+              <div class="sos-dong">
+                <span aria-hidden="true">🕒</span>
+                <span>{{ ngayGio(sos.created_at) }} · <b>{{ truocDo(sos.created_at) }}</b></span>
+              </div>
               <p v-if="sos.location_estimated" class="sos-location-warn">⚠️ Vị trí ước tính</p>
-              <div class="sos-meta">Xã/phường {{ sos.ward_code }} · {{ formatTime(sos.created_at) }}</div>
             </li>
           </ul>
         </template>
@@ -662,8 +902,8 @@ async function confirmAssign(team: NearestTeam) {
         <template v-else-if="panelTab === 'hazards'">
           <div class="hazard-hint">
             Vòng tròn ĐỎ là vùng chặn đường — thuật toán tìm đường sẽ tự tránh. Vòng tròn VÀNG chỉ là
-            cảnh báo cẩn trọng, không làm tuyến đi vòng. Bấm "+ Đánh dấu cảnh báo" ở trên rồi chọn
-            1 điểm trên bản đồ để thêm.
+            cảnh báo cẩn trọng, không làm tuyến đi vòng. Bấm "+ Đánh dấu cảnh báo" ở trên rồi kéo
+            ghim tới đúng chỗ và bấm "Xác nhận vị trí".
           </div>
           <div v-if="loadingHazards" class="panel-empty">Đang tải...</div>
           <div v-else-if="hazards.length === 0" class="panel-empty">Chưa có cảnh báo nào.</div>
@@ -685,7 +925,7 @@ async function confirmAssign(team: NearestTeam) {
               </div>
               <p v-if="h.description" class="hazard-desc">{{ h.description }}</p>
               <div class="sos-meta">
-                Bán kính {{ h.radius_meters }}m · Xã/phường {{ h.ward_code ?? '—' }} · {{ formatTime(h.created_at) }}
+                Bán kính {{ h.radius_meters }}m · {{ tenXa(h.ward_code) }} · {{ formatTime(h.created_at) }}
               </div>
               <button
                 v-if="h.is_active"
@@ -721,6 +961,11 @@ async function confirmAssign(team: NearestTeam) {
         </div>
         <p v-if="modalSos" class="modal-sub">
           {{ SOS_TYPE_LABEL[modalSos.type] }} — {{ modalSos.victim_name }} ({{ modalSos.victim_phone }})
+        </p>
+        <p v-if="modalSos" class="modal-vi-tri">
+          📍 <template v-if="tenDuong(modalSos.lat, modalSos.lng)">{{ tenDuong(modalSos.lat, modalSos.lng) }}, </template>
+          {{ tenXa(modalSos.ward_code) }}<br />
+          🕒 {{ ngayGio(modalSos.created_at) }} ({{ truocDo(modalSos.created_at) }})
         </p>
         <p v-if="modalSos?.location_estimated" class="sos-location-warn">
           ⚠️ Vị trí ước tính — nạn nhân không lấy được GPS chính xác lúc gửi. Đội gần nhất bên
@@ -773,7 +1018,9 @@ async function confirmAssign(team: NearestTeam) {
           <button class="modal-close" @click="closeHazardForm">✕</button>
         </div>
         <p class="modal-sub">
-          Vị trí: {{ hazardFormLat.toFixed(5) }}, {{ hazardFormLng.toFixed(5) }}
+          Vị trí:
+          <template v-if="tenDuong(hazardFormLat, hazardFormLng)">{{ tenDuong(hazardFormLat, hazardFormLng) }} · </template>
+          {{ hazardFormLat.toFixed(5) }}, {{ hazardFormLng.toFixed(5) }}
         </p>
 
         <div class="hazard-form-field">
@@ -918,7 +1165,7 @@ async function confirmAssign(team: NearestTeam) {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 .realtime-status .dot {
   width: 8px;
@@ -1048,7 +1295,7 @@ async function confirmAssign(team: NearestTeam) {
   border-bottom: 2px solid transparent;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   cursor: pointer;
 }
 .panel-tab.active {
@@ -1057,7 +1304,7 @@ async function confirmAssign(team: NearestTeam) {
 }
 .panel-empty {
   padding: 24px 20px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 14px;
 }
 
@@ -1074,7 +1321,7 @@ async function confirmAssign(team: NearestTeam) {
 .hazard-hint {
   padding: 12px 20px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   background: var(--fog-dim);
   border-bottom: 1px solid var(--line);
 }
@@ -1154,7 +1401,7 @@ async function confirmAssign(team: NearestTeam) {
 }
 .hazard-form-field label {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .hazard-form-field select,
 .hazard-form-field input,
@@ -1181,28 +1428,107 @@ async function confirmAssign(team: NearestTeam) {
   cursor: pointer;
   transition: background 0.15s;
 }
+/* Viền trái + nền nhạt theo MỨC ĐỘ (constants/sosMucDo.ts) — ca nguy kịch nổi lên ngay khi lướt
+   danh sách. Trạng thái nằm ở chữ góc phải. Mọi chữ trên nền thẻ ≥ 4.5:1 (tuongPhanChu.spec.ts). */
+.sos-item {
+  border-left-width: 6px;
+}
+.sos-item.muc-nguy-kich {
+  border-left-color: #b91c1c;
+  background: #fff5f5;
+}
+.sos-item.muc-nang {
+  border-left-color: #ea580c;
+  background: #fffaf3;
+}
+.sos-item.muc-vua {
+  border-left-color: #ca8a04;
+}
+.sos-item.muc-nhe {
+  border-left-color: #64748b;
+}
+.sos-item.sos-xong {
+  border-left-color: #9ca3af;
+  background: #ffffff;
+}
 .sos-item:hover,
 .sos-item.active {
   background: var(--fog-dim);
 }
-.sos-item.status-pending {
-  border-left-color: #dc2626;
+.sos-item:focus-visible {
+  outline: 3px solid var(--pine-deep);
+  outline-offset: -3px;
 }
-.sos-item.status-assigned {
-  border-left-color: #f97316;
+/* SOS mới chưa ai nhận: viền ngoài nhấp nháy tới khi có đội hoặc quá 5 phút. */
+.sos-item.sos-moi {
+  animation: sos-moi 1.4s ease-in-out infinite;
 }
-.sos-item.status-in_progress {
-  border-left-color: #eab308;
+@keyframes sos-moi {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(185, 28, 28, 0);
+  }
+  50% {
+    box-shadow: inset 0 0 0 3px rgba(185, 28, 28, 0.55);
+  }
 }
-.sos-item.status-arrived {
-  border-left-color: #3b82f6;
+@media (prefers-reduced-motion: reduce) {
+  .sos-item.sos-moi {
+    animation: none;
+    box-shadow: inset 0 0 0 3px rgba(185, 28, 28, 0.55);
+  }
 }
-.sos-item.status-resolved {
-  border-left-color: #16a34a;
+.muc-tag {
+  margin-right: auto;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
 }
-.sos-item.status-cancelled,
-.sos-item.status-false_alarm {
-  border-left-color: #9ca3af;
+.muc-tag--nguy-kich {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.muc-tag--nang {
+  background: #ffedd5;
+  color: #9a3412;
+}
+.muc-tag--vua {
+  background: #fef9c3;
+  color: #854d0e;
+}
+.muc-tag--nhe {
+  background: #f1f5f9;
+  color: #334155;
+}
+.sos-status-badge.st-pending {
+  color: #991b1b;
+  font-weight: 700;
+}
+.sos-status-badge.st-assigned,
+.sos-status-badge.st-in_progress,
+.sos-status-badge.st-arrived {
+  color: #1e40af;
+  font-weight: 600;
+}
+.sos-status-badge.st-resolved {
+  color: #166534;
+}
+.sos-dong {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 14px;
+  color: #3f3f38;
+}
+.sos-dong b {
+  color: #2a2a24;
+}
+.sos-tel {
+  color: #1e40af;
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 .sos-item-top {
@@ -1219,7 +1545,7 @@ async function confirmAssign(team: NearestTeam) {
 }
 .sos-status-badge {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .sos-victim {
   font-size: 15px;
@@ -1237,12 +1563,12 @@ async function confirmAssign(team: NearestTeam) {
 }
 .sos-meta {
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 
 .modal-sub {
   font-size: 14px;
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
   margin-bottom: 18px;
 }
 .team-list {
@@ -1267,7 +1593,7 @@ async function confirmAssign(team: NearestTeam) {
 .team-meta {
   display: block;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
   margin-top: 2px;
 }
 
@@ -1313,6 +1639,197 @@ async function confirmAssign(team: NearestTeam) {
    sáng ở dark mode, xem style.css), luật cũ ép chữ kem sáng → ~1.0–1.2:1, gần như vô hình.
    Khoá bằng tuongPhanChu.spec.ts. */
 
+/* Bảng xếp hạng SOS theo xã — nổi góc phải trên bản đồ, dưới nút Điểm SOS/Mật độ. */
+.thong-ke-xa {
+  position: absolute;
+  top: 76px;
+  right: 12px;
+  z-index: 800;
+  width: min(280px, calc(100% - 24px));
+  max-height: calc(100% - 100px);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #2a2a24;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+}
+.thong-ke-xa__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.thong-ke-xa__head h2 {
+  margin: 0;
+  font-size: 15px;
+  color: #2a2a24;
+}
+.thong-ke-xa__dong {
+  min-width: 40px;
+  min-height: 40px;
+  border: none;
+  background: none;
+  color: #2a2a24;
+  font-size: 16px;
+  cursor: pointer;
+}
+.thong-ke-xa__khoang {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 8px;
+  font-size: 14px;
+  color: #3f3f38;
+}
+.thong-ke-xa__khoang select {
+  min-height: 36px;
+  padding: 0 6px;
+  border: 1px solid rgba(42, 42, 36, 0.35);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2a2a24;
+  font: inherit;
+}
+.thong-ke-xa__trong,
+.thong-ke-xa__tong {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #3f3f38;
+}
+.thong-ke-xa__ds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+.thong-ke-xa__ds button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a2a24;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.thong-ke-xa__ds button:hover {
+  background: #f1ede2;
+}
+.thong-ke-xa__ds b {
+  color: #8a3a20;
+}
+
+/* Dải báo "có báo cáo mới chờ duyệt" — nền vàng đậm chữ nâu (≥ 4.5:1). */
+.bao-cao-moi-bar {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: none;
+  border-bottom: 2px solid #d97706;
+  background: #fef3c7;
+  color: #78350f;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.bao-cao-moi-bar:focus-visible {
+  outline: 3px solid var(--pine-deep);
+  outline-offset: -3px;
+}
+/* Số ca nguy kịch/nặng đang mở, trên tab SOS. */
+.tab-gap {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.dash-xa {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e3a8a;
+}
+.modal-vi-tri {
+  margin: -10px 0 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #3f3f38;
+}
+/* Bảng chọn vị trí cảnh báo — nổi ở đáy bản đồ, trên các pane Leaflet (z ≤ 700) và dưới modal. */
+.dat-ghim {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 900;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #2a2a24;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  border-top: 4px solid #1d4ed8;
+}
+.dat-ghim__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dat-ghim__head h2 {
+  margin: 0;
+  font-size: 16px;
+  color: #2a2a24;
+}
+.dat-ghim__dong {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: #2a2a24;
+  font-size: 18px;
+  cursor: pointer;
+}
+.dat-ghim__huong-dan {
+  margin: 4px 0 8px;
+  font-size: 14px;
+  color: #3f3f38;
+}
+.dat-ghim__dia-chi {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2a2a24;
+}
+.dat-ghim__toa-do {
+  display: block;
+  font-weight: 400;
+  font-size: 13px;
+  color: #4b4b44;
+}
+.dat-ghim__nut {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.dat-ghim__nut .btn-ghost {
+  color: #2a2a24;
+}
+
 @media (max-width: 900px) {
   .dashboard-body {
     flex-direction: column;
@@ -1348,7 +1865,7 @@ async function confirmAssign(team: NearestTeam) {
   gap: 12px;
 }
 .modal-tinh-trang dt {
-  color: rgba(42, 42, 36, 0.65);
+  color: rgba(42, 42, 36, 0.75);
 }
 .modal-tinh-trang dd {
   margin: 0;

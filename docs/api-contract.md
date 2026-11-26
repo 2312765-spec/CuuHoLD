@@ -59,7 +59,10 @@ convert sang `ST_MakePoint(lng, lat)` — **frontend không cần quan tâm th�
 gửi đúng field `lat`/`lng` như spec dưới**.
 
 ### Rate limit — ĐÃ implement (từ 2026-09-06)
-`@nestjs/throttler` đã bật: `POST /api/auth/login` (5/15 phút), `POST /api/auth/register`
+`@nestjs/throttler` đã bật: `POST /api/auth/login` (trần 30/15 phút/IP — chống dò mật khẩu nằm ở
+`LoginAttemptsService`: **sai** 5 lần/15 phút theo IP + số điện thoại → `429` kèm câu tiếng Việt
+"thử lại sau N phút"; đăng nhập đúng không tính và xoá bộ đếm; sai lần 4–5 → `401` có "(còn N lần
+thử)" — CLAUDE.md 15.34), `POST /api/auth/register`
 (3/giờ), `POST /api/sos` (5/giờ), mọi route khác baseline 100/phút. Bucket theo `user.id`
 khi có Bearer token hợp lệ, fallback IP cho route công khai. Xem CLAUDE.md Mục 15.1.
 (Dòng này từng ghi "CHƯA implement" — đã lỗi thời so với code, sửa lại 2026-09-06.)
@@ -484,6 +487,17 @@ Tổng hợp số lượng SOS theo vị trí + xã/phường trong khoảng th�
 }
 ```
 Sắp xếp `incident_count` giảm dần.
+
+### GET /api/geocode/reverse?lat=&lng=
+Role: `commander`. Tên đường gần toạ độ (thẻ SOS, ghim đặt cảnh báo) — backend gọi Nominatim,
+cache chung theo toạ độ làm tròn 4 chữ số (~11 m), hàng đợi 1 lượt/1,1 giây cho cả server
+(CLAUDE.md 15.32). Frontend KHÔNG gọi thẳng Nominatim.
+```json
+{ "success": true, "data": { "tenDuong": "12 Đường Trần Hưng Đạo" }, "message": "OK" }
+```
+`tenDuong`: tên đường (kèm số nhà nếu có), `"Gần <thôn/khu phố>"` khi không có đường, hoặc
+`null` khi không tra được gì. Lỗi: `400` lat/lng sai hoặc **ngoài tỉnh Lâm Đồng**, `403` không
+phải commander, `503` Nominatim lỗi/hàng đợi đầy (không cache — gọi lại sau được).
 
 ### GET /api/routing/route
 Role: `rescuer`. Tuyến đường bộ THẬT từ vị trí rescuer tới nạn nhân — gọi OpenRouteService

@@ -6,6 +6,7 @@
 
 import { onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import L from 'leaflet'
+import { apDungGioiHanTinh } from '@/utils/gioiHanTinh'
 import 'leaflet/dist/leaflet.css'
 import '@/utils/leafletPlugins'
 import type {
@@ -522,6 +523,8 @@ onMounted(() => {
   // markercluster cần L.Marker, nhưng gom cụm đã giữ số phần tử DOM ở mức nhỏ.
   // zoomControl: nút +/− — GIỮ (SRS mục 3.3 "Zoom in/out").
   map = L.map(mapContainer.value, { zoomControl: true, preferCanvas: true }).setView([11.9465, 108.4419], 9)
+  // Chỉ hiện vùng tỉnh Lâm Đồng: khoá kéo/thu nhỏ + che kín phần ngoài tỉnh (utils/gioiHanTinh.ts).
+  apDungGioiHanTinh(map)
   // Cấu hình tile (URL, attribution, crossOrigin, ưu tiên bộ offline z8–10) nằm trong
   // utils/tileLayer.ts — dùng chung với useLeafletMap.ts, xem giải thích đầy đủ ở đó.
   let coLoiTrongDot = false

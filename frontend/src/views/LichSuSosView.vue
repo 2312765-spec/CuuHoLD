@@ -181,12 +181,12 @@ onMounted(() => taiTrang(1))
 .lich-su-dem {
   margin: 0 0 10px;
   font-size: 13px;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
 }
 .lich-su-trong {
   padding: 40px 20px;
   text-align: center;
-  color: rgba(42, 42, 36, 0.6);
+  color: rgba(42, 42, 36, 0.75);
   font-size: 14px;
 }
 .lich-su-list {

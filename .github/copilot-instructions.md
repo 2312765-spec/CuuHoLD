@@ -72,7 +72,7 @@ ST_DWithin(col::geography, ST_SetSRID(ST_MakePoint($lng, $lat), 4326)::geography
 - bcrypt MINIMUM cost factor: 12
 - JWT expiry: accessToken=24h, refreshToken=7d — never 'never'
 - ALWAYS parameterized queries — NEVER string interpolation in SQL
-- Rate limit: 5 SOS/hour/user, 5 logins/15min/IP
+- Rate limit: 5 SOS/hour/user; login: 5 FAILED attempts/15min per IP+phone → locked 15min (successful logins never count), plus 30 login requests/15min/IP cap — see CLAUDE.md Mục 15.34
 - helmet() MUST be first middleware in main.ts
 - CORS: only allow FRONTEND_URL — never '*' in production
 - Environment variables: NEVER hardcode secrets in source code

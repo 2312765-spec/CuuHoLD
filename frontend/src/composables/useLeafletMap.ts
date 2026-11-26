@@ -5,6 +5,7 @@
 
 import { h, render, ref, shallowRef } from 'vue'
 import L from 'leaflet'
+import { apDungGioiHanTinh } from '@/utils/gioiHanTinh'
 import type { DiemCuuTro, BaoCaoSuCo, MapLayerKey, SosStatus, SosType, Hazard } from '@/types'
 import { SOS_TYPE_ICON } from '@/constants/sosLabels'
 import { useMapDataStore } from '@/stores/mapData'
@@ -276,6 +277,8 @@ export function useLeafletMap() {
     // Nút zoom +/− — GIỮ: SRS mục 3.3 yêu cầu "Zoom in/out"; là cách phóng to duy nhất khi dùng
     // bàn phím hoặc chuột không có con lăn. Vị trí chỉnh trong map-style.css (.leaflet-control-zoom).
     L.control.zoom({ position: 'topright' }).addTo(map)
+    // Chỉ hiện vùng tỉnh Lâm Đồng: khoá kéo/thu nhỏ + che kín phần ngoài tỉnh (utils/gioiHanTinh.ts).
+    apDungGioiHanTinh(map)
 
     // 'load' bắn ĐÚNG MỘT LẦN khi mọi tile trong khung nhìn hiện tại đã xong (thành công
     // hoặc lỗi) — khác 'tileload'/'tileerror' vốn bắn RIÊNG cho TỪNG tile, xen kẽ không

@@ -42,7 +42,7 @@
   max-width: 210px;
   font-size: 11px;
   line-height: 1.45;
-  color: rgba(42, 42, 36, 0.55);
+  color: rgba(42, 42, 36, 0.75);
 }
 :root[data-theme="dark"] .legend-note {
   color: rgba(236, 231, 217, 0.6);      /* chữ sáng mờ, hợp nền tối */
