@@ -39,6 +39,7 @@ export const envValidationSchema = Joi.object({
 
   // Proxy tile (TilesService) — User-Agent gửi lên openstreetmap.fr. Không bắt buộc.
   TILE_PROXY_USER_AGENT: Joi.string().allow('').optional(),
+  GEOCODE_USER_AGENT: Joi.string().allow('').optional(),
 
   // Web Push (F-PWA-05) — không bắt buộc, giống ESMS: thiếu thì PushService tắt thông báo đẩy,
   // server vẫn khởi động. Tạo cặp khoá: npx web-push generate-vapid-keys

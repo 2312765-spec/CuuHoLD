@@ -245,7 +245,7 @@ describe('UsersService', () => {
 });
 
 // Mỗi request có JWT trước đây đọc lại tài khoản từ Supabase (~350 ms) chỉ để xác thực
-// (CLAUDE.md 15.30). Giờ nhớ tạm 15 giây; khoá/đổi vai trò/đổi tên/đổi mật khẩu xoá bản nhớ
+// (CLAUDE.md 15.34). Giờ nhớ tạm 15 giây; khoá/đổi vai trò/đổi tên/đổi mật khẩu xoá bản nhớ
 // tạm NGAY để thay đổi có hiệu lực tức thì.
 describe('UsersService.findByIdForAuth (nhớ tạm cho xác thực JWT)', () => {
   let service: UsersService;
@@ -292,6 +292,18 @@ describe('UsersService.findByIdForAuth (nhớ tạm cho xác thực JWT)', () =>
     await service.updateRole('u1', 'rescuer', 'admin');
     await service.findByIdForAuth('u1');
     await service.updateMyName('u1', 'Tên mới');
+    usersRepo.findOne.mockClear();
+    await service.findByIdForAuth('u1');
+    expect(usersRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('request xác thực chen vào GIỮA lúc đang lưu không để lại bản cũ trong cache', async () => {
+    // Lúc save() còn chạy, DB vẫn trả bản cũ (isActive=true); một request khác nạp nó vào cache.
+    usersRepo.save.mockImplementationOnce(async (u: User) => {
+      await service.findByIdForAuth('u1');
+      return u;
+    });
+    await service.updateStatus('u1', false, 'admin');
     usersRepo.findOne.mockClear();
     await service.findByIdForAuth('u1');
     expect(usersRepo.findOne).toHaveBeenCalledTimes(1);

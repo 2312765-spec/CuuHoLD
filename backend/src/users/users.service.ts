@@ -13,7 +13,7 @@ import { RegisterDto } from '../auth/dto/register.dto';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import * as bcrypt from 'bcrypt';
 
-// Nhớ tạm tài khoản cho xác thực JWT (CLAUDE.md 15.30): trước đây MỌI request có JWT đọc lại
+// Nhớ tạm tài khoản cho xác thực JWT (CLAUDE.md 15.34): trước đây MỌI request có JWT đọc lại
 // tài khoản từ Supabase (~350 ms) chỉ để kiểm còn hoạt động — mỗi lần mở trang chậm gấp đôi.
 const AUTH_CACHE_TTL_MS = 15_000;
 
@@ -134,8 +134,10 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.name = name.trim();
+    const saved = await this.usersRepo.save(user);
+    // Xoá SAU khi lưu: xoá trước thì request đến giữa chừng nạp lại bản cũ vào cache 15 giây.
     this.quenTaiKhoan(userId);
-    return this.usersRepo.save(user);
+    return saved;
   }
 
   // F-UI-01 — đổi mật khẩu, bắt buộc đúng mật khẩu hiện tại. Sai → 400, KHÔNG 401: interceptor
@@ -169,8 +171,10 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.role = role;
+    const saved = await this.usersRepo.save(user);
+    // Xoá SAU khi lưu: xoá trước thì request đến giữa chừng nạp lại bản cũ vào cache 15 giây.
     this.quenTaiKhoan(id);
-    return this.usersRepo.save(user);
+    return saved;
   }
 
   // Cùng lý do chặn tự-thao-tác như updateRole() — tự khoá tài khoản mình sẽ không đăng nhập
@@ -188,7 +192,9 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.isActive = isActive;
+    const saved = await this.usersRepo.save(user);
+    // Xoá SAU khi lưu: xoá trước thì request đến giữa chừng nạp lại bản cũ vào cache 15 giây.
     this.quenTaiKhoan(id);
-    return this.usersRepo.save(user);
+    return saved;
   }
 }

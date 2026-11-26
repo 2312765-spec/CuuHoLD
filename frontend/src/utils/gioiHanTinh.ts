@@ -1,4 +1,4 @@
-// Chỉ hiển thị bản đồ trong tỉnh Lâm Đồng (CLAUDE.md 15.30):
+// Chỉ hiển thị bản đồ trong tỉnh Lâm Đồng (CLAUDE.md 15.34):
 //  1. Che vùng ngoài tỉnh bằng một lớp màu nền — nước láng giềng, tỉnh khác, biển đảo và địa
 //     danh ngoài tỉnh không còn hiện ra (tránh nội dung nhạy cảm, và đây là app CỦA TỈNH).
 //  2. Không cho kéo/thu nhỏ bản đồ ra xa khỏi tỉnh (maxBounds + minZoom vừa khít tỉnh).

@@ -1,61 +1,68 @@
-// Tra tên đường (Nominatim): cùng toạ độ chỉ hỏi 1 lần, lỗi mạng trả null (không toast, không
-// ném), và ưu tiên tên đường hơn tên thôn.
+// Tra tên đường qua backend GET /api/geocode/reverse (CLAUDE.md 15.32): KHÔNG gọi thẳng
+// Nominatim từ trình duyệt; cùng toạ độ chỉ hỏi 1 lần; lỗi trả null, không toast.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // setup.ts chặn module này cho mọi test khác — ở đây cần bản thật.
 vi.unmock('@/services/diaChiService')
 
+const httpGet = vi.fn()
+vi.mock('@/services/http', () => ({ http: { get: (...a: unknown[]) => httpGet(...a) } }))
+
 beforeEach(() => {
   vi.resetModules()
-  vi.useFakeTimers()
+  httpGet.mockReset()
 })
-afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
-})
+afterEach(() => vi.unstubAllGlobals())
 
-function phanHoi(address: Record<string, string>) {
-  return { ok: true, json: async () => ({ address }) }
+function ok(tenDuong: string | null) {
+  return { data: { success: true, data: { tenDuong } } }
 }
 
-describe('tenDuongTuDiaChi', () => {
-  it('có số nhà + đường → ghép; không có đường → "Gần <thôn>"; không có gì → null', async () => {
-    const { tenDuongTuDiaChi } = await import('./diaChiService')
-    expect(tenDuongTuDiaChi({ road: 'Đường Trần Hưng Đạo', house_number: '12' })).toBe('12 Đường Trần Hưng Đạo')
-    expect(tenDuongTuDiaChi({ hamlet: 'Thôn 3' })).toBe('Gần Thôn 3')
-    expect(tenDuongTuDiaChi({})).toBeNull()
-    expect(tenDuongTuDiaChi(undefined)).toBeNull()
-  })
-})
-
 describe('layTenDuong', () => {
-  it('cùng toạ độ (làm tròn ~11 m) chỉ gọi Nominatim 1 lần', async () => {
-    const fetchGia = vi.fn(async () => phanHoi({ road: 'Đường Hùng Vương' }))
+  it('gọi backend kèm khongHienToastLoi, không gọi fetch thẳng tới Nominatim', async () => {
+    const fetchGia = vi.fn()
     vi.stubGlobal('fetch', fetchGia)
+    httpGet.mockResolvedValueOnce(ok('Đường Hùng Vương'))
     const { layTenDuong } = await import('./diaChiService')
 
+    expect(await layTenDuong(11.94041, 108.43831)).toBe('Đường Hùng Vương')
+    const [url, opts] = httpGet.mock.calls[0]
+    expect(url).toBe('/geocode/reverse')
+    expect(opts).toMatchObject({ params: { lat: 11.94041, lng: 108.43831 }, khongHienToastLoi: true })
+    expect(fetchGia).not.toHaveBeenCalled()
+  })
+
+  it('cùng toạ độ (làm tròn ~11 m) chỉ gọi 1 lần, kể cả kết quả null', async () => {
+    httpGet.mockResolvedValue(ok(null))
+    const { layTenDuong } = await import('./diaChiService')
     const a = layTenDuong(11.94041, 108.43831)
     const b = layTenDuong(11.94042, 108.43832)
-    await vi.runAllTimersAsync()
-    expect(await a).toBe('Đường Hùng Vương')
-    expect(await b).toBe('Đường Hùng Vương')
-    expect(fetchGia).toHaveBeenCalledTimes(1)
-    expect(String(fetchGia.mock.calls[0])).toContain('accept-language=vi')
+    expect(await a).toBeNull()
+    expect(await b).toBeNull()
+    expect(await layTenDuong(11.94041, 108.43831)).toBeNull()
+    expect(httpGet).toHaveBeenCalledTimes(1)
   })
 
-  it('lỗi mạng → null, lần sau gọi lại được', async () => {
-    const fetchGia = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce(phanHoi({ road: 'Đường 3 Tháng 2' }))
-    vi.stubGlobal('fetch', fetchGia)
+  it('lỗi mạng/503 → null, lần sau gọi lại được', async () => {
+    httpGet.mockRejectedValueOnce(new Error('503')).mockResolvedValueOnce(ok('Đường 3 Tháng 2'))
     const { layTenDuong } = await import('./diaChiService')
+    expect(await layTenDuong(11.9, 108.4)).toBeNull()
+    expect(await layTenDuong(11.9, 108.4)).toBe('Đường 3 Tháng 2')
+  })
 
-    const lan1 = layTenDuong(11.9, 108.4)
-    await vi.runAllTimersAsync()
-    expect(await lan1).toBeNull()
-    const lan2 = layTenDuong(11.9, 108.4)
-    await vi.runAllTimersAsync()
-    expect(await lan2).toBe('Đường 3 Tháng 2')
+  it('gửi tuần tự từng yêu cầu (backend xếp hàng 1/giây — không dồn để khỏi quá hạn chờ)', async () => {
+    let dangChay = 0
+    let toiDa = 0
+    httpGet.mockImplementation(async () => {
+      dangChay++
+      toiDa = Math.max(toiDa, dangChay)
+      await Promise.resolve()
+      dangChay--
+      return ok('X')
+    })
+    const { layTenDuong } = await import('./diaChiService')
+    await Promise.all([0, 1, 2].map((i) => layTenDuong(11.9 + i * 0.01, 108.4)))
+    expect(toiDa).toBe(1)
+    expect(httpGet).toHaveBeenCalledTimes(3)
   })
 })

@@ -74,6 +74,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Gán phiên nhận từ tab khác — KHÔNG phát lại (tránh các tab đẩy tin qua lại vô hạn).
   function nhanPhien(phien: StoredSession) {
+    // Đổi sang tài khoản KHÁC mà không qua đăng xuất (tab khác đăng nhập người khác) → dữ liệu
+    // trang nhớ tạm của người trước không được hiện cho người sau.
+    if (user.value && user.value.id !== phien.user.id) xoaHetTam()
     accessToken.value = phien.accessToken
     refreshToken.value = phien.refreshToken
     user.value = phien.user

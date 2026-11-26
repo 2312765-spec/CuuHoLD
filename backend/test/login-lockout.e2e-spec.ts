@@ -1,4 +1,4 @@
-// HTTP thật (supertest) cho chống dò mật khẩu (CLAUDE.md 15.30): đăng nhập đúng nhiều lần
+// HTTP thật (supertest) cho chống dò mật khẩu (CLAUDE.md 15.34): đăng nhập đúng nhiều lần
 // không bị chặn; sai 5 lần → 429 kèm số phút. Kiểm phần unit test không chạm tới: Nest tự
 // khởi tạo LoginAttemptsService (tham số đồng hồ @Optional), @Ip() truyền đúng IP, và mã
 // 429 + câu tiếng Việt đi tới client. UsersService/JwtService giả lập — không cần DB.

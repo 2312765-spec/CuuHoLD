@@ -3,7 +3,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 // Chống dò mật khẩu: CHỈ đếm lần đăng nhập SAI, theo cặp (IP, số điện thoại).
 // Sai MAX_FAILED lần trong WINDOW_MS → khoá LOCK_MS. Đăng nhập đúng → xoá bộ đếm.
 //
-// Thay cho giới hạn cũ "5 lần đăng nhập/15 phút/IP" đếm CẢ lần đúng (CLAUDE.md 15.30): test
+// Thay cho giới hạn cũ "5 lần đăng nhập/15 phút/IP" đếm CẢ lần đúng (CLAUDE.md 15.34): test
 // nhiều tài khoản trên cùng một máy (chung IP) là hết lượt, nhập sai 1-2 lần đã bị chặn 15 phút.
 //
 // Lưu trong RAM của tiến trình (giống bộ nhớ mặc định của @nestjs/throttler): khởi động lại

@@ -36,7 +36,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   // Trần chung chống spam (đếm MỌI lần gọi, theo IP). Chống dò mật khẩu thật sự nằm ở
-  // LoginAttemptsService: chỉ đếm lần SAI, sai 5 lần/15 phút → khoá 15 phút (CLAUDE.md 15.30).
+  // LoginAttemptsService: chỉ đếm lần SAI, sai 5 lần/15 phút → khoá 15 phút (CLAUDE.md 15.34).
   @Throttle({ default: { limit: 30, ttl: minutes(15) } })
   @ApiOperation({ summary: 'Đăng nhập' })
   async login(@Body() dto: LoginDto, @Ip() ip: string) {
