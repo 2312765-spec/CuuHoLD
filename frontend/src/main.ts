@@ -5,21 +5,13 @@ import router from './router'
 import { vReveal } from './directives/reveal'
 import { useToastStore } from './stores/toast'
 import { useAuthStore } from './stores/auth.store'
+import { xinPhienTuTabKhac } from './utils/phienGiuaTab'
 import './assets/style.css'
 import './composables/useTheme' // áp dụng chế độ sáng/tối đã lưu NGAY khi nạp, trước app.mount() để tránh nháy màu (F-UI-05)
 
 const app = createApp(App)
 app.use(createPinia())
-app.use(router)
 app.directive('reveal', vReveal)
-
-// authStore khôi phục accessToken/user từ sessionStorage ngay lúc khởi tạo (xem
-// stores/auth.store.ts) — isLoggedIn đã đúng ngay từ router guard đầu tiên. Gọi fetchMe()
-// ở đây chỉ để xác thực lại token còn sống hay không; nếu hết hạn, interceptor 401 trong
-// services/http.ts tự đăng xuất sạch, không cần chặn app.mount() để chờ kết quả này.
-useAuthStore().fetchMe().catch(() => {
-  // Lỗi đã được http.ts interceptor xử lý (toast + logout nếu 401) — không cần làm gì thêm.
-})
 
 // Trước đây một lỗi runtime chưa bắt trong bất kỳ component nào (map, socket callback...)
 // chỉ log console rồi thôi — người dùng thấy màn hình đứng im, không biết vì sao, không có
@@ -37,4 +29,25 @@ function baoLoiKhongBat(loi: unknown, boiCanh: string): void {
 app.config.errorHandler = (err, _instance, info) => baoLoiKhongBat(err, `component: ${info}`)
 window.addEventListener('unhandledrejection', (e) => baoLoiKhongBat(e.reason, 'promise rejection'))
 
-app.mount('#app')
+// Router chạy guard ngay khi app.use(router) — nên PHẢI có phiên trước bước đó, không thì tab mới
+// bị đẩy về trang chủ "chưa đăng nhập" dù tab khác đang đăng nhập (CLAUDE.md Mục 15.30).
+async function khoiDong(): Promise<void> {
+  const auth = useAuthStore()
+  // authStore đã tự khôi phục từ sessionStorage của CHÍNH tab này (F5). Chưa có → hỏi tab khác
+  // (chờ tối đa 300 ms, chỉ khi chưa đăng nhập nên tab đã đăng nhập không bị chậm).
+  if (!auth.isLoggedIn) {
+    const phien = await xinPhienTuTabKhac()
+    if (phien) auth.nhanPhien(phien)
+  }
+
+  // Gọi fetchMe() chỉ để xác thực lại token còn sống hay không; nếu hết hạn, interceptor 401 trong
+  // services/http.ts tự đăng xuất sạch, không cần chặn app.mount() để chờ kết quả này.
+  auth.fetchMe().catch(() => {
+    // Lỗi đã được http.ts interceptor xử lý (toast + logout nếu 401) — không cần làm gì thêm.
+  })
+
+  app.use(router)
+  app.mount('#app')
+}
+
+void khoiDong()

@@ -5,7 +5,21 @@
 // z8+ nên chưa từng thấy. Toạ độ tile dưới đây lấy từ lần tái hiện thật.
 
 import { describe, it, expect } from 'vitest'
-import { duongDanTileOffline, TILE_URL, TILE_HOST_PATTERN } from './tileProvider'
+import {
+  duongDanTileOffline,
+  TILE_URL,
+  TILE_HOST_PATTERN,
+  PROXY_TILE_PATTERN,
+  STADIA_TILE_URL,
+  STADIA_HOST_PATTERN,
+  LAMDONG_BBOX,
+  TILE_PROXY_PADDING,
+  TILE_PROXY_MAX_ZOOM,
+  tileTrongVungProxy,
+  tileX,
+  tileY
+} from './tileProvider'
+import * as BE from '../../../backend/src/tiles/tile-bounds'
 
 function urlTileMau(z: number, x: number, y: number): string {
   return TILE_URL.replace('{s}', 'a').replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
@@ -48,5 +62,40 @@ describe('duongDanTileOffline', () => {
 
   it('zoom 10 nhưng ngoài tỉnh → null', () => {
     expect(duongDanTileOffline(10, 0, 0)).toBeNull()
+  })
+})
+
+describe('proxy tile — khớp với backend', () => {
+  it('PROXY_TILE_PATTERN (cache SW) khớp URL proxy ở cả backend khác tên miền lẫn cùng origin', () => {
+    expect(PROXY_TILE_PATTERN.test('https://be.onrender.com/api/tiles/13/6563/3822.png')).toBe(true)
+    expect(PROXY_TILE_PATTERN.test('/api/tiles/13/6563/3822.png')).toBe(true)
+    expect(PROXY_TILE_PATTERN.test('/api/tiles/13/6563/3822.png?x')).toBe(false)
+  })
+
+  // Lệch nhau thì ô sát biên bị backend từ chối 400 → mỗi ô tốn thêm 1 request lùi về upstream.
+  it('vùng phục vụ frontend TRÙNG KHÍT backend/src/tiles/tile-bounds.ts', () => {
+    expect(LAMDONG_BBOX).toEqual(BE.LAMDONG_BBOX)
+    expect(TILE_PROXY_PADDING).toBe(BE.TILE_PROXY_PADDING)
+    expect(TILE_PROXY_MAX_ZOOM).toBe(BE.TILE_MAX_ZOOM)
+    for (const z of [0, 7, 11, 13, 16, 18, 19]) {
+      for (const [lng, lat] of [[108.44, 11.94], [107.05, 9.75], [109.26, 12.95], [105.85, 21.03]]) {
+        const x = tileX(lng, z)
+        const y = tileY(lat, z)
+        expect(tileTrongVungProxy(z, x, y)).toBe(BE.tileTrongVungPhucVu(z, x, y))
+      }
+    }
+  })
+})
+
+describe('nguồn Stadia', () => {
+  const url = STADIA_TILE_URL.replace('{z}', '13').replace('{x}', '6563').replace('{y}', '3822')
+
+  it('KHÔNG trỏ vào *.openstreetmap.org (Viettel chặn DNS)', () => {
+    expect(new URL(url).hostname).not.toMatch(/(^|\.)openstreetmap\.org$/)
+  })
+
+  it('STADIA_HOST_PATTERN (cache SW) khớp URL Stadia, có hoặc không có ?api_key', () => {
+    expect(STADIA_HOST_PATTERN.test(url)).toBe(true)
+    expect(STADIA_HOST_PATTERN.test(url + '?api_key=abc')).toBe(true)
   })
 })

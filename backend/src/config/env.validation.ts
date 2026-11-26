@@ -9,6 +9,9 @@ export const envValidationSchema = Joi.object({
     .default('development'),
   PORT: Joi.number().default(3000),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+  // Số tầng proxy trước app — Render: 1. Thiếu thì sau proxy mọi người dùng chung 1 IP và chung
+  // 1 bucket rate limit (login 5/15 phút cho CẢ tỉnh). Xem common/http/trust-proxy.ts.
+  TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
 
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgres', 'postgresql'] })
@@ -33,6 +36,9 @@ export const envValidationSchema = Joi.object({
   // OpenRouteService (CLAUDE.md Mục 15.13) — không bắt buộc, giống eSMS: RoutingService tự
   // trả 503 khi thiếu, không được chặn boot của cả server vì Quang có thể chưa đăng ký key.
   ORS_API_KEY: Joi.string().allow('').optional(),
+
+  // Proxy tile (TilesService) — User-Agent gửi lên openstreetmap.fr. Không bắt buộc.
+  TILE_PROXY_USER_AGENT: Joi.string().allow('').optional(),
 
   // Web Push (F-PWA-05) — không bắt buộc, giống ESMS: thiếu thì PushService tắt thông báo đẩy,
   // server vẫn khởi động. Tạo cặp khoá: npx web-push generate-vapid-keys

@@ -19,6 +19,7 @@ import { PushModule } from './push/push.module';
 import { envValidationSchema } from './config/env.validation';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 
+import { TilesModule } from './tiles/tiles.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -64,6 +65,7 @@ import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 
     HazardReportsModule,
     PushModule,
+    TilesModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: UserThrottlerGuard }],

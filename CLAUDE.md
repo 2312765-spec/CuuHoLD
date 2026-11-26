@@ -370,11 +370,12 @@ Mọi bảng mới bật RLS và **không** có policy → chỉ backend (DATABA
 
 ## 7. API Endpoints
 
-> Cập nhật 2026-10-15 theo đúng 43 route trong code. Chi tiết request/response: `docs/api-contract.md`.
+> Cập nhật 2026-10-15 theo đúng 43 route trong code (+ `/api/tiles` 2026-11-25 = 44). Chi tiết request/response: `docs/api-contract.md`.
 > "JWT" = mọi role đã đăng nhập.
 
 ```
 GET    /api/health                       — Kiểm tra server + DB sống (public, cho Render)
+GET    /api/tiles/:z/:x/:y.png           — Proxy tile nền, chỉ vùng Lâm Đồng (public, 600/phút/IP — Mục 15.29)
 
 POST   /api/auth/register                — Đăng ký (public, LUÔN tạo victim — không nhận role)
 POST   /api/auth/login                   — Đăng nhập → JWT (public)
@@ -478,6 +479,8 @@ Gateway gộp mọi phòng vào **1 lần emit** để ai thuộc nhiều phòng
 NODE_ENV=development
 PORT=3000
 FRONTEND_URL=http://localhost:5173
+# Số tầng proxy trước backend: máy dev 0, Render 1 (Mục 15.28) — sai thì rate limit dồn mọi người vào 1 IP
+TRUST_PROXY_HOPS=0
 
 # Supabase (Settings → Database → Connection String → URI)
 DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres
@@ -504,6 +507,9 @@ SMS_DRY_RUN=true
 # OpenRouteService (openrouteservice.org/dev/#/signup, free tier — Mục 15.13) — để trống thì
 # /api/routing/route trả 503, frontend tự lùi về đường chim bay, không ảnh hưởng phần khác.
 ORS_API_KEY=
+
+# Proxy tile (Mục 15.29) — User-Agent gửi openstreetmap.fr, tuỳ chọn
+TILE_PROXY_USER_AGENT=
 
 # Web Push (Mục 15.24) — tạo 1 lần: npx.cmd web-push generate-vapid-keys. Để trống thì tắt push.
 VAPID_PUBLIC_KEY=
@@ -1523,8 +1529,107 @@ tốt hơn SRS → sửa tài liệu:
 **Còn mở (cần quyết định, không phải lệch tài liệu):** victim chưa nhận `sos:updated` qua socket (phòng
 `sos:{id}` không ai join) — đang dùng poll 20s, chạy được; muốn real-time thì thêm join.
 
+### 15.28 Chuẩn bị deploy Render + Vercel (2026-11-25)
+
+Chốt: FE **Vercel**, BE **Render free + ping** `/api/health` 5 phút/lần, tên miền mặc định, `SMS_DRY_RUN=true`
+(chưa có Brandname eSMS). Hướng dẫn từng bước: `docs/HOSTING.md` Mục 0. Nhánh `chore/deploy-render-vercel`.
+- **Bug chặn deploy đã sửa — rate limit dồn cả tỉnh vào 1 IP.** `UserThrottlerGuard` bucket theo `req.ip` cho
+  route chưa có token (login/register), mà Express không tin `X-Forwarded-For` khi chưa bật `trust proxy` → sau
+  proxy Render mọi request mang IP proxy → 5 lần đăng nhập của bất kỳ ai trong 15 phút là cả tỉnh bị 429. Sửa:
+  `common/http/trust-proxy.ts` + biến `TRUST_PROXY_HOPS` (Joi: số nguyên 0–5, mặc định 0; Render đặt `1`).
+  Đếm tầng từ phải nên client tự chèn IP giả ở đầu header không đổi được bucket. Test `test/trust-proxy.e2e-spec.ts`
+  (HTTP thật, đỏ → xanh) + `env.validation.spec.ts`. ⚠️ **"Render = 1 tầng" CHƯA kiểm trên Render thật** — kiểm
+  bằng HOSTING.md Mục 3 bước 7.
+- `frontend/vercel.json` (mới): SPA fallback + `no-cache` cho `/`, `index.html`, SW + `immutable` cho `/assets/*`.
+- `DATABASE_URL` trên Render dùng **Session pooler** của Supabase (host trực tiếp chỉ IPv6).
+- Đề xuất proxy tile (`docs/tile-proxy-plan.md`) làm SAU, trên nhánh riêng, sau cờ bật/tắt — vì qua rewrite Vercel,
+  IP Render thấy có thể là IP Vercel (cùng lớp lỗi trên) và Render free 0,1 CPU dùng chung với SOS.
+
+**Kiểm chứng:** BE eslint sạch, 219/219 unit, 25/25 e2e (trừ `app.e2e-spec.ts` cần DB, đỏ sẵn), build sạch; FE build sạch.
+**Còn nợ:** [ ] deploy thật + chạy HOSTING.md Mục 3 (bước 1–9), ghi kết quả vào đây.
+
+### 15.29 Proxy tile qua backend, cờ mặc định tắt (2026-11-25)
+
+Nhánh `feature/tile-proxy`. Chi tiết + cách bật: `docs/tile-proxy-plan.md`. Làm SAU khi deploy (Mục 15.28)
+theo yêu cầu người dùng; cờ `VITE_DUNG_PROXY_TILE` mặc định **tắt** nên merge không đổi hành vi production.
+- BE `backend/src/tiles/`: `GET /api/tiles/:z/:x/:y.png` public, 600/phút/IP, chỉ ô trong tỉnh (+2 ô) — ngoài
+  vùng `400` không gọi upstream (chặn dùng làm proxy bản đồ toàn cầu → IP Render bị OSM France chặn). Upstream
+  404 → `404` (frontend lùi tile cha), lỗi/không phải ảnh → `502`. Trả `Cross-Origin-Resource-Policy: cross-origin`
+  — **bắt buộc**: helmet mặc định `same-origin` làm trình duyệt chặn ảnh từ FE Vercel khác tên miền.
+- **Khác đề xuất gốc 3 điểm:** (1) gọi thẳng Render, KHÔNG qua Vercel rewrite — qua rewrite IP Render thấy có thể
+  là IP Vercel, rate limit dồn cả tỉnh (cùng lớp lỗi 15.28); (2) giới hạn vùng; (3) cầu dao chỉ đếm khi proxy lỗi
+  MÀ upstream tải được cùng tile — `<img>` không đọc được mã HTTP, đếm mọi lỗi thì 404 hợp lệ ở vùng rừng zoom sâu
+  sẽ ngắt oan. 4 lần/20 s → gọi thẳng upstream tới hết phiên + toast 1 lần.
+- ⚠️ `LAMDONG_BBOX`/padding/max zoom có ở CẢ `backend/src/tiles/tile-bounds.ts` lẫn `frontend/src/constants/tileProvider.ts`
+  — `tileProvider.spec.ts` import thẳng file backend để khoá trùng khít; sửa một bên là CI đỏ.
+- Cache SW riêng `proxy-tiles` (`PROXY_TILE_PATTERN`).
+
+**Kiểm chứng (TDD đỏ → xanh):** BE 231 unit + 32 e2e (thêm 12 + 7, e2e có `helmet()`), lint/build sạch; FE 306 test
+(thêm 10), lint/build sạch. Backend thật ở máy gọi upstream thật: Đà Lạt z13 → 200 PNG (đã mở ảnh), header đúng; Hà
+Nội → 400. **Còn nợ:** [ ] bật + chạy `docs/tile-proxy-plan.md` Mục 5 trên Render/Vercel thật, ghi kết quả vào đây.
+
+**Bật lên production (2026-11-25) lộ bug — đã sửa trên nhánh `fix/tile-proxy-gioi-han-ket-noi`:** Chrome thật thấy
+48/58 tile proxy `502`. Gốc: trình duyệt bắn ~40 tile song song → Render mở bấy nhiêu kết nối tới openstreetmap.fr →
+26/40 bị từ chối/ngắt kết nối (đo thẳng Render); 6 song song thì 40/40. Sửa: `TilesService` giới hạn **6** request
+upstream đồng thời (hàng đợi, > 200 chờ → `503`), thử lại 1 lần khi lỗi kết nối, keep-alive. ⚠️ Bài học: phép đo tải
+lúc đầu chỉ 10 song song (1% lỗi) — **phải đo đúng kiểu tải của trình duyệt thật**, không chỉ một mức song song tuỳ chọn.
+Chi tiết: `docs/tile-proxy-plan.md` Mục 4.1.
+
+### 15.30 Mở tab mới bị "đăng xuất" — chia sẻ phiên giữa tab (2026-11-25)
+
+Người dùng báo: đăng nhập ở 1 tab, mở tab khác thì thấy đã đăng xuất. Không phải bug mới — hệ quả của Mục 15.4:
+phiên ở `sessionStorage`, **mỗi tab một bản** (chỉ "Nhân bản tab" mới chép sang). Nhánh `feature/phien-giua-tab`.
+- **Đã cân nhắc + loại:** (1) `localStorage` — token sống cả sau khi đóng trình duyệt, rủi ro XSS cao hơn; (2) cookie
+  httpOnly + `/api/auth/refresh` (người dùng chọn trước) — **không chạy được** với tên miền mặc định: `vercel.app` và
+  `onrender.com` đều thuộc Public Suffix List → FE/BE là 2 site khác nhau → cookie bên thứ ba, Safari/iPhone (ITP) chặn
+  hẳn, Chrome ẩn danh/Firefox chặn hoặc cô lập. Chỉ làm được khi có tên miền riêng (`app.x` + `api.x`) hoặc đưa REST qua
+  Vercel rewrite (lại vướng IP Vercel — Mục 15.28).
+- **Đã làm:** `utils/phienGiuaTab.ts` (BroadcastChannel, chỉ cùng origin). Tab chưa có phiên → `main.ts` hỏi các tab khác
+  (chờ ≤ 300 ms) **trước** `app.use(router)` (router chạy guard ngay khi gắn). Đăng nhập/đăng xuất/đổi tên ở 1 tab → mọi
+  tab làm theo (`auth.store` `setAuth`/`logout`/`capNhatUser` phát tin; `nhanPhien` nhận mà KHÔNG phát lại). Tab đang ở
+  trang cần đăng nhập nhận tin đăng xuất → `App.vue` sẵn có tự đưa về trang chủ. Vẫn `sessionStorage`: đóng HẾT tab là mất
+  phiên như cũ. Trình duyệt không có BroadcastChannel → hành vi y như trước.
+- ⚠️ **Bẫy đã gặp:** `user.value` là Proxy reactive của Vue — `postMessage` ném `DataCloneError` khi clone Proxy, lỗi bị nuốt
+  trong handler nên tab kia im lặng không nhận được gì. Phải gửi bản sao thường (`{ ...toRaw(user.value) }`). `postMessage` giờ
+  bọc try/catch + `console.warn`.
+
+**Kiểm chứng (TDD đỏ → xanh):** `phienGiuaTab.spec.ts` (8) + `auth.nhieuTab.spec.ts` (4, 2 Pinia = 2 tab — test "tab mới xin
+được phiên" đỏ đúng vì lỗi Proxy trước khi sửa); FE 318 test, eslint + build sạch. **Chrome thật** (headless qua CDP, `vite
+preview`, không backend để token giả không bị 401): tab mới mở thẳng `/ho-so` vẫn đăng nhập; đăng xuất ở tab 2 → tab 1 mất
+phiên, tab 2 về `/`; đối chứng đóng hết tab → tab mới bị đẩy về trang chủ. **Chưa thử:** Safari/iPhone thật.
+
+### 15.31 Nguồn tile chính Stadia Maps, openstreetmap.fr làm dự phòng (2026-11-25)
+
+Nhánh `feature/tile-stadia` (tách từ `fix/tile-proxy-gioi-han-ket-noi` — merge PR đó trước). Người dùng chọn "nguồn
+có key" thay vì proxy qua Render sau khi proxy lộ giới hạn kết nối (Mục 15.29) và hỏi vì sao trang lớn chịu được tải
+(họ có cache/CDN/nguồn có hợp đồng; máy chủ tình nguyện không dành cho việc dồn tải).
+- **Chọn Stadia** (so với MapTiler, Thunderforest — đọc trang giá 2026-11-25): Free 200.000 tile/tháng (1 tile = 1
+  credit), phi thương mại được; MapTiler chỉ 100k + trần 5.000 phiên + dừng tới tháng sau khi vượt + bắt buộc logo.
+  Tài khoản mới tự dùng thử Professional 14 ngày rồi **tự về Free, không cần thẻ** — nên CHỈ dùng style trong gói Free
+  ("Standard Raster Basemaps"). Chọn style **`outdoors`**: có địa hình/độ cao, không vẽ ranh giới hành chính nét đứt
+  chồng lên lớp ranh giới xã của app (`osm_bright` có).
+- **Kiểm chứng trước khi code (MỞ ẢNH, không tin status — bài học Carto Mục 15.12):** 32 tile (Đà Lạt, rừng, Phú Quý,
+  Phan Thiết × z11/14/16/18 × 2 style) đều 200 và là bản đồ thật, nhãn tiếng Việt, **có tới z18 ở cả rừng/Phú Quý**
+  (openstreetmap.fr 404 từ z16). CORS `*`. Xác thực theo tên miền: không key từ `cuu-ho-ld.vercel.app` → 401 (chưa
+  đăng ký tên miền ở Stadia lúc thử) → code hỗ trợ cả key (`?api_key=`) lẫn không key.
+- **Code:** `tileProvider.ts` (`STADIA_TILE_URL`, `STADIA_ATTRIBUTION`, `STADIA_HOST_PATTERN`), cờ `coDungStadia()` /
+  `khoaStadia()` (`tinhNangBackend.ts`, biến `VITE_TILE_STADIA`, `VITE_STADIA_API_KEY`). `tileLayer.ts`: cầu dao proxy
+  tổng quát thành **"nguồn chính"** (Stadia > proxy) với dự phòng luôn là openstreetmap.fr — Stadia hết hạn mức/lỗi →
+  4 lần/20 s → chuyển hẳn sang .fr + toast "nguồn bản đồ dự phòng". Ghi nguồn đổi theo (Stadia + dự phòng). Cache SW
+  riêng `stadia-tiles` (tile lấy từ cache không trừ hạn mức). Bộ offline z8–10 giữ nguyên (style OSM, đổi style ở z11).
+- ⚠️ **Key KHÔNG được commit** — chỉ đặt trên Vercel. Đã kiểm `grep` toàn repo + `dist` sau khi thử.
+
+**Kiểm chứng (TDD đỏ → xanh):** 10 test mới (FE 328), eslint + build sạch. Chrome thật (`vite preview` build có bật
+Stadia + key qua biến môi trường lệnh build): 100/100 tile Stadia 200 ở z12–18, 0 tile dự phòng, z8–10 vẫn offline,
+ghi nguồn đúng. **Chưa thử:** mạng Viettel trên điện thoại (DNS Viettel từ chối truy vấn từ máy dev — không kiểm được
+Viettel có chặn `stadiamaps.com` không); hành vi thật khi vượt 200.000 tile.
+
 ---
 
+*Phiên bản: 2.23.0 — Cập nhật: 2026-11-25 (Mục 15.31 — nguồn tile chính Stadia Maps `outdoors`, openstreetmap.fr dự phòng qua cầu dao chung với proxy)*
+*Phiên bản: 2.22.0 — Cập nhật: 2026-11-25 (Mục 15.30 — chia sẻ phiên đăng nhập giữa các tab qua BroadcastChannel; ghi lý do không dùng cookie httpOnly với tên miền mặc định)*
+*Phiên bản: 2.21.0 — Cập nhật: 2026-11-25 (Mục 15.29 — proxy tile qua backend `/api/tiles`, cờ `VITE_DUNG_PROXY_TILE` mặc định tắt, cầu dao phía client)*
+*Phiên bản: 2.20.0 — Cập nhật: 2026-11-25 (Mục 15.28 — chuẩn bị deploy: TRUST_PROXY_HOPS sửa rate limit sau proxy, frontend/vercel.json, HOSTING.md Mục 0)*
 *Phiên bản: 2.19.0 — Cập nhật: 2026-10-15 (Mục 15.27 — SRS 1.1.0 và CLAUDE.md Mục 2/4/5/6/7/8/9/10/11 cập nhật cho khớp code; không sửa code)*
 *Phiên bản: 2.18.0 — Cập nhật: 2026-10-15 (thêm Mục 15.26 — commander không nhận sos:updated: cancel() không phát + thiếu phòng province:lamdong; sos:new trùng 2 lần)*
 *Phiên bản: 2.17.0 — Cập nhật: 2026-10-15 (thêm Mục 15.25 — công tắc `SMS_DRY_RUN` tắt SMS thật khi chạy thử)*

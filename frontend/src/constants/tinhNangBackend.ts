@@ -21,3 +21,20 @@ export function coLichSuSos(): boolean {
 export function coThongBaoDay(): boolean {
   return bat(import.meta.env.VITE_BAT_THONG_BAO_DAY)
 }
+
+// GET /api/tiles/:z/:x/:y.png — tile nền đi qua backend (docs/tile-proxy-plan.md). Tắt thì gọi
+// thẳng openstreetmap.fr như trước. Bật/tắt chỉ cần đổi biến + build lại, không cần revert code.
+export function coDungProxyTile(): boolean {
+  return bat(import.meta.env.VITE_DUNG_PROXY_TILE)
+}
+
+// Nguồn tile chính Stadia Maps (CLAUDE.md Mục 15.31). Tắt → openstreetmap.fr như trước.
+export function coDungStadia(): boolean {
+  return bat(import.meta.env.VITE_TILE_STADIA)
+}
+
+// API key Stadia — TUỲ CHỌN: không đặt thì dựa vào xác thực theo tên miền đăng ký ở Stadia.
+// Key nằm trong bundle (ai cũng đọc được) — bảo vệ thật là giới hạn tên miền phía Stadia.
+export function khoaStadia(): string {
+  return import.meta.env.VITE_STADIA_API_KEY?.trim() ?? ''
+}

@@ -98,3 +98,41 @@ export function duongDanTileOffline(z: number, x: number, y: number): string | n
   if (x < x0 || x > x1 || y < y0 || y > y1) return null
   return `/tiles/${z}/${x}/${y}.png`
 }
+
+// ---------------------------------------------------------------------------
+// PROXY TILE QUA BACKEND (docs/tile-proxy-plan.md, bật bằng VITE_DUNG_PROXY_TILE)
+// ---------------------------------------------------------------------------
+// Backend (backend/src/tiles/tile-bounds.ts) CHỈ phục vụ ô phủ Lâm Đồng + nới 2 ô — ⚠️ PHẢI
+// KHỚP với hằng số bên đó. Ô ngoài vùng này frontend gọi thẳng upstream, không xin proxy (sẽ 400).
+export const TILE_PROXY_PADDING = 2
+export const TILE_PROXY_MAX_ZOOM = 18
+
+export function tileTrongVungProxy(z: number, x: number, y: number): boolean {
+  if (z < 0 || z > TILE_PROXY_MAX_ZOOM) return false
+  const p = TILE_PROXY_PADDING
+  return (
+    x >= tileX(LAMDONG_BBOX.minLng, z) - p &&
+    x <= tileX(LAMDONG_BBOX.maxLng, z) + p &&
+    y >= tileY(LAMDONG_BBOX.maxLat, z) - p &&
+    y <= tileY(LAMDONG_BBOX.minLat, z) + p
+  )
+}
+
+// urlPattern cho runtimeCaching (vite.config.ts) — khớp `<VITE_API_BASE_URL>/tiles/z/x/y.png`
+// ở bất kỳ tên miền backend nào (onrender.com hay cùng origin lúc dev).
+export const PROXY_TILE_PATTERN = /\/api\/tiles\/\d+\/\d+\/\d+\.png$/
+
+// ---------------------------------------------------------------------------
+// NGUỒN CHÍNH STADIA MAPS (bật bằng VITE_TILE_STADIA — CLAUDE.md Mục 15.31)
+// ---------------------------------------------------------------------------
+// Gói Free: 200.000 tile/tháng, phi thương mại. Style `outdoors` (Standard Raster Basemap — có
+// trong gói Free, KHÔNG dùng style trả phí: hết dùng thử 2026-12-09 sẽ hỏng): có địa hình/độ
+// cao, không vẽ ranh giới hành chính nét đứt chồng lên lớp ranh giới xã của app.
+// Kiểm chứng 2026-11-25 (MỞ ẢNH xem, không chỉ status): tile thật, nhãn tiếng Việt, tới z18 ở cả
+// rừng (107.9, 11.75) lẫn Phú Quý — nơi openstreetmap.fr trả 404 từ z16. CORS `*`.
+// openstreetmap.fr (TILE_URL ở trên) là nguồn DỰ PHÒNG khi Stadia lỗi/hết hạn mức (tileLayer.ts).
+export const STADIA_TILE_URL = 'https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}.png'
+export const STADIA_ATTRIBUTION =
+  '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+// urlPattern cho runtimeCaching (vite.config.ts) — khớp cả khi có ?api_key.
+export const STADIA_HOST_PATTERN = /^https:\/\/tiles\.stadiamaps\.com\/tiles\/outdoors\/.*/
